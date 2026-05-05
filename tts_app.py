@@ -792,8 +792,10 @@ class MainWindow(QWidget):
         if sys.platform == "darwin":
             # Find current .app location from the running executable
             if getattr(sys, "frozen", False):
+                # sys.executable = .../Hedra Studio.app/Contents/MacOS/HedraStudio
+                # 2 levels up  →  .../Hedra Studio.app
                 app_dest = os.path.normpath(
-                    os.path.join(os.path.dirname(sys.executable), "..", "..", "..")
+                    os.path.join(os.path.dirname(sys.executable), "..", "..")
                 )
             else:
                 app_dest = "/Applications/Hedra Studio.app"
