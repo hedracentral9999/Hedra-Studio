@@ -74,9 +74,20 @@ jobs:
       - name: Build .exe
         run: pyinstaller TTS.spec --clean --noconfirm
 
+      - name: Verify dist output
+        shell: pwsh
+        run: |
+          Write-Host "=== dist contents ==="
+          Get-ChildItem dist -Recurse | Select-Object FullName, Length
+          if (-not (Test-Path 'dist\TTS Studio.exe')) {
+            Write-Error "dist\TTS Studio.exe NOT FOUND"; exit 1
+          }
+
       - name: Create installer (Inno Setup)
-        shell: cmd
-        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss'
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: setup.iss
+          options: /O+
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
