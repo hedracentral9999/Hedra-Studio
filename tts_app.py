@@ -173,9 +173,13 @@ DEFAULT_OUT   = str(DATA_DIR / "output")
 def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, encoding="utf-8") as f:
-            return json.load(f)
+            s = json.load(f)
+        # migrate old single-key format → list
+        if "el_api_key" in s and "el_api_keys" not in s:
+            s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
+        return s
     return {
-        "el_api_key":     "",
+        "el_api_keys":    [],
         "ds_api_key":     "",
         "output_dir":     DEFAULT_OUT,
         "enhance_prompt": DEFAULT_PROMPT,
@@ -285,24 +289,51 @@ class Worker(QThread):
         return res.json()["choices"][0]["message"]["content"].strip()
 
     def _tts(self, text: str) -> bytes:
-        res = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
-            headers={"xi-api-key": self.s["el_api_key"],
-                     "Content-Type": "application/json"},
-            json={
-                "text":     text,
-                "model_id": MODEL,
-                "voice_settings": {
-                    "stability":        0.5,
-                    "similarity_boost": 0.75,
-                    "speed":            self.speed,
+        keys = self.s.get("el_api_keys", [])
+        # backward compat: old single-key field
+        if not keys:
+            old = self.s.get("el_api_key", "").strip()
+            keys = [old] if old else []
+        keys = [k.strip() for k in keys if k.strip()]
+        if not keys:
+            raise Exception("Chưa nhập ElevenLabs API key. Vào Settings để thêm.")
+
+        last_err = None
+        for idx, key in enumerate(keys, 1):
+            label = f"key {idx}/{len(keys)} (...{key[-6:]})"
+            self.status.emit(f"Đang generate audio [{label}]...")
+            res = requests.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
+                headers={"xi-api-key": key, "Content-Type": "application/json"},
+                json={
+                    "text":     text,
+                    "model_id": MODEL,
+                    "voice_settings": {
+                        "stability":        0.5,
+                        "similarity_boost": 0.75,
+                        "speed":            self.speed,
+                    },
                 },
-            },
-            timeout=60,
-        )
-        if res.status_code != 200:
-            raise Exception(f"ElevenLabs {res.status_code}: {res.text[:300]}")
-        return res.content
+                timeout=60,
+            )
+            if res.status_code == 200:
+                return res.content
+
+            body = res.text[:300]
+            # quota / rate-limit / invalid key → try next key
+            if res.status_code in (401, 403, 429) or \
+               any(w in res.text.lower() for w in ("quota", "insufficient", "limit")):
+                reason = {401: "key không hợp lệ", 403: "không có quyền",
+                          429: "rate limited / hết credit"}.get(res.status_code, "hết credit")
+                last_err = Exception(f"{label}: {reason}")
+                if idx < len(keys):
+                    self.status.emit(f"⚠️ {label} {reason} — thử key tiếp theo...")
+                continue
+
+            # other errors (5xx, etc.) → raise immediately
+            raise Exception(f"ElevenLabs {res.status_code}: {body}")
+
+        raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
 
 # ── Settings dialog ────────────────────────────────────────────────
@@ -323,10 +354,13 @@ class SettingsDialog(QDialog):
             layout.addWidget(QLabel(f"<b>{label}</b>"))
             layout.addWidget(widget)
 
-        self.el_key = QLineEdit(self.settings.get("el_api_key", ""))
-        self.el_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.el_key.setPlaceholderText("sk_...")
-        section("ElevenLabs API Key", self.el_key)
+        layout.addWidget(QLabel("<b>ElevenLabs API Keys</b> <span style='color:#6b7280;font-weight:normal'>(mỗi key 1 dòng — tự động xoay khi hết credit)</span>"))
+        self.el_keys = QTextEdit()
+        self.el_keys.setPlaceholderText("sk_abc123...\nsk_def456...\nsk_ghi789...")
+        self.el_keys.setFixedHeight(80)
+        self.el_keys.setPlainText("\n".join(self.settings.get("el_api_keys", [])))
+        self.el_keys.setStyleSheet("font-family: monospace; font-size: 11px;")
+        layout.addWidget(self.el_keys)
 
         self.ds_key = QLineEdit(self.settings.get("ds_api_key", ""))
         self.ds_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -388,7 +422,8 @@ class SettingsDialog(QDialog):
             self.out_dir.setText(folder)
 
     def _save(self):
-        self.settings["el_api_key"]     = self.el_key.text().strip()
+        raw_keys = self.el_keys.toPlainText().strip().splitlines()
+        self.settings["el_api_keys"]    = [k.strip() for k in raw_keys if k.strip()]
         self.settings["ds_api_key"]     = self.ds_key.text().strip()
         self.settings["output_dir"]     = self.out_dir.text()
         self.settings["enhance_prompt"] = self.prompt.toPlainText()
