@@ -445,17 +445,23 @@ class SettingsDialog(QDialog):
 
 # ── Main window ────────────────────────────────────────────────────
 STYLE = """
-QWidget { font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; }
+QWidget {
+    font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px;
+    background: #ffffff; color: #1f2937;
+}
 QTextEdit, QLineEdit {
-    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px; background: white;
+    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px;
+    background: #ffffff; color: #1f2937;
 }
 QTextEdit:focus, QLineEdit:focus { border-color: #2563eb; }
-QLabel { color: #1f2937; }
+QLabel { color: #1f2937; background: transparent; }
 QPushButton {
     border: 1px solid #d1d5db; border-radius: 6px;
-    padding: 5px 14px; background: #f9fafb;
+    padding: 5px 14px; background: #f9fafb; color: #1f2937;
 }
 QPushButton:hover { background: #f3f4f6; }
+QSlider { background: transparent; }
+QFrame { background: transparent; }
 """
 
 class MainWindow(QWidget):
