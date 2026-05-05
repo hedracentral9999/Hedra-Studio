@@ -444,24 +444,70 @@ class SettingsDialog(QDialog):
 
 
 # ── Main window ────────────────────────────────────────────────────
-STYLE = """
-QWidget {
-    font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px;
-    background: #ffffff; color: #1f2937;
-}
-QTextEdit, QLineEdit {
-    border: 1px solid #d1d5db; border-radius: 6px; padding: 6px;
-    background: #ffffff; color: #1f2937;
-}
-QTextEdit:focus, QLineEdit:focus { border-color: #2563eb; }
-QLabel { color: #1f2937; background: transparent; }
-QPushButton {
-    border: 1px solid #d1d5db; border-radius: 6px;
-    padding: 5px 14px; background: #f9fafb; color: #1f2937;
-}
-QPushButton:hover { background: #f3f4f6; }
-QSlider { background: transparent; }
-QFrame { background: transparent; }
+
+# ── Palette (Slate — Linear/shadcn/ui style) ───────────────────────
+BG        = "#f8fafc"   # slate-50  — nền chính, không chói như trắng
+SURFACE   = "#ffffff"   # trắng     — input, card
+BORDER    = "#e2e8f0"   # slate-200 — viền nhẹ
+TEXT      = "#0f172a"   # slate-900 — chữ chính
+TEXT_MUTE = "#64748b"   # slate-500 — chữ phụ
+ACCENT    = "#2563eb"   # blue-600  — nút chính
+ACCENT_HV = "#1d4ed8"   # blue-700  — hover
+
+STYLE = f"""
+QWidget {{
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    background: {BG};
+    color: {TEXT};
+}}
+QTextEdit, QLineEdit {{
+    border: 1px solid {BORDER};
+    border-radius: 7px;
+    padding: 7px 9px;
+    background: {SURFACE};
+    color: {TEXT};
+    selection-background-color: #bfdbfe;
+}}
+QTextEdit:focus, QLineEdit:focus {{
+    border-color: {ACCENT};
+    background: {SURFACE};
+}}
+QTextEdit::placeholder, QLineEdit::placeholder {{
+    color: {TEXT_MUTE};
+}}
+QLabel {{
+    color: {TEXT};
+    background: transparent;
+}}
+QPushButton {{
+    border: 1px solid {BORDER};
+    border-radius: 7px;
+    padding: 5px 14px;
+    background: {SURFACE};
+    color: {TEXT};
+}}
+QPushButton:hover {{ background: #f1f5f9; border-color: #cbd5e1; }}
+QPushButton:pressed {{ background: #e2e8f0; }}
+QPushButton:disabled {{ background: #f1f5f9; color: {TEXT_MUTE}; }}
+QSlider::groove:horizontal {{
+    height: 4px; background: {BORDER}; border-radius: 2px;
+}}
+QSlider::handle:horizontal {{
+    background: {ACCENT}; width: 16px; height: 16px;
+    margin: -6px 0; border-radius: 8px;
+}}
+QSlider::sub-page:horizontal {{
+    background: {ACCENT}; border-radius: 2px;
+}}
+QFrame[frameShape="4"] {{ background: {BORDER}; max-height: 1px; border: none; }}
+QScrollBar:vertical {{
+    width: 6px; background: transparent;
+}}
+QScrollBar::handle:vertical {{
+    background: #cbd5e1; border-radius: 3px; min-height: 30px;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
 class MainWindow(QWidget):
@@ -486,8 +532,9 @@ class MainWindow(QWidget):
         header_row = QHBoxLayout()
         title = QLabel(f"🎙  Hedra Studio")
         title.setFont(QFont("", 15, QFont.Weight.Bold))
+        title.setStyleSheet(f"color:{ACCENT}; background:transparent;")
         ver_lbl = QLabel(f"v{VERSION}")
-        ver_lbl.setStyleSheet("color:#9ca3af; font-size:11px;")
+        ver_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:11px; background:transparent;")
         header_row.addWidget(title)
         header_row.addWidget(ver_lbl)
         header_row.addStretch()
@@ -510,7 +557,7 @@ class MainWindow(QWidget):
         self._update_url = ""
 
         self.credits_lbl = QLabel("Credits: đang tải...")
-        self.credits_lbl.setStyleSheet("color:#6b7280; font-size:12px;")
+        self.credits_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:12px;")
         layout.addWidget(self.credits_lbl)
 
         line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
@@ -549,11 +596,11 @@ class MainWindow(QWidget):
 
         layout.addWidget(QLabel("Tốc độ đọc:"))
         speed_row = QHBoxLayout()
-        lbl_min = QLabel("0.7"); lbl_min.setStyleSheet("color:#9ca3af;")
-        lbl_max = QLabel("1.2"); lbl_max.setStyleSheet("color:#9ca3af;")
+        lbl_min = QLabel("0.7"); lbl_min.setStyleSheet(f"color:{TEXT_MUTE};")
+        lbl_max = QLabel("1.2"); lbl_max.setStyleSheet(f"color:{TEXT_MUTE};")
         self.speed_val = QLabel("1.0")
         self.speed_val.setFixedWidth(32)
-        self.speed_val.setStyleSheet("font-weight:bold; color:#2563eb;")
+        self.speed_val.setStyleSheet(f"font-weight:bold; color:{ACCENT};")
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(7); self.slider.setMaximum(12)
         default_speed = self.settings.get("default_speed", 1.0)
@@ -595,14 +642,14 @@ class MainWindow(QWidget):
             btn.setChecked(name == active)
             if name == active:
                 btn.setStyleSheet(
-                    "QPushButton{background:#2563eb;color:white;border:1px solid #2563eb;"
-                    "border-radius:5px;padding:2px 10px;font-weight:bold;}"
+                    f"QPushButton{{background:{ACCENT};color:white;border:1px solid {ACCENT};"
+                    f"border-radius:5px;padding:2px 10px;font-weight:bold;}}"
                 )
             else:
                 btn.setStyleSheet(
-                    "QPushButton{background:#f9fafb;color:#374151;border:1px solid #d1d5db;"
-                    "border-radius:5px;padding:2px 10px;}"
-                    "QPushButton:hover{background:#e5e7eb;}"
+                    f"QPushButton{{background:{SURFACE};color:{TEXT};border:1px solid {BORDER};"
+                    f"border-radius:5px;padding:2px 10px;}}"
+                    f"QPushButton:hover{{background:#f1f5f9;}}"
                 )
 
     def _check_update(self):
