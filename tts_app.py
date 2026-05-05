@@ -545,14 +545,34 @@ class MainWindow(QWidget):
         layout.addLayout(header_row)
 
         # Update banner (hidden by default)
-        self.update_banner = QPushButton()
+        self.update_banner = QFrame()
         self.update_banner.setVisible(False)
         self.update_banner.setStyleSheet(
-            "QPushButton{background:#fef9c3;color:#92400e;border:1px solid #fde68a;"
-            "border-radius:6px;padding:5px 12px;text-align:left;}"
-            "QPushButton:hover{background:#fef08a;}"
+            f"QFrame{{background:#eff6ff;border:1px solid #bfdbfe;"
+            f"border-radius:8px;padding:0px;}}"
         )
-        self.update_banner.clicked.connect(self._open_update)
+        banner_row = QHBoxLayout(self.update_banner)
+        banner_row.setContentsMargins(12, 8, 8, 8)
+        banner_row.setSpacing(8)
+        badge = QLabel("NEW")
+        badge.setStyleSheet(
+            f"background:{ACCENT};color:white;border-radius:4px;"
+            f"padding:1px 6px;font-size:10px;font-weight:bold;"
+        )
+        badge.setFixedHeight(18)
+        self._banner_text = QLabel()
+        self._banner_text.setStyleSheet("color:#1e40af;font-size:13px;background:transparent;border:none;")
+        btn_dl = QPushButton("Tải về →")
+        btn_dl.setFixedHeight(26)
+        btn_dl.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border:none;"
+            f"border-radius:5px;padding:2px 12px;font-size:12px;font-weight:bold;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+        )
+        btn_dl.clicked.connect(self._open_update)
+        banner_row.addWidget(badge)
+        banner_row.addWidget(self._banner_text, 1)
+        banner_row.addWidget(btn_dl)
         layout.addWidget(self.update_banner)
         self._update_url = ""
 
@@ -659,7 +679,7 @@ class MainWindow(QWidget):
 
     def _on_update_found(self, version: str, url: str):
         self._update_url = url
-        self.update_banner.setText(f"🆕  Có bản cập nhật v{version}!  Nhấn để tải về →")
+        self._banner_text.setText(f"Có bản cập nhật v{version} — nhấn để tải về")
         self.update_banner.setVisible(True)
 
     def _open_update(self):
