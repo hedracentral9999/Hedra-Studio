@@ -511,10 +511,34 @@ class MainWindow(QWidget):
         line.setStyleSheet("color:#e5e7eb;")
         layout.addWidget(line)
 
+        # Prompt style selector
+        prompt_row = QHBoxLayout()
+        prompt_row.setSpacing(6)
+        prompt_row.addWidget(QLabel("Phong cách:"))
+        self._prompt_btns: dict[str, QPushButton] = {}
+        current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        # find which key matches current prompt (default to first)
+        active_name = next(iter(PROMPTS))
+        for name, txt in PROMPTS.items():
+            if txt == current_prompt:
+                active_name = name
+                break
+        for name in PROMPTS:
+            btn = QPushButton(name)
+            btn.setFixedHeight(28)
+            btn.setCheckable(True)
+            btn.setChecked(name == active_name)
+            btn.clicked.connect(lambda checked, n=name: self._set_prompt_style(n))
+            self._prompt_btns[name] = btn
+            prompt_row.addWidget(btn)
+        prompt_row.addStretch()
+        self._apply_prompt_btn_styles(active_name)
+        layout.addLayout(prompt_row)
+
         layout.addWidget(QLabel("Kịch bản:"))
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
-        self.text_input.setMinimumHeight(220)
+        self.text_input.setMinimumHeight(200)
         layout.addWidget(self.text_input)
 
         layout.addWidget(QLabel("Tốc độ đọc:"))
@@ -554,6 +578,26 @@ class MainWindow(QWidget):
         self.status_lbl = QLabel("● Sẵn sàng")
         self.status_lbl.setStyleSheet("color:#22c55e; font-size:12px;")
         layout.addWidget(self.status_lbl)
+
+    def _set_prompt_style(self, name: str):
+        self.settings["enhance_prompt"] = PROMPTS[name]
+        save_settings(self.settings)
+        self._apply_prompt_btn_styles(name)
+
+    def _apply_prompt_btn_styles(self, active: str):
+        for name, btn in self._prompt_btns.items():
+            btn.setChecked(name == active)
+            if name == active:
+                btn.setStyleSheet(
+                    "QPushButton{background:#2563eb;color:white;border:1px solid #2563eb;"
+                    "border-radius:5px;padding:2px 10px;font-weight:bold;}"
+                )
+            else:
+                btn.setStyleSheet(
+                    "QPushButton{background:#f9fafb;color:#374151;border:1px solid #d1d5db;"
+                    "border-radius:5px;padding:2px 10px;}"
+                    "QPushButton:hover{background:#e5e7eb;}"
+                )
 
     def _check_update(self):
         self._updater = UpdateChecker()
