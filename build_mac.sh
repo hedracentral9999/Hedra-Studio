@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🔧 Build TTS Studio cho Mac..."
+echo "🔧 Build Hedra Studio cho Mac..."
 
 # Activate venv
 source "$(dirname "$0")/venv/bin/activate"
@@ -18,8 +18,8 @@ echo "⚙️  PyInstaller đang build..."
 pyinstaller TTS.spec --clean --noconfirm
 
 # Kiểm tra build xong chưa
-if [ ! -d "dist/TTS Studio.app" ]; then
-    echo "❌ Build thất bại — không tìm thấy dist/TTS Studio.app"
+if [ ! -d "dist/Hedra Studio.app" ]; then
+    echo "❌ Build thất bại — không tìm thấy dist/Hedra Studio.app"
     exit 1
 fi
 
@@ -37,15 +37,15 @@ echo "💿 Tạo $DMG_NAME..."
 [ -f "$DMG_NAME" ] && rm "$DMG_NAME"
 
 create-dmg \
-    --volname "TTS Studio" \
+    --volname "Hedra Studio" \
     --window-pos 200 120 \
     --window-size 550 380 \
     --icon-size 100 \
-    --icon "TTS Studio.app" 150 180 \
-    --hide-extension "TTS Studio.app" \
+    --icon "Hedra Studio.app" 150 180 \
+    --hide-extension "Hedra Studio.app" \
     --app-drop-link 400 180 \
     "$DMG_NAME" \
-    "dist/TTS Studio.app"
+    "dist/Hedra Studio.app"
 
 echo ""
 echo "✅ Xong! File: $DMG_NAME"

@@ -613,20 +613,24 @@ class MainWindow(QWidget):
         webbrowser.open(self._update_url)
 
     def _refresh_credits(self):
-        key = self.settings.get("el_api_key", "")
-        if not key:
+        keys = self.settings.get("el_api_keys", [])
+        if not keys:
             self.credits_lbl.setText("⚠️  Chưa có ElevenLabs API key — vào Settings")
             return
         try:
-            r = requests.get(
-                "https://api.elevenlabs.io/v1/user/subscription",
-                headers={"xi-api-key": key}, timeout=5
-            )
-            if r.status_code == 200:
-                d = r.json()
-                used  = d.get("character_count", 0)
-                limit = d.get("character_limit", 0)
-                self.credits_lbl.setText(f"Credits: {limit-used:,} còn lại  /  {limit:,} tổng")
+            total_remaining = 0
+            for key in keys:
+                r = requests.get(
+                    "https://api.elevenlabs.io/v1/user/subscription",
+                    headers={"xi-api-key": key}, timeout=5
+                )
+                if r.status_code == 200:
+                    d = r.json()
+                    used  = d.get("character_count", 0)
+                    limit = d.get("character_limit", 0)
+                    total_remaining += limit - used
+            label = f"Credits: {total_remaining:,} còn lại" + (f"  ({len(keys)} keys)" if len(keys) > 1 else "")
+            self.credits_lbl.setText(label)
         except Exception:
             self.credits_lbl.setText("Không check được credits")
 
@@ -635,7 +639,7 @@ class MainWindow(QWidget):
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
-        if not self.settings.get("el_api_key") or not self.settings.get("ds_api_key"):
+        if not self.settings.get("el_api_keys") or not self.settings.get("ds_api_key"):
             QMessageBox.warning(self, "Thiếu API key", "Vào Settings nhập API keys trước nhé!")
             return
         filename = self.filename_input.text().strip()
