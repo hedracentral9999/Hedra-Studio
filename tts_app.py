@@ -877,12 +877,20 @@ open "{app_dest}"
 
     def _on_done(self, path: str):
         self.btn_gen.setEnabled(True)
-        self.status_lbl.setText("Xong!")
+        self.status_lbl.setText("✅  Tạo audio thành công!")
         self.status_lbl.setStyleSheet(
-            f"color:#15803d; font-size:11px; background:transparent;"
+            f"color:#15803d; font-size:14px; font-weight:600; background:transparent;"
         )
         reveal_file(path)
         self._refresh_credits()
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(4000, self._reset_status)
+
+    def _reset_status(self):
+        self.status_lbl.setText("Sẵn sàng")
+        self.status_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+        )
 
     def _on_error(self, msg: str):
         self.btn_gen.setEnabled(True)
