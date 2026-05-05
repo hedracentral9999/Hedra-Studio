@@ -248,6 +248,37 @@ class UpdateChecker(QThread):
             return False
 
 
+# ── Auto-updater downloader ────────────────────────────────────────
+class UpdateDownloader(QThread):
+    progress = pyqtSignal(int)   # 0-100
+    done     = pyqtSignal(str)   # temp file path
+    error    = pyqtSignal(str)
+
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+
+    def run(self):
+        try:
+            import tempfile
+            r = requests.get(self.url, stream=True, timeout=60)
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0))
+            suffix = ".dmg" if sys.platform == "darwin" else ".exe"
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            downloaded = 0
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    tmp.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        self.progress.emit(int(downloaded * 100 / total))
+            tmp.close()
+            self.done.emit(tmp.name)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 # ── Worker thread ──────────────────────────────────────────────────
 class Worker(QThread):
     status = pyqtSignal(str)
@@ -562,17 +593,18 @@ class MainWindow(QWidget):
         badge.setFixedHeight(18)
         self._banner_text = QLabel()
         self._banner_text.setStyleSheet("color:#1e40af;font-size:13px;background:transparent;border:none;")
-        btn_dl = QPushButton("Tải về →")
-        btn_dl.setFixedHeight(26)
-        btn_dl.setStyleSheet(
+        self._btn_dl = QPushButton("Cập nhật ngay →")
+        self._btn_dl.setFixedHeight(26)
+        self._btn_dl.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;"
             f"border-radius:5px;padding:2px 12px;font-size:12px;font-weight:bold;}}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:disabled{{background:#93c5fd;}}"
         )
-        btn_dl.clicked.connect(self._open_update)
+        self._btn_dl.clicked.connect(self._do_update)
         banner_row.addWidget(badge)
         banner_row.addWidget(self._banner_text, 1)
-        banner_row.addWidget(btn_dl)
+        banner_row.addWidget(self._btn_dl)
         layout.addWidget(self.update_banner)
         self._update_url = ""
 
@@ -684,6 +716,65 @@ class MainWindow(QWidget):
 
     def _open_update(self):
         webbrowser.open(self._update_url)
+
+    def _do_update(self):
+        self._btn_dl.setEnabled(False)
+        self._btn_dl.setText("Đang tải... 0%")
+        self._dl = UpdateDownloader(self._update_url)
+        self._dl.progress.connect(self._on_dl_progress)
+        self._dl.done.connect(self._on_dl_done)
+        self._dl.error.connect(self._on_dl_error)
+        self._dl.start()
+
+    def _on_dl_progress(self, pct: int):
+        self._btn_dl.setText(f"Đang tải... {pct}%")
+
+    def _on_dl_done(self, path: str):
+        self._btn_dl.setText("Đang cài đặt...")
+        try:
+            self._install_update(path)
+        except Exception as e:
+            self._on_dl_error(str(e))
+
+    def _on_dl_error(self, msg: str):
+        self._btn_dl.setEnabled(True)
+        self._btn_dl.setText("Cập nhật ngay →")
+        QMessageBox.critical(self, "Lỗi cập nhật", msg)
+
+    def _install_update(self, file_path: str):
+        if sys.platform == "darwin":
+            # Find current .app location from the running executable
+            if getattr(sys, "frozen", False):
+                app_dest = os.path.normpath(
+                    os.path.join(os.path.dirname(sys.executable), "..", "..", "..")
+                )
+            else:
+                app_dest = "/Applications/Hedra Studio.app"
+
+            mount_point = "/tmp/hedra_studio_update_mnt"
+            script = f"""#!/bin/bash
+sleep 2
+mkdir -p "{mount_point}"
+hdiutil attach -nobrowse -quiet "{file_path}" -mountpoint "{mount_point}"
+if [ -d "{mount_point}/Hedra Studio.app" ]; then
+    rm -rf "{app_dest}"
+    cp -R "{mount_point}/Hedra Studio.app" "{app_dest}"
+fi
+hdiutil detach "{mount_point}" -quiet
+rm -rf "{mount_point}"
+open "{app_dest}"
+"""
+            script_path = "/tmp/hedra_auto_update.sh"
+            with open(script_path, "w") as f:
+                f.write(script)
+            os.chmod(script_path, 0o755)
+            subprocess.Popen(["/bin/bash", script_path])
+
+        elif sys.platform == "win32":
+            # Inno Setup supports /SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
+            subprocess.Popen([file_path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
+
+        QApplication.instance().quit()
 
     def _refresh_credits(self):
         keys = self.settings.get("el_api_keys", [])
