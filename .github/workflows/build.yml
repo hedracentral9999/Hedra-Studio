@@ -39,11 +39,11 @@ jobs:
             --window-pos 200 120 \
             --window-size 550 380 \
             --icon-size 100 \
-            --icon "TTS Studio.app" 150 180 \
-            --hide-extension "TTS Studio.app" \
+            --icon "Hedra Studio.app" 150 180 \
+            --hide-extension "Hedra Studio.app" \
             --app-drop-link 400 180 \
             "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" \
-            "dist/TTS Studio.app"
+            "dist/Hedra Studio.app"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -79,8 +79,8 @@ jobs:
         run: |
           Write-Host "=== dist contents ==="
           Get-ChildItem dist -Recurse | Select-Object FullName, Length
-          if (-not (Test-Path 'dist\TTS Studio.exe')) {
-            Write-Error "dist\TTS Studio.exe NOT FOUND"; exit 1
+          if (-not (Test-Path 'dist\Hedra Studio.exe')) {
+            Write-Error "dist\Hedra Studio.exe NOT FOUND"; exit 1
           }
 
       - name: Create installer (Inno Setup)

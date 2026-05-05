@@ -24,7 +24,7 @@ if sys.platform == 'darwin':
         a.scripts,
         [],
         exclude_binaries=True,
-        name='TTSStudio',
+        name='HedraStudio',
         debug=False,
         strip=False,
         upx=False,
@@ -38,12 +38,12 @@ if sys.platform == 'darwin':
         a.datas,
         strip=False,
         upx=False,
-        name='TTSStudio',
+        name='HedraStudio',
     )
     app = BUNDLE(
         coll,
-        name='TTS Studio.app',
-        bundle_identifier='com.hedracentral.ttsstudio',
+        name='Hedra Studio.app',
+        bundle_identifier='com.hedracentral.hedrastudio',
         info_plist={
             'CFBundleShortVersionString': '1.0.0',
             'CFBundleVersion': '1.0.0',
@@ -61,7 +61,7 @@ else:
         a.zipfiles,
         a.datas,
         [],
-        name='TTS Studio',
+        name='Hedra Studio',
         debug=False,
         strip=False,
         upx=False,
