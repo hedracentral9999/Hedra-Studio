@@ -74,15 +74,9 @@ jobs:
       - name: Build .exe
         run: pyinstaller TTS.spec --clean --noconfirm
 
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --yes --no-progress
-
       - name: Create installer (Inno Setup)
-        shell: pwsh
-        run: |
-          $env:PATH += ";C:\Program Files (x86)\Inno Setup 6"
-          iscc setup.iss
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss'
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
