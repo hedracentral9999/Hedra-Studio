@@ -1,10 +1,10 @@
 ; Inno Setup script - Hedra Studio Windows Installer
 
 #define MyAppName "Hedra Studio"
-#define MyAppVersion "1.2.11"
+#define MyAppVersion "1.2.12"
 #define MyAppPublisher "Hedra Central"
 #define MyAppExeName "Hedra Studio.exe"
-#define MyOutputName "Hedra-Studio-1.2.11-win-setup"
+#define MyOutputName "Hedra-Studio-1.2.12-win-setup"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}

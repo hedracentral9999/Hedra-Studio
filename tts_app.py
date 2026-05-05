@@ -476,36 +476,34 @@ class SettingsDialog(QDialog):
 
 # ── Main window ────────────────────────────────────────────────────
 
-# ── Palette (Slate — Linear/shadcn/ui style) ───────────────────────
-BG        = "#f8fafc"   # slate-50  — nền chính, không chói như trắng
-SURFACE   = "#ffffff"   # trắng     — input, card
-BORDER    = "#e2e8f0"   # slate-200 — viền nhẹ
-TEXT      = "#0f172a"   # slate-900 — chữ chính
-TEXT_MUTE = "#64748b"   # slate-500 — chữ phụ
-ACCENT    = "#2563eb"   # blue-600  — nút chính
-ACCENT_HV = "#1d4ed8"   # blue-700  — hover
+# ── Palette (Apple macOS HIG) ──────────────────────────────────────
+BG        = "#f5f5f7"   # Apple off-white background
+SURFACE   = "#ffffff"   # white — inputs, cards
+BORDER    = "#d2d2d7"   # Apple subtle border
+TEXT      = "#1d1d1f"   # Apple near-black
+TEXT_MUTE = "#6e6e73"   # Apple secondary gray
+ACCENT    = "#0071e3"   # Apple blue
+ACCENT_HV = "#0077ed"   # Apple blue hover
+SEG_BG    = "#e5e5ea"   # NSSegmentedControl background
 
 STYLE = f"""
 QWidget {{
-    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
     font-size: 13px;
     background: {BG};
     color: {TEXT};
 }}
 QTextEdit, QLineEdit {{
     border: 1px solid {BORDER};
-    border-radius: 7px;
-    padding: 7px 9px;
+    border-radius: 8px;
+    padding: 8px 10px;
     background: {SURFACE};
     color: {TEXT};
-    selection-background-color: #bfdbfe;
+    selection-background-color: #a8d0fb;
 }}
 QTextEdit:focus, QLineEdit:focus {{
     border-color: {ACCENT};
     background: {SURFACE};
-}}
-QTextEdit::placeholder, QLineEdit::placeholder {{
-    color: {TEXT_MUTE};
 }}
 QLabel {{
     color: {TEXT};
@@ -518,27 +516,25 @@ QPushButton {{
     background: {SURFACE};
     color: {TEXT};
 }}
-QPushButton:hover {{ background: #f1f5f9; border-color: #cbd5e1; }}
-QPushButton:pressed {{ background: #e2e8f0; }}
-QPushButton:disabled {{ background: #f1f5f9; color: {TEXT_MUTE}; }}
+QPushButton:hover  {{ background: #ebebf0; }}
+QPushButton:pressed {{ background: {SEG_BG}; }}
+QPushButton:disabled {{ background: {BG}; color: {TEXT_MUTE}; border-color: {BORDER}; }}
 QSlider::groove:horizontal {{
-    height: 4px; background: {BORDER}; border-radius: 2px;
+    height: 3px; background: {BORDER}; border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    background: {ACCENT}; width: 16px; height: 16px;
-    margin: -6px 0; border-radius: 8px;
+    background: {SURFACE}; width: 18px; height: 18px;
+    margin: -8px 0; border-radius: 9px;
+    border: 2px solid {ACCENT};
 }}
 QSlider::sub-page:horizontal {{
     background: {ACCENT}; border-radius: 2px;
 }}
 QFrame[frameShape="4"] {{ background: {BORDER}; max-height: 1px; border: none; }}
-QScrollBar:vertical {{
-    width: 6px; background: transparent;
-}}
-QScrollBar::handle:vertical {{
-    background: #cbd5e1; border-radius: 3px; min-height: 30px;
-}}
+QScrollBar:vertical {{ width: 6px; background: transparent; }}
+QScrollBar::handle:vertical {{ background: #c7c7cc; border-radius: 3px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QDialog {{ background: {BG}; }}
 """
 
 class MainWindow(QWidget):
@@ -556,31 +552,49 @@ class MainWindow(QWidget):
 
     def _build(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(0)
+        layout.setContentsMargins(20, 18, 20, 18)
 
-        # Header
+        # ── Header ─────────────────────────────────────────────────
         header_row = QHBoxLayout()
-        title = QLabel(f"🎙  Hedra Studio")
-        title.setFont(QFont("", 15, QFont.Weight.Bold))
-        title.setStyleSheet(f"color:{ACCENT}; background:transparent;")
-        ver_lbl = QLabel(f"v{VERSION}")
-        ver_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:11px; background:transparent;")
-        header_row.addWidget(title)
-        header_row.addWidget(ver_lbl)
+        header_row.setSpacing(0)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        title_lbl = QLabel("🎙  Hedra Studio")
+        title_lbl.setFont(QFont("", 16, QFont.Weight.Bold))
+        title_lbl.setStyleSheet(f"color:{TEXT}; background:transparent;")
+        self.credits_lbl = QLabel("Credits: đang tải...")
+        self.credits_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:11px; background:transparent;")
+        title_col.addWidget(title_lbl)
+        title_col.addWidget(self.credits_lbl)
+        header_row.addLayout(title_col)
         header_row.addStretch()
-        btn_settings = QPushButton("⚙️  Settings")
-        btn_settings.setFixedHeight(30)
+
+        ver_lbl = QLabel(f"v{VERSION}")
+        ver_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent; padding-right:8px;"
+        )
+        header_row.addWidget(ver_lbl)
+
+        btn_settings = QPushButton("Settings")
+        btn_settings.setFixedHeight(28)
+        btn_settings.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
+            f"padding:3px 14px;background:{SURFACE};color:{TEXT};font-size:12px;}}"
+            f"QPushButton:hover{{background:#ebebf0;}}"
+            f"QPushButton:pressed{{background:{SEG_BG};}}"
+        )
         btn_settings.clicked.connect(self.open_settings)
         header_row.addWidget(btn_settings)
         layout.addLayout(header_row)
+        layout.addSpacing(12)
 
-        # Update banner (hidden by default)
+        # ── Update banner (hidden by default) ──────────────────────
         self.update_banner = QFrame()
         self.update_banner.setVisible(False)
         self.update_banner.setStyleSheet(
-            f"QFrame{{background:#eff6ff;border:1px solid #bfdbfe;"
-            f"border-radius:8px;padding:0px;}}"
+            f"QFrame{{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}}"
         )
         banner_row = QHBoxLayout(self.update_banner)
         banner_row.setContentsMargins(12, 8, 8, 8)
@@ -588,18 +602,20 @@ class MainWindow(QWidget):
         badge = QLabel("NEW")
         badge.setStyleSheet(
             f"background:{ACCENT};color:white;border-radius:4px;"
-            f"padding:1px 6px;font-size:10px;font-weight:bold;"
+            f"padding:1px 7px;font-size:10px;font-weight:bold;"
         )
         badge.setFixedHeight(18)
         self._banner_text = QLabel()
-        self._banner_text.setStyleSheet("color:#1e40af;font-size:13px;background:transparent;border:none;")
-        self._btn_dl = QPushButton("Cập nhật ngay →")
+        self._banner_text.setStyleSheet(
+            f"color:#004499;font-size:12px;background:transparent;border:none;"
+        )
+        self._btn_dl = QPushButton("Cập nhật ngay")
         self._btn_dl.setFixedHeight(26)
         self._btn_dl.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:5px;padding:2px 12px;font-size:12px;font-weight:bold;}}"
+            f"border-radius:13px;padding:3px 14px;font-size:12px;font-weight:600;}}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
-            f"QPushButton:disabled{{background:#93c5fd;}}"
+            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
         )
         self._btn_dl.clicked.connect(self._do_update)
         banner_row.addWidget(badge)
@@ -608,21 +624,30 @@ class MainWindow(QWidget):
         layout.addWidget(self.update_banner)
         self._update_url = ""
 
-        self.credits_lbl = QLabel("Credits: đang tải...")
-        self.credits_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:12px;")
-        layout.addWidget(self.credits_lbl)
+        # ── Separator ──────────────────────────────────────────────
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(sep)
+        layout.addSpacing(12)
 
-        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
-        line.setStyleSheet("color:#e5e7eb;")
-        layout.addWidget(line)
+        # ── Phong cách — Apple NSSegmentedControl ──────────────────
+        style_row = QHBoxLayout()
+        style_row.setSpacing(10)
+        pc_lbl = QLabel("Phong cách")
+        pc_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
+        style_row.addWidget(pc_lbl)
+        style_row.addStretch()
 
-        # Prompt style selector
-        prompt_row = QHBoxLayout()
-        prompt_row.setSpacing(6)
-        prompt_row.addWidget(QLabel("Phong cách:"))
+        seg_frame = QFrame()
+        seg_frame.setFixedHeight(30)
+        seg_frame.setStyleSheet(
+            f"QFrame{{background:{SEG_BG};border-radius:9px;border:none;}}"
+        )
+        seg_layout = QHBoxLayout(seg_frame)
+        seg_layout.setContentsMargins(3, 3, 3, 3)
+        seg_layout.setSpacing(2)
+
         self._prompt_btns: dict[str, QPushButton] = {}
         current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
-        # find which key matches current prompt (default to first)
         active_name = next(iter(PROMPTS))
         for name, txt in PROMPTS.items():
             if txt == current_prompt:
@@ -630,58 +655,78 @@ class MainWindow(QWidget):
                 break
         for name in PROMPTS:
             btn = QPushButton(name)
-            btn.setFixedHeight(28)
+            btn.setFixedHeight(24)
             btn.setCheckable(True)
             btn.setChecked(name == active_name)
             btn.clicked.connect(lambda checked, n=name: self._set_prompt_style(n))
             self._prompt_btns[name] = btn
-            prompt_row.addWidget(btn)
-        prompt_row.addStretch()
+            seg_layout.addWidget(btn)
+
+        style_row.addWidget(seg_frame)
         self._apply_prompt_btn_styles(active_name)
-        layout.addLayout(prompt_row)
+        layout.addLayout(style_row)
+        layout.addSpacing(12)
 
-        layout.addWidget(QLabel("Kịch bản:"))
+        # ── Kịch bản ───────────────────────────────────────────────
         self.text_input = QTextEdit()
-        self.text_input.setPlaceholderText("Paste kịch bản vào đây... (VD: dạ shop còn hàng không ạ?)")
-        self.text_input.setMinimumHeight(200)
+        self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
+        self.text_input.setMinimumHeight(190)
         layout.addWidget(self.text_input)
+        layout.addSpacing(12)
 
-        layout.addWidget(QLabel("Tốc độ đọc:"))
-        speed_row = QHBoxLayout()
-        lbl_min = QLabel("0.7"); lbl_min.setStyleSheet(f"color:{TEXT_MUTE};")
-        lbl_max = QLabel("1.2"); lbl_max.setStyleSheet(f"color:{TEXT_MUTE};")
-        self.speed_val = QLabel("1.0")
-        self.speed_val.setFixedWidth(32)
-        self.speed_val.setStyleSheet(f"font-weight:bold; color:{ACCENT};")
+        # ── Tốc độ đọc ─────────────────────────────────────────────
+        spd_header = QHBoxLayout()
+        spd_lbl = QLabel("Tốc độ đọc")
+        spd_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
+        self.speed_val = QLabel("1.0×")
+        self.speed_val.setStyleSheet(
+            f"color:{ACCENT}; font-weight:600; font-size:13px; background:transparent;"
+        )
+        spd_header.addWidget(spd_lbl)
+        spd_header.addStretch()
+        spd_header.addWidget(self.speed_val)
+        layout.addLayout(spd_header)
+        layout.addSpacing(6)
+
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(7); self.slider.setMaximum(12)
         default_speed = self.settings.get("default_speed", 1.0)
         self.slider.setValue(int(default_speed * 10))
-        self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}"))
-        speed_row.addWidget(lbl_min)
-        speed_row.addWidget(self.slider)
-        speed_row.addWidget(lbl_max)
-        speed_row.addWidget(self.speed_val)
-        layout.addLayout(speed_row)
+        self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}×"))
+        layout.addWidget(self.slider)
+        layout.addSpacing(12)
 
-        layout.addWidget(QLabel("Tên file (không cần .mp3):"))
+        # ── Tên file ───────────────────────────────────────────────
+        fn_lbl = QLabel("Tên file")
+        fn_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
+        layout.addWidget(fn_lbl)
+        layout.addSpacing(4)
         self.filename_input = QLineEdit()
-        self.filename_input.setPlaceholderText("VD: box_650k_quang_cao")
+        self.filename_input.setPlaceholderText("box_650k_quang_cao")
         layout.addWidget(self.filename_input)
+        layout.addSpacing(16)
 
-        self.btn_gen = QPushButton("🎙   GENERATE")
-        self.btn_gen.setMinimumHeight(46)
-        self.btn_gen.setFont(QFont("", 13, QFont.Weight.Bold))
+        # ── Generate — Apple primary CTA ───────────────────────────
+        self.btn_gen = QPushButton("🎙   Generate")
+        self.btn_gen.setMinimumHeight(50)
+        self.btn_gen.setFont(QFont("", 15, QFont.Weight.Bold))
         self.btn_gen.setStyleSheet(
-            "QPushButton{background:#2563eb;color:white;border-radius:8px;border:none;}"
-            "QPushButton:hover{background:#1d4ed8;}"
-            "QPushButton:disabled{background:#94a3b8;}"
+            f"QPushButton{{background:{ACCENT};color:white;"
+            f"border-radius:12px;border:none;letter-spacing:0.3px;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:#005bb5;}}"
+            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
         )
         self.btn_gen.clicked.connect(self._generate)
         layout.addWidget(self.btn_gen)
+        layout.addSpacing(8)
 
-        self.status_lbl = QLabel("● Sẵn sàng")
-        self.status_lbl.setStyleSheet("color:#22c55e; font-size:12px;")
+        # ── Status ─────────────────────────────────────────────────
+        self.status_lbl = QLabel("Sẵn sàng")
+        self.status_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+        )
+        self.status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_lbl)
 
     def _set_prompt_style(self, name: str):
@@ -693,15 +738,17 @@ class MainWindow(QWidget):
         for name, btn in self._prompt_btns.items():
             btn.setChecked(name == active)
             if name == active:
+                # White pill — Apple active segment
                 btn.setStyleSheet(
-                    f"QPushButton{{background:{ACCENT};color:white;border:1px solid {ACCENT};"
-                    f"border-radius:5px;padding:2px 10px;font-weight:bold;}}"
+                    f"QPushButton{{background:{SURFACE};color:{TEXT};border:none;"
+                    f"border-radius:6px;padding:0px 14px;font-size:12px;font-weight:600;}}"
                 )
             else:
+                # Transparent inactive segment
                 btn.setStyleSheet(
-                    f"QPushButton{{background:{SURFACE};color:{TEXT};border:1px solid {BORDER};"
-                    f"border-radius:5px;padding:2px 10px;}}"
-                    f"QPushButton:hover{{background:#f1f5f9;}}"
+                    f"QPushButton{{background:transparent;color:{TEXT_MUTE};border:none;"
+                    f"border-radius:6px;padding:0px 14px;font-size:12px;}}"
+                    f"QPushButton:hover{{background:rgba(0,0,0,0.06);}}"
                 )
 
     def _check_update(self):
@@ -821,20 +868,26 @@ open "{app_dest}"
         self.worker.start()
 
     def _on_status(self, msg: str):
-        self.status_lbl.setText(f"⏳  {msg}")
-        self.status_lbl.setStyleSheet("color:#f59e0b; font-size:12px;")
+        self.status_lbl.setText(msg)
+        self.status_lbl.setStyleSheet(
+            f"color:#b45309; font-size:11px; background:transparent;"
+        )
 
     def _on_done(self, path: str):
         self.btn_gen.setEnabled(True)
-        self.status_lbl.setText("✅  Xong!")
-        self.status_lbl.setStyleSheet("color:#22c55e; font-size:12px;")
+        self.status_lbl.setText("Xong!")
+        self.status_lbl.setStyleSheet(
+            f"color:#15803d; font-size:11px; background:transparent;"
+        )
         reveal_file(path)
         self._refresh_credits()
 
     def _on_error(self, msg: str):
         self.btn_gen.setEnabled(True)
-        self.status_lbl.setText("❌  Lỗi")
-        self.status_lbl.setStyleSheet("color:#ef4444; font-size:12px;")
+        self.status_lbl.setText("Có lỗi xảy ra")
+        self.status_lbl.setStyleSheet(
+            f"color:#dc2626; font-size:11px; background:transparent;"
+        )
         QMessageBox.critical(self, "Lỗi", msg)
 
     def open_settings(self):
