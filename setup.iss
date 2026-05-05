@@ -1,4 +1,4 @@
-; Inno Setup script — Hedra Studio Windows Installer
+; Inno Setup script - Hedra Studio Windows Installer
 
 #define MyAppName "Hedra Studio"
 #define MyAppVersion "1.2.1"
@@ -32,7 +32,7 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Tạo shortcut trên Desktop"; GroupDescription: "Tuỳ chọn:"; Flags: checked
+Name: "desktopicon"; Description: "Create Desktop shortcut"; GroupDescription: "Options:"; Flags: checked
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Khởi chạy {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
