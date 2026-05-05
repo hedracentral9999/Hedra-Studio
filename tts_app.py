@@ -74,6 +74,84 @@ Chỉ CAPS từ thật sự quan trọng: MIỄN PHÍ, NGON, SỚM, LUÔN, TỐI
 - Chỉ trả về kịch bản đã xử lý
 - Không giải thích, không ghi chú, không markdown"""
 
+DEFAULT_PROMPT_FUNNY = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam — phong cách HÀI HƯỚC, dí dỏm, thân thiện.
+
+## GIỌNG ADAM — ĐẶC ĐIỂM
+Giọng nam trầm ấm nhưng hôm nay được "thả lỏng" — vui vẻ, dí dỏm, gần gũi.
+Tags ưu tiên: [happy] [curious] [impressed] [warmly] [questioning] [reassuring]
+Tags hạn chế: [assertive] [professional] [thoughtful] — chỉ dùng khi thật sự cần
+Tags TUYỆT ĐỐI TRÁNH: [giggles] [nervous] [sheepishly] [whining]
+
+## QUY TẮC BẮT BUỘC
+
+### 1. NỘI DUNG
+- GIỮ NGUYÊN 100% nội dung gốc — không thêm, không bớt, không đổi nghĩa
+- Chỉ được: thêm tags, viết hoa, thêm dấu câu, sửa chính tả, thêm từ đệm tự nhiên
+
+### 2. VIẾT TẮT → MỞ RỘNG
+a → anh | e → em | u → bạn | mk/mik → mình
+k/ko/kg → không | dc/đc → được | vs → với
+ck → chuyển khoản | ship → ship (giữ nguyên)
+
+### 3. CHÍNH TẢ & TÊN RIÊNG
+- Sửa lỗi rõ ràng, viết hoa địa danh và thương hiệu như bình thường
+
+### 4. SỐ & TIỀN TỆ
+- 650k→sáu trăm năm mươi nghìn, 1tr→một triệu, 1.5tr→một triệu rưỡi
+- 1-2→một đến hai, 50%→năm mươi phần trăm
+
+### 5. AUDIO TAGS — TONE HÀI HƯỚC
+[happy]       → câu xác nhận, đồng ý, thông tin tốt — dùng nhiều
+[curious]     → câu hỏi, bắt đầu câu chuyện
+[impressed]   → phản ứng bất ngờ tích cực, "ủa hay đó"
+[warmly]      → chào hỏi, thân thiện, gần gũi
+[questioning] → hỏi ngược lại, xác nhận vui
+[reassuring]  → trấn an kiểu "không sao đâu anh ơi"
+
+### 6. NHẤN MẠNH HÀI HƯỚC — VIẾT HOA
+Dùng CAPS cho hiệu ứng hài và bất ngờ:
+XỊN, CHUẨN, LUÔN, HẾT XẨY, THẬT RA, CHỨ, XONG LUÔN, DỄ ỢT, NGON, ỦA
+
+### 7. PAUSE DRAMATIC
+... → trước punchline hoặc thông tin bất ngờ — dùng nhiều hơn bản nghiêm túc
+— → ngắt nhanh kiểu "plot twist"
+
+### 8. TỪ ĐỆM TỰ NHIÊN (thêm 1-2 từ mỗi đoạn khi phù hợp)
+"ủa", "thật ra", "nói thật nhé", "kiểu như", "xong là", "vậy đó", "đó anh"
+
+### 9. CẤU TRÚC
+- Mỗi câu/ý trên một dòng riêng
+- Câu ngắn hơn bản nghiêm túc — nhịp nhanh, vui
+- Xóa: kkk, haha, hehe, hihi, :), XD, ^^, :D
+
+### 10. OUTPUT
+- Chỉ trả về kịch bản đã xử lý
+- Không giải thích, không ghi chú, không markdown
+
+---
+
+## VÍ DỤ
+
+INPUT: còn box 650k không shop ơi
+OUTPUT: [curious] Ủa còn box sáu trăm năm mươi nghìn không shop ơi?
+
+INPUT: dạ còn a ơi sáng nay e vừa lắp xong chục box kkk
+OUTPUT: [happy] Dạ còn CHỨ anh ơi — sáng nay em vừa lắp xong chục box rồi... XỊN không?
+
+INPUT: bên shop có shipcod không
+OUTPUT: [questioning] Bên shop có ship COD không anh?
+
+INPUT: dạ có nhé a cọc 150k còn lại cod nhận hàng kiểm tra đúng đủ mới thanh toán nhé
+OUTPUT: [warmly] Dạ có LUÔN nhé anh — cọc một trăm năm mươi nghìn... còn lại COD thôi. Nhận hàng kiểm tra ưng rồi mới trả — CHUẨN không?
+
+INPUT: hay quá mình k rành kỹ thuật lắm sợ phức tạp
+OUTPUT: [impressed] HẾT XẨY luôn — mình không rành kỹ thuật nên sợ phức tạp... thật ra DỄ ỢT anh ơi!"""
+
+PROMPTS = {
+    "🎯  Nghiêm túc": DEFAULT_PROMPT,
+    "😄  Hài hước":   DEFAULT_PROMPT_FUNNY,
+}
+
 
 # ── Data directory (persists across updates) ───────────────────────
 def get_data_dir() -> Path:
@@ -267,6 +345,20 @@ class SettingsDialog(QDialog):
         layout.addLayout(row)
 
         layout.addWidget(QLabel("<b>Enhance Prompt</b>"))
+        style_row = QHBoxLayout()
+        style_row.setSpacing(6)
+        for name, prompt_text in PROMPTS.items():
+            btn = QPushButton(name)
+            btn.setFixedHeight(28)
+            btn.setStyleSheet(
+                "QPushButton{border:1px solid #d1d5db;border-radius:5px;"
+                "padding:2px 10px;background:#f9fafb;}"
+                "QPushButton:hover{background:#e5e7eb;}"
+            )
+            btn.clicked.connect(lambda checked, t=prompt_text: self.prompt.setPlainText(t))
+            style_row.addWidget(btn)
+        style_row.addStretch()
+        layout.addLayout(style_row)
         self.prompt = QTextEdit()
         self.prompt.setPlainText(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
         self.prompt.setMinimumHeight(180)
@@ -326,7 +418,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.settings = settings
         self.worker   = None
-        self.setWindowTitle(f"🎙  TTS Studio  v{VERSION}")
+        self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
         self.setMinimumWidth(460)
         self.setMinimumHeight(540)
         self.setStyleSheet(STYLE)
@@ -341,7 +433,7 @@ class MainWindow(QWidget):
 
         # Header
         header_row = QHBoxLayout()
-        title = QLabel(f"🎙  TTS Studio")
+        title = QLabel(f"🎙  Hedra Studio")
         title.setFont(QFont("", 15, QFont.Weight.Bold))
         ver_lbl = QLabel(f"v{VERSION}")
         ver_lbl.setStyleSheet("color:#9ca3af; font-size:11px;")
@@ -510,7 +602,7 @@ class TrayApp:
 
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(self._make_icon())
-        self.tray.setToolTip(f"TTS Studio v{VERSION}")
+        self.tray.setToolTip(f"Hedra Studio v{VERSION}")
 
         menu = QMenu()
         a_open     = QAction("🎙  Mở Tool");    a_open.triggered.connect(self._show_main)

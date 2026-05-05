@@ -35,7 +35,7 @@ jobs:
       - name: Create DMG
         run: |
           create-dmg \
-            --volname "TTS Studio" \
+            --volname "Hedra Studio" \
             --window-pos 200 120 \
             --window-size 550 380 \
             --icon-size 100 \
@@ -66,6 +66,7 @@ jobs:
 
       - name: Read version
         id: ver
+        shell: pwsh
         run: |
           $v = python -c "from version import VERSION; print(VERSION)"
           echo "VERSION=$v" >> $env:GITHUB_OUTPUT
@@ -74,7 +75,11 @@ jobs:
         run: pyinstaller TTS.spec --clean --noconfirm
 
       - name: Create installer (Inno Setup)
-        run: iscc setup.iss
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\iscc.exe"
+          if (!(Test-Path $iscc)) { $iscc = "${env:ProgramFiles}\Inno Setup 6\iscc.exe" }
+          & $iscc setup.iss
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

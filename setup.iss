@@ -1,11 +1,10 @@
-; Inno Setup script — TTS Studio Windows Installer
-; Tự động build bởi GitHub Actions
+; Inno Setup script — Hedra Studio Windows Installer
 
-#define MyAppName "TTS Studio"
-#define MyAppVersion "1.0.0"
+#define MyAppName "Hedra Studio"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Hedra Central"
 #define MyAppExeName "TTS Studio.exe"
-#define MyOutputName "Hedra-Studio-1.0.0-win-setup"
+#define MyOutputName "Hedra-Studio-1.1.0-win-setup"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -14,6 +13,7 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+OutputDir=.
 OutputBaseFilename={#MyOutputName}
 Compression=lzma
 SolidCompression=yes
