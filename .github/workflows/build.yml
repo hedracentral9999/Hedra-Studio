@@ -42,13 +42,13 @@ jobs:
             --icon "TTS Studio.app" 150 180 \
             --hide-extension "TTS Studio.app" \
             --app-drop-link 400 180 \
-            "TTS-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" \
+            "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" \
             "dist/TTS Studio.app"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: "TTS-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
+          files: "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
           generate_release_notes: true
 
   # ── Build Windows .exe installer ──────────────────────────────────
@@ -79,4 +79,4 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: "TTS-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"
+          files: "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"

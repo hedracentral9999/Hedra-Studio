@@ -30,7 +30,7 @@ if ! command -v create-dmg &> /dev/null; then
 fi
 
 # Tạo DMG
-DMG_NAME="TTS-Studio-${VERSION}-mac.dmg"
+DMG_NAME="Hedra-Studio-${VERSION}-mac.dmg"
 echo "💿 Tạo $DMG_NAME..."
 
 # Xóa file cũ nếu có
