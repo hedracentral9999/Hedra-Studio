@@ -590,7 +590,7 @@ class MainWindow(QWidget):
 
         layout.addWidget(QLabel("Kịch bản:"))
         self.text_input = QTextEdit()
-        self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
+        self.text_input.setPlaceholderText("Paste kịch bản vào đây... (VD: dạ shop còn hàng không ạ?)")
         self.text_input.setMinimumHeight(200)
         layout.addWidget(self.text_input)
 
