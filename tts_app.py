@@ -316,14 +316,17 @@ def load_settings() -> dict:
             s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
         if "gemini_api_key" not in s:
             s["gemini_api_key"] = ""
+        if "gemini_chat_prompt" not in s:
+            s["gemini_chat_prompt"] = ""
         return s
     return {
-        "el_api_keys":    [],
-        "ds_api_key":     "",
-        "gemini_api_key": "",
-        "output_dir":     DEFAULT_OUT,
-        "enhance_prompt": DEFAULT_PROMPT,
-        "default_speed":  1.0,
+        "el_api_keys":       [],
+        "ds_api_key":        "",
+        "gemini_api_key":    "",
+        "gemini_chat_prompt": "",
+        "output_dir":        DEFAULT_OUT,
+        "enhance_prompt":    DEFAULT_PROMPT,
+        "default_speed":     1.0,
     }
 
 def save_settings(s: dict):
@@ -502,15 +505,16 @@ class GeminiWorker(QThread):
     done   = pyqtSignal(str)
     error  = pyqtSignal(str)
 
-    def __init__(self, image_paths: list, api_key: str):
+    def __init__(self, image_paths: list, api_key: str, prompt: str = ""):
         super().__init__()
         self.image_paths = image_paths
         self.api_key     = api_key
+        self.prompt      = prompt or GEMINI_CHAT_PROMPT
 
     def run(self):
         try:
             self.status.emit("Đang đọc ảnh chat...")
-            parts = [{"text": GEMINI_CHAT_PROMPT}]
+            parts = [{"text": self.prompt}]
             for path in self.image_paths:
                 with open(path, "rb") as f:
                     data = base64.b64encode(f.read()).decode()
@@ -655,6 +659,33 @@ class SettingsDialog(QDialog):
         self.gemini_key.setPlaceholderText("AIza...")
         section("Gemini API Key", self.gemini_key)
 
+        # ── Gemini Prompt (Chat → Kịch Bản) ───────────────────────
+        prompt_header = QHBoxLayout()
+        prompt_lbl = QLabel("<b>Gemini Prompt</b> "
+                            "<span style='color:#6b7280;font-weight:normal'>"
+                            "(prompt gửi kèm ảnh Zalo để tạo kịch bản)</span>")
+        btn_reset_prompt = QPushButton("↺  Mặc định")
+        btn_reset_prompt.setFixedHeight(24)
+        btn_reset_prompt.setStyleSheet(
+            "QPushButton{border:1px solid #d1d5db;border-radius:5px;"
+            "padding:1px 10px;background:#f9fafb;font-size:11px;}"
+            "QPushButton:hover{background:#e5e7eb;}"
+        )
+        prompt_header.addWidget(prompt_lbl)
+        prompt_header.addStretch()
+        prompt_header.addWidget(btn_reset_prompt)
+        layout.addLayout(prompt_header)
+
+        self.gemini_prompt = QTextEdit()
+        saved_prompt = self.settings.get("gemini_chat_prompt", "").strip()
+        self.gemini_prompt.setPlainText(saved_prompt if saved_prompt else GEMINI_CHAT_PROMPT)
+        self.gemini_prompt.setMinimumHeight(200)
+        self.gemini_prompt.setStyleSheet("font-family: monospace; font-size: 11px;")
+        layout.addWidget(self.gemini_prompt)
+        btn_reset_prompt.clicked.connect(
+            lambda: self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
+        )
+
         layout.addWidget(QLabel("<b>Output Folder</b>"))
         row = QHBoxLayout()
         self.out_dir = QLineEdit(self.settings.get("output_dir", DEFAULT_OUT))
@@ -711,11 +742,14 @@ class SettingsDialog(QDialog):
 
     def _save(self):
         raw_keys = self.el_keys.toPlainText().strip().splitlines()
-        self.settings["el_api_keys"]    = [k.strip() for k in raw_keys if k.strip()]
-        self.settings["ds_api_key"]     = self.ds_key.text().strip()
-        self.settings["gemini_api_key"] = self.gemini_key.text().strip()
-        self.settings["output_dir"]     = self.out_dir.text()
-        self.settings["enhance_prompt"] = self.prompt.toPlainText()
+        self.settings["el_api_keys"]       = [k.strip() for k in raw_keys if k.strip()]
+        self.settings["ds_api_key"]        = self.ds_key.text().strip()
+        self.settings["gemini_api_key"]    = self.gemini_key.text().strip()
+        self.settings["output_dir"]        = self.out_dir.text()
+        self.settings["enhance_prompt"]    = self.prompt.toPlainText()
+        # Lưu "" nếu giống mặc định để không phình file settings
+        gp = self.gemini_prompt.toPlainText().strip()
+        self.settings["gemini_chat_prompt"] = "" if gp == GEMINI_CHAT_PROMPT.strip() else gp
         self.accept()
 
     def get_settings(self) -> dict:
@@ -1156,7 +1190,8 @@ class MainWindow(QWidget):
             return
 
         self.btn_gen_script.setEnabled(False)
-        self.gemini_worker = GeminiWorker(self.image_paths, api_key)
+        gemini_prompt = self.settings.get("gemini_chat_prompt", "").strip() or GEMINI_CHAT_PROMPT
+        self.gemini_worker = GeminiWorker(self.image_paths, api_key, gemini_prompt)
         self.gemini_worker.status.connect(self._on_chat_status)
         self.gemini_worker.done.connect(self._on_script_done)
         self.gemini_worker.error.connect(self._on_script_error)
