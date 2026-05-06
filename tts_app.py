@@ -1310,43 +1310,40 @@ class MainWindow(QWidget):
 
             script = f"""#!/bin/bash
 # Hedra Studio auto-update script
-set -e
-
 DMG="{file_path}"
 APP_DEST="{app_dest}"
+MNT="/tmp/hedrastudio_mnt"
 LOG="/tmp/hedra_update.log"
 
-echo "$(date): Starting update" >> "$LOG"
+echo "$(date): Starting update" > "$LOG"
 echo "DMG: $DMG" >> "$LOG"
 echo "Dest: $APP_DEST" >> "$LOG"
 
 # Wait for old app to fully exit
 sleep 3
 
-# Mount DMG — let macOS pick mountpoint, parse from output
-MOUNT_OUTPUT=$(hdiutil attach -nobrowse "$DMG" 2>>"$LOG")
-echo "Mount output: $MOUNT_OUTPUT" >> "$LOG"
-
-# Extract mountpoint (last column of output)
-MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | awk '/Apple_HFS|APFS/ {{print $NF}}' | head -1)
-
-# Fallback: grep for /Volumes/
-if [ -z "$MOUNT_POINT" ]; then
-    MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^\\n]*' | head -1)
+# Clean up any leftover mountpoint
+if [ -d "$MNT" ]; then
+    hdiutil detach "$MNT" -quiet -force 2>>"$LOG" || true
+    rm -rf "$MNT"
 fi
+mkdir -p "$MNT"
 
-echo "Mount point: $MOUNT_POINT" >> "$LOG"
-
-if [ -z "$MOUNT_POINT" ]; then
-    echo "ERROR: Could not determine mount point" >> "$LOG"
+# Mount DMG vào mountpoint cố định (không dấu cách)
+echo "Mounting DMG..." >> "$LOG"
+hdiutil attach -nobrowse -mountpoint "$MNT" "$DMG" >> "$LOG" 2>&1
+if [ $? -ne 0 ]; then
+    echo "ERROR: hdiutil attach failed" >> "$LOG"
     exit 1
 fi
 
-APP_IN_DMG="$MOUNT_POINT/Hedra Studio.app"
+APP_IN_DMG="$MNT/Hedra Studio.app"
+echo "Looking for: $APP_IN_DMG" >> "$LOG"
 
 if [ ! -d "$APP_IN_DMG" ]; then
-    echo "ERROR: App not found in DMG at $APP_IN_DMG" >> "$LOG"
-    hdiutil detach "$MOUNT_POINT" -quiet 2>>"$LOG" || true
+    echo "ERROR: App not found in DMG" >> "$LOG"
+    ls "$MNT" >> "$LOG" 2>&1
+    hdiutil detach "$MNT" -quiet 2>>"$LOG" || true
     exit 1
 fi
 
@@ -1355,16 +1352,15 @@ rm -rf "$APP_DEST"
 cp -R "$APP_IN_DMG" "$APP_DEST"
 echo "Copy done" >> "$LOG"
 
-# Unmount DMG
-hdiutil detach "$MOUNT_POINT" -quiet 2>>"$LOG" || true
+# Unmount
+hdiutil detach "$MNT" -quiet 2>>"$LOG" || true
+rm -rf "$MNT"
 
-# Remove quarantine flag so macOS doesn't block launch
+# Xóa quarantine flag
 xattr -dr com.apple.quarantine "$APP_DEST" 2>>"$LOG" || true
 
-echo "Launching new app..." >> "$LOG"
-# -n = force new instance, -a = treat as app bundle
+echo "Launching..." >> "$LOG"
 open -n "$APP_DEST"
-
 echo "Done" >> "$LOG"
 """
             script_path = "/tmp/hedra_auto_update.sh"
