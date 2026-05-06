@@ -524,9 +524,9 @@ class GeminiWorker(QThread):
                 parts.append({"inline_data": {"mime_type": mime, "data": data}})
 
             self.status.emit("Gemini đang phân tích chat...")
-            # Try gemini-2.5-flash first, fallback to 2.0-flash-lite
+            # Try gemini-2.5-flash first, fallback to 1.5-flash (2.0-flash deprecated)
             last_err = None
-            for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+            for model in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
                 res = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model}:generateContent?key={self.api_key}",
