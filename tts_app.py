@@ -909,8 +909,8 @@ class MainWindow(QWidget):
 
         # ── Tab widget ─────────────────────────────────────────────
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
         self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
+        self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
         layout.addWidget(self.tabs)
 
     # ── Tab 1: TTS ─────────────────────────────────────────────────
