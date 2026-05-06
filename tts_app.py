@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import base64
 import requests
 import webbrowser
 import subprocess
@@ -9,7 +10,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QLabel, QSlider, QPushButton, QSystemTrayIcon,
     QMenu, QDialog, QLineEdit, QFileDialog, QMessageBox,
-    QFrame
+    QFrame, QTabWidget, QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QFont, QAction, QPixmap, QColor, QPainter
@@ -162,6 +163,133 @@ PROMPTS = {
     "😄  Hài hước":   DEFAULT_PROMPT_FUNNY,
 }
 
+# ── Gemini Chat → Script prompt ────────────────────────────────────
+GEMINI_CHAT_PROMPT = """Bạn là chuyên gia viết kịch bản TTS cho shop bán Samsung DeX box.
+
+NHIỆM VỤ:
+Đọc ảnh chụp đoạn chat Zalo và tạo kịch bản TTS tự nhiên, chuẩn để đọc thành tiếng.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NHẬN DIỆN NGƯỜI NÓI:
+- Bong bóng chat bên PHẢI (màu xanh lam) = Shop (xưng "anh", gọi khách là "em")
+- Bong bóng chat bên TRÁI (màu trắng)    = Khách (xưng "em", gọi shop là "anh")
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TIẾNG NAM BỘ — GIẢI MÃ TRƯỚC KHI VIẾT:
+
+"về là lụm / về lụm luôn"  → sẽ mua/lấy ngay, không phải câu hỏi kỹ thuật
+"lụm luôn" / "chốt luôn"   → quyết định mua rồi
+"Cài tất luôn / cài hết đi" → khách YÊU CẦU shop cài đặt đầy đủ (850k), không phải "đã cài rồi"
+"roaiiii"                   → "rồi" nhấn mạnh (xác nhận)
+"hã" / "hả"                 → câu hỏi, xác nhận lại
+"b"                         → "bạn" (cách gọi thân mật) → khi viết kịch bản đổi thành "em" (khách) hoặc "anh" (shop) theo ngôi đúng
+"k / ko / kg"               → không
+"đc / dc"                   → được
+"lắp đc"                    → lắp được
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KIẾN THỨC SẢN PHẨM — BẮT BUỘC NẮM RÕ:
+
+[SAMSUNG DEX — HỘP TO]
+• 650k — hộp lắp sẵn, mua về tự lắp:
+  - Tháo nắp lưng, tháo pin, cắm dây nguồn của box vào là xong
+  - Muốn tự khởi động: dùng dây rút của box kéo nút nguồn → tự bật
+  - Yêu cầu: điện thoại phải bật sẵn Samsung DeX HOẶC màn còn cảm ứng được
+    (màn ám, đốm, sọc vẫn OK — miễn còn cảm ứng để bấm accept lần đầu)
+  - Lần đầu cắm HDMI → bấm chấp nhận 1 lần → sau đó tự nhận mọi màn hình
+
+• 850k — gửi máy về shop làm hộ (dịch vụ đầy đủ):
+  - Bật 4K (mặc định chỉ Full HD)
+  - Login CH Play hộ (DeX không cho login thông thường)
+  - Cài Shizuku + Google Mouse Pro 2 (dùng bàn phím chơi game)
+  - Cài phần mềm Android TV
+  - Nhận về: cắm sạc zin + dây HDMI + chuột phím → xài ngay
+
+• Kèm máy (combo):
+  - S10: 1.700k | S20: 1.900k | N20 Ultra: 2.400k
+  (gồm hộp to + hub 5in1/6in1 + quạt 120x120)
+
+• Nguồn điện: Type-C PD 20W+ chính hãng — bắt buộc để cấp nguồn đúng
+
+[SAMSUNG DEX — HỘP NHỎ — CHO XE Ô TÔ]
+• 500k — hộp nhỏ tự build, không có hub, quạt 40x40
+• 650k — gửi máy về shop làm hộ
+• Dùng chính cho Android Auto trên xe
+• Muốn dùng Samsung DeX với hộp nhỏ → cần mua thêm hub ngoài (không có sẵn)
+
+[VẬN CHUYỂN & CHI NHÁNH]
+• Hộp không kèm máy → luôn xuất từ Bắc Ninh
+• Khách gửi máy về làm, ở miền Nam → gửi về Sa Đéc
+• Thời gian ship: 3–4 ngày
+• Thanh toán: cọc 150k, còn lại COD khi nhận hàng
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUY TẮC VIẾT KỊCH BẢN:
+
+1. Bám sát chat gốc — KHÔNG thêm thông tin khách chưa đề cập
+   → Khách hỏi hộp không kèm máy: KHÔNG mention giá combo/kèm máy
+   → Khách chưa hỏi thời gian ship: KHÔNG tự thêm "3-4 ngày" vào lời shop
+2. Không assume — khách nói có S10 ≠ đã bật DeX → shop phải hỏi lại
+3. Dùng kiến thức sản phẩm để enrich tự nhiên — không nhồi nhét
+4. Xóa thông tin nhạy cảm — TUYỆT ĐỐI KHÔNG NHẮC ĐẾN dưới bất kỳ hình thức nào:
+   - Số điện thoại → xóa hoàn toàn khỏi kịch bản
+   - Địa chỉ chi tiết (số nhà, ấp, xã) → chỉ giữ tỉnh/thành phố
+   - Thông tin ngân hàng, số tài khoản, STK → xóa
+   - Danh thiếp / contact card → XÓA HOÀN TOÀN, KHÔNG ĐƯỢC viết "(Khách gửi danh thiếp)", "(Kèm liên lạc)", hay bất cứ ghi chú nào về việc chia sẻ thông tin liên lạc
+5. Không dùng "dạ" trong lời shop
+6. Ngôi xưng nhất quán: shop = anh, khách = em
+   → "b" trong chat shop gọi khách → đổi thành "em"
+   → "b" trong chat khách gọi shop → đổi thành "anh"
+7. Ngôn ngữ tự nhiên như nói chuyện thật, không văn viết
+8. Shop hỏi đúng chỗ khi cần clarify kỹ thuật
+9. Chốt đơn: chỉ ghi "đã nhận cọc" — không ghi số tiền giao dịch cụ thể
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT FORMAT:
+- KHÔNG có nhãn "Khách:" hay "Shop:" — chỉ xuất text thuần
+- Mỗi lượt thoại = một đoạn văn, cách nhau 1 dòng trống
+- Câu ngắn, rõ ràng — tránh câu dài gộp nhiều thông tin
+
+VÍ DỤ CHUẨN (ví dụ 1 — chat đơn giản):
+Bên anh còn hộp Samsung DeX không? Em thấy clip trên TikTok nè.
+
+Còn nha em! Sáu trăm năm mươi nghìn — hộp anh làm sẵn rồi, em mua về cắm vào là chạy được liền.
+
+Giá sáu trăm rưỡi hả anh? Máy chính em xài S10.
+
+Đúng giá rồi em! Anh hỏi thêm tí — máy em đã bật sẵn Samsung DeX chưa, hay màn hình còn dùng được không?
+
+Màn em vẫn còn dùng được anh.
+
+Vậy ổn rồi em! Lần đầu cắm vào bấm chấp nhận trên màn một lần là xong, sau đó tự nhận luôn không cần bấm nữa.
+
+Ngon vậy, mua về là xài luôn hả anh?
+
+Đúng rồi em! Chốt đơn nha, em cọc một trăm năm mươi nghìn, còn lại thanh toán khi nhận hàng. Hàng xuất từ Bắc Ninh, tầm ba đến bốn ngày là tới em.
+
+Vậy em đặt, giao về Vĩnh Long nha anh.
+
+Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!
+
+VÍ DỤ CHUẨN (ví dụ 2 — khách dùng tiếng Nam "về là lụm", "cài tất luôn"):
+Alo anh ơi! Em thấy TikTok về box Samsung DeX, anh còn không?
+
+Còn nè em! Bên anh đang có. Em cần gì anh tư vấn cho.
+
+S10 với S20 giá khác nhau hả anh? Hộp không kèm máy giá sáu trăm năm mươi nghìn đúng không anh?
+
+Đúng rồi em! Hộp không kèm máy thì sáu trăm năm mươi nghìn, lắp được mọi đời Samsung. Em có sẵn máy nào rồi?
+
+Em có S10 rồi, mua hộp về là lấy luôn anh ơi.
+
+S10 thì giá sáu trăm năm mươi nghìn em. Anh hỏi tí — máy em đã bật sẵn Samsung DeX chưa, hay màn hình còn dùng được không?
+
+Màn máy em vẫn OK anh, cắm vào là xài được luôn.
+
+Vậy ổn rồi em! Lần đầu cắm vào bấm chấp nhận một lần là xong, sau đó tự nhận luôn. Chốt sáu trăm năm mươi nghìn nha, em cọc một trăm năm mươi nghìn, còn lại thanh toán khi nhận hàng.
+
+Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!"""
+
 
 # ── Data directory (persists across updates) ───────────────────────
 def get_data_dir() -> Path:
@@ -184,13 +312,15 @@ def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, encoding="utf-8") as f:
             s = json.load(f)
-        # migrate old single-key format → list
         if "el_api_key" in s and "el_api_keys" not in s:
             s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
+        if "gemini_api_key" not in s:
+            s["gemini_api_key"] = ""
         return s
     return {
         "el_api_keys":    [],
         "ds_api_key":     "",
+        "gemini_api_key": "",
         "output_dir":     DEFAULT_OUT,
         "enhance_prompt": DEFAULT_PROMPT,
         "default_speed":  1.0,
@@ -213,7 +343,7 @@ def reveal_file(path: str):
 
 # ── Update checker ─────────────────────────────────────────────────
 class UpdateChecker(QThread):
-    update_found = pyqtSignal(str, str)  # version, download_url
+    update_found = pyqtSignal(str, str)
 
     def run(self):
         try:
@@ -231,11 +361,9 @@ class UpdateChecker(QThread):
             for asset in data.get("assets", []):
                 name = asset["name"].lower()
                 if sys.platform == "darwin" and name.endswith(".dmg"):
-                    url = asset["browser_download_url"]
-                    break
+                    url = asset["browser_download_url"]; break
                 elif sys.platform == "win32" and name.endswith(".exe"):
-                    url = asset["browser_download_url"]
-                    break
+                    url = asset["browser_download_url"]; break
             self.update_found.emit(latest, url)
         except Exception:
             pass
@@ -250,8 +378,8 @@ class UpdateChecker(QThread):
 
 # ── Auto-updater downloader ────────────────────────────────────────
 class UpdateDownloader(QThread):
-    progress = pyqtSignal(int)   # 0-100
-    done     = pyqtSignal(str)   # temp file path
+    progress = pyqtSignal(int)
+    done     = pyqtSignal(str)
     error    = pyqtSignal(str)
 
     def __init__(self, url: str):
@@ -279,7 +407,7 @@ class UpdateDownloader(QThread):
             self.error.emit(str(e))
 
 
-# ── Worker thread ──────────────────────────────────────────────────
+# ── TTS Worker thread ──────────────────────────────────────────────
 class Worker(QThread):
     status = pyqtSignal(str)
     done   = pyqtSignal(str)
@@ -296,10 +424,8 @@ class Worker(QThread):
         try:
             self.status.emit("Đang enhance với DeepSeek...")
             enhanced = self._enhance(self.text)
-
             self.status.emit("Đang generate audio...")
             audio = self._tts(enhanced)
-
             out_dir = self.s.get("output_dir", DEFAULT_OUT)
             os.makedirs(out_dir, exist_ok=True)
             path = os.path.join(out_dir, self.filename + ".mp3")
@@ -331,14 +457,12 @@ class Worker(QThread):
 
     def _tts(self, text: str) -> bytes:
         keys = self.s.get("el_api_keys", [])
-        # backward compat: old single-key field
         if not keys:
             old = self.s.get("el_api_key", "").strip()
             keys = [old] if old else []
         keys = [k.strip() for k in keys if k.strip()]
         if not keys:
             raise Exception("Chưa nhập ElevenLabs API key. Vào Settings để thêm.")
-
         last_err = None
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
@@ -359,9 +483,7 @@ class Worker(QThread):
             )
             if res.status_code == 200:
                 return res.content
-
             body = res.text[:300]
-            # quota / rate-limit / invalid key → try next key
             if res.status_code in (401, 403, 429) or \
                any(w in res.text.lower() for w in ("quota", "insufficient", "limit")):
                 reason = {401: "key không hợp lệ", 403: "không có quyền",
@@ -370,11 +492,127 @@ class Worker(QThread):
                 if idx < len(keys):
                     self.status.emit(f"⚠️ {label} {reason} — thử key tiếp theo...")
                 continue
-
-            # other errors (5xx, etc.) → raise immediately
             raise Exception(f"ElevenLabs {res.status_code}: {body}")
-
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
+
+
+# ── Gemini Vision Worker ───────────────────────────────────────────
+class GeminiWorker(QThread):
+    status = pyqtSignal(str)
+    done   = pyqtSignal(str)
+    error  = pyqtSignal(str)
+
+    def __init__(self, image_paths: list, api_key: str):
+        super().__init__()
+        self.image_paths = image_paths
+        self.api_key     = api_key
+
+    def run(self):
+        try:
+            self.status.emit("Đang đọc ảnh chat...")
+            parts = [{"text": GEMINI_CHAT_PROMPT}]
+            for path in self.image_paths:
+                with open(path, "rb") as f:
+                    data = base64.b64encode(f.read()).decode()
+                ext  = path.lower().rsplit(".", 1)[-1]
+                mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                        "png": "image/png",  "webp": "image/webp"}.get(ext, "image/jpeg")
+                parts.append({"inline_data": {"mime_type": mime, "data": data}})
+
+            self.status.emit("Gemini đang phân tích chat...")
+            # Try gemini-2.5-flash first, fallback to 2.0-flash-lite
+            last_err = None
+            for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+                res = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model}:generateContent?key={self.api_key}",
+                    json={"contents": [{"parts": parts}]},
+                    timeout=90,
+                )
+                if res.status_code == 200:
+                    break
+                if res.status_code in (404, 400):
+                    last_err = Exception(f"Gemini {res.status_code}: {res.text[:200]}")
+                    continue  # try next model
+                if res.status_code == 503:
+                    import time; time.sleep(3)
+                    res = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/"
+                        f"{model}:generateContent?key={self.api_key}",
+                        json={"contents": [{"parts": parts}]},
+                        timeout=90,
+                    )
+                    if res.status_code == 200:
+                        break
+                last_err = Exception(f"Gemini {res.status_code}: {res.text[:200]}")
+            if res.status_code != 200:
+                raise last_err or Exception(f"Gemini {res.status_code}: {res.text[:300]}")
+
+            candidates = res.json().get("candidates", [])
+            if not candidates:
+                raise Exception("Gemini không trả về kết quả")
+
+            text = candidates[0]["content"]["parts"][0]["text"]
+            self.done.emit(text.strip())
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+# ── Drop Zone widget ───────────────────────────────────────────────
+class DropZone(QFrame):
+    files_added = pyqtSignal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setFixedHeight(90)
+        self._set_idle_style()
+        lbl = QLabel("📷  Kéo thả ảnh vào đây", self)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("color:#6e6e73; font-size:13px; border:none; background:transparent;")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(lbl)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def _set_idle_style(self):
+        self.setStyleSheet(
+            "QFrame{border:2px dashed #d2d2d7;border-radius:10px;background:#ffffff;}"
+            "QFrame:hover{border-color:#0071e3;}"
+        )
+
+    def _set_hover_style(self):
+        self.setStyleSheet(
+            "QFrame{border:2px dashed #0071e3;border-radius:10px;background:#f0f7ff;}"
+        )
+
+    def mousePressEvent(self, e):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Chọn ảnh chat", "",
+            "Images (*.png *.jpg *.jpeg *.webp)"
+        )
+        if paths:
+            self.files_added.emit(paths)
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            self._set_hover_style()
+            e.accept()
+        else:
+            e.ignore()
+
+    def dragLeaveEvent(self, e):
+        self._set_idle_style()
+
+    def dropEvent(self, e):
+        self._set_idle_style()
+        files = []
+        for url in e.mimeData().urls():
+            p = url.toLocalFile()
+            if p.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                files.append(p)
+        if files:
+            self.files_added.emit(files)
 
 
 # ── Settings dialog ────────────────────────────────────────────────
@@ -395,7 +633,11 @@ class SettingsDialog(QDialog):
             layout.addWidget(QLabel(f"<b>{label}</b>"))
             layout.addWidget(widget)
 
-        layout.addWidget(QLabel("<b>ElevenLabs API Keys</b> <span style='color:#6b7280;font-weight:normal'>(mỗi key 1 dòng — tự động xoay khi hết credit)</span>"))
+        layout.addWidget(QLabel(
+            "<b>ElevenLabs API Keys</b> "
+            "<span style='color:#6b7280;font-weight:normal'>"
+            "(mỗi key 1 dòng — tự động xoay khi hết credit)</span>"
+        ))
         self.el_keys = QTextEdit()
         self.el_keys.setPlaceholderText("sk_abc123...\nsk_def456...\nsk_ghi789...")
         self.el_keys.setFixedHeight(80)
@@ -407,6 +649,11 @@ class SettingsDialog(QDialog):
         self.ds_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.ds_key.setPlaceholderText("sk-...")
         section("DeepSeek API Key", self.ds_key)
+
+        self.gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
+        self.gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_key.setPlaceholderText("AIza...")
+        section("Gemini API Key", self.gemini_key)
 
         layout.addWidget(QLabel("<b>Output Folder</b>"))
         row = QHBoxLayout()
@@ -466,6 +713,7 @@ class SettingsDialog(QDialog):
         raw_keys = self.el_keys.toPlainText().strip().splitlines()
         self.settings["el_api_keys"]    = [k.strip() for k in raw_keys if k.strip()]
         self.settings["ds_api_key"]     = self.ds_key.text().strip()
+        self.settings["gemini_api_key"] = self.gemini_key.text().strip()
         self.settings["output_dir"]     = self.out_dir.text()
         self.settings["enhance_prompt"] = self.prompt.toPlainText()
         self.accept()
@@ -474,17 +722,15 @@ class SettingsDialog(QDialog):
         return self.settings
 
 
-# ── Main window ────────────────────────────────────────────────────
-
-# ── Palette (Apple macOS HIG) ──────────────────────────────────────
-BG        = "#f5f5f7"   # Apple off-white background
-SURFACE   = "#ffffff"   # white — inputs, cards
-BORDER    = "#d2d2d7"   # Apple subtle border
-TEXT      = "#1d1d1f"   # Apple near-black
-TEXT_MUTE = "#6e6e73"   # Apple secondary gray
-ACCENT    = "#0071e3"   # Apple blue
-ACCENT_HV = "#0077ed"   # Apple blue hover
-SEG_BG    = "#e5e5ea"   # NSSegmentedControl background
+# ── Apple HIG palette ──────────────────────────────────────────────
+BG        = "#f5f5f7"
+SURFACE   = "#ffffff"
+BORDER    = "#d2d2d7"
+TEXT      = "#1d1d1f"
+TEXT_MUTE = "#6e6e73"
+ACCENT    = "#0071e3"
+ACCENT_HV = "#0077ed"
+SEG_BG    = "#e5e5ea"
 
 STYLE = f"""
 QWidget {{
@@ -505,10 +751,7 @@ QTextEdit:focus, QLineEdit:focus {{
     border-color: {ACCENT};
     background: {SURFACE};
 }}
-QLabel {{
-    color: {TEXT};
-    background: transparent;
-}}
+QLabel {{ color: {TEXT}; background: transparent; }}
 QPushButton {{
     border: 1px solid {BORDER};
     border-radius: 7px;
@@ -516,7 +759,7 @@ QPushButton {{
     background: {SURFACE};
     color: {TEXT};
 }}
-QPushButton:hover  {{ background: #ebebf0; }}
+QPushButton:hover   {{ background: #ebebf0; }}
 QPushButton:pressed {{ background: {SEG_BG}; }}
 QPushButton:disabled {{ background: {BG}; color: {TEXT_MUTE}; border-color: {BORDER}; }}
 QSlider::groove:horizontal {{
@@ -527,24 +770,57 @@ QSlider::handle:horizontal {{
     margin: -8px 0; border-radius: 9px;
     border: 2px solid {ACCENT};
 }}
-QSlider::sub-page:horizontal {{
-    background: {ACCENT}; border-radius: 2px;
-}}
+QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
 QFrame[frameShape="4"] {{ background: {BORDER}; max-height: 1px; border: none; }}
 QScrollBar:vertical {{ width: 6px; background: transparent; }}
 QScrollBar::handle:vertical {{ background: #c7c7cc; border-radius: 3px; min-height: 30px; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QDialog {{ background: {BG}; }}
+QTabWidget::pane {{ border: none; background: transparent; }}
+QTabBar {{ background: transparent; }}
+QTabBar::tab {{
+    background: transparent;
+    color: {TEXT_MUTE};
+    padding: 7px 18px;
+    font-size: 13px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}}
+QTabBar::tab:selected {{
+    color: {TEXT};
+    font-weight: 600;
+    border-bottom: 2px solid {ACCENT};
+}}
+QTabBar::tab:hover:!selected {{ color: {TEXT}; }}
+QListWidget {{
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    background: {SURFACE};
+    padding: 4px;
+}}
+QListWidget::item {{
+    padding: 4px 6px;
+    border-radius: 4px;
+}}
+QListWidget::item:selected {{
+    background: #e8f0fe;
+    color: {TEXT};
+}}
 """
 
+
+# ── Main window ────────────────────────────────────────────────────
 class MainWindow(QWidget):
     def __init__(self, settings: dict):
         super().__init__()
-        self.settings = settings
-        self.worker   = None
+        self.settings     = settings
+        self.worker       = None
+        self.gemini_worker = None
+        self.image_paths  = []
         self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
         self.setMinimumWidth(460)
-        self.setMinimumHeight(540)
+        self.setMinimumHeight(580)
         self.setStyleSheet(STYLE)
         self._build()
         self._refresh_credits()
@@ -565,7 +841,9 @@ class MainWindow(QWidget):
         title_lbl.setFont(QFont("", 16, QFont.Weight.Bold))
         title_lbl.setStyleSheet(f"color:{TEXT}; background:transparent;")
         self.credits_lbl = QLabel("Credits: đang tải...")
-        self.credits_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:11px; background:transparent;")
+        self.credits_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+        )
         title_col.addWidget(title_lbl)
         title_col.addWidget(self.credits_lbl)
         header_row.addLayout(title_col)
@@ -590,11 +868,11 @@ class MainWindow(QWidget):
         layout.addLayout(header_row)
         layout.addSpacing(12)
 
-        # ── Update banner (hidden by default) ──────────────────────
+        # ── Update banner ──────────────────────────────────────────
         self.update_banner = QFrame()
         self.update_banner.setVisible(False)
         self.update_banner.setStyleSheet(
-            f"QFrame{{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}}"
+            "QFrame{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}"
         )
         banner_row = QHBoxLayout(self.update_banner)
         banner_row.setContentsMargins(12, 8, 8, 8)
@@ -607,7 +885,7 @@ class MainWindow(QWidget):
         badge.setFixedHeight(18)
         self._banner_text = QLabel()
         self._banner_text.setStyleSheet(
-            f"color:#004499;font-size:12px;background:transparent;border:none;"
+            "color:#004499;font-size:12px;background:transparent;border:none;"
         )
         self._btn_dl = QPushButton("Cập nhật ngay")
         self._btn_dl.setFixedHeight(26)
@@ -627,9 +905,22 @@ class MainWindow(QWidget):
         # ── Separator ──────────────────────────────────────────────
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep)
-        layout.addSpacing(12)
+        layout.addSpacing(4)
 
-        # ── Phong cách — Apple NSSegmentedControl ──────────────────
+        # ── Tab widget ─────────────────────────────────────────────
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
+        self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
+        layout.addWidget(self.tabs)
+
+    # ── Tab 1: TTS ─────────────────────────────────────────────────
+    def _build_tts_tab(self) -> QWidget:
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        # Phong cách
         style_row = QHBoxLayout()
         style_row.setSpacing(10)
         pc_lbl = QLabel("Phong cách")
@@ -667,14 +958,14 @@ class MainWindow(QWidget):
         layout.addLayout(style_row)
         layout.addSpacing(12)
 
-        # ── Kịch bản ───────────────────────────────────────────────
+        # Kịch bản
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
         self.text_input.setMinimumHeight(190)
         layout.addWidget(self.text_input)
         layout.addSpacing(12)
 
-        # ── Tốc độ đọc ─────────────────────────────────────────────
+        # Tốc độ
         spd_header = QHBoxLayout()
         spd_lbl = QLabel("Tốc độ đọc")
         spd_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
@@ -696,7 +987,7 @@ class MainWindow(QWidget):
         layout.addWidget(self.slider)
         layout.addSpacing(12)
 
-        # ── Tên file ───────────────────────────────────────────────
+        # Tên file
         fn_lbl = QLabel("Tên file")
         fn_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
         layout.addWidget(fn_lbl)
@@ -706,7 +997,7 @@ class MainWindow(QWidget):
         layout.addWidget(self.filename_input)
         layout.addSpacing(16)
 
-        # ── Generate — Apple primary CTA ───────────────────────────
+        # Generate
         self.btn_gen = QPushButton("🎙   Generate")
         self.btn_gen.setMinimumHeight(50)
         self.btn_gen.setFont(QFont("", 15, QFont.Weight.Bold))
@@ -721,14 +1012,204 @@ class MainWindow(QWidget):
         layout.addWidget(self.btn_gen)
         layout.addSpacing(8)
 
-        # ── Status ─────────────────────────────────────────────────
-        self.status_lbl = QLabel("Sẵn sàng")
-        self.status_lbl.setStyleSheet(
+        # Status
+        self.tts_status_lbl = QLabel("Sẵn sàng")
+        self.tts_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
         )
-        self.status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.status_lbl)
+        self.tts_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.tts_status_lbl)
 
+        return w
+
+    # ── Tab 2: Chat → Kịch Bản ────────────────────────────────────
+    def _build_chat_tab(self) -> QWidget:
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 12, 0, 0)
+
+        # Drop zone
+        self.drop_zone = DropZone()
+        self.drop_zone.files_added.connect(self._add_images)
+        layout.addWidget(self.drop_zone)
+        layout.addSpacing(8)
+
+        # Image list + clear button
+        list_header = QHBoxLayout()
+        self.img_count_lbl = QLabel("0 ảnh đã chọn")
+        self.img_count_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:12px;")
+        btn_clear_imgs = QPushButton("Xóa tất cả")
+        btn_clear_imgs.setFixedHeight(24)
+        btn_clear_imgs.setFixedWidth(80)
+        btn_clear_imgs.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:5px;"
+            f"padding:2px 8px;background:{SURFACE};color:{TEXT_MUTE};font-size:11px;}}"
+            f"QPushButton:hover{{background:#ebebf0;}}"
+        )
+        btn_clear_imgs.clicked.connect(self._clear_images)
+        list_header.addWidget(self.img_count_lbl)
+        list_header.addStretch()
+        list_header.addWidget(btn_clear_imgs)
+        layout.addLayout(list_header)
+        layout.addSpacing(4)
+
+        self.img_list = QListWidget()
+        self.img_list.setFixedHeight(80)
+        layout.addWidget(self.img_list)
+        layout.addSpacing(12)
+
+        # Tạo Kịch Bản button
+        self.btn_gen_script = QPushButton("✨   Tạo Kịch Bản")
+        self.btn_gen_script.setMinimumHeight(50)
+        self.btn_gen_script.setFont(QFont("", 15, QFont.Weight.Bold))
+        self.btn_gen_script.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;"
+            f"border-radius:12px;border:none;letter-spacing:0.3px;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:#005bb5;}}"
+            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
+        )
+        self.btn_gen_script.clicked.connect(self._generate_script)
+        layout.addWidget(self.btn_gen_script)
+        layout.addSpacing(12)
+
+        # Separator
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(sep)
+        layout.addSpacing(10)
+
+        # Output
+        out_lbl = QLabel("Kịch bản")
+        out_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
+        layout.addWidget(out_lbl)
+        layout.addSpacing(4)
+
+        self.script_output = QTextEdit()
+        self.script_output.setPlaceholderText("Kịch bản sẽ hiện ra ở đây sau khi Gemini xử lý...")
+        self.script_output.setMinimumHeight(150)
+        layout.addWidget(self.script_output)
+        layout.addSpacing(8)
+
+        # Action buttons
+        action_row = QHBoxLayout()
+        action_row.setSpacing(8)
+
+        btn_copy = QPushButton("📋  Copy")
+        btn_copy.setFixedHeight(34)
+        btn_copy.clicked.connect(self._copy_script)
+        btn_copy.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
+            f"padding:4px 14px;background:{SURFACE};color:{TEXT};font-size:13px;}}"
+            f"QPushButton:hover{{background:#ebebf0;}}"
+        )
+
+        btn_use_tts = QPushButton("→  Dùng cho TTS")
+        btn_use_tts.setFixedHeight(34)
+        btn_use_tts.clicked.connect(self._use_for_tts)
+        btn_use_tts.setStyleSheet(
+            f"QPushButton{{border:1px solid {ACCENT};border-radius:8px;"
+            f"padding:4px 14px;background:#f0f7ff;color:{ACCENT};"
+            f"font-size:13px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#dbeafe;}}"
+        )
+
+        action_row.addWidget(btn_copy)
+        action_row.addWidget(btn_use_tts)
+        action_row.addStretch()
+        layout.addLayout(action_row)
+        layout.addSpacing(8)
+
+        # Status
+        self.chat_status_lbl = QLabel("Sẵn sàng")
+        self.chat_status_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+        )
+        self.chat_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.chat_status_lbl)
+
+        return w
+
+    # ── Chat tab handlers ──────────────────────────────────────────
+    def _add_images(self, paths: list):
+        for p in paths:
+            if p not in self.image_paths:
+                self.image_paths.append(p)
+                item = QListWidgetItem(f"🖼  {os.path.basename(p)}")
+                item.setData(Qt.ItemDataRole.UserRole, p)
+                self.img_list.addItem(item)
+        self.img_count_lbl.setText(f"{len(self.image_paths)} ảnh đã chọn")
+
+    def _clear_images(self):
+        self.image_paths.clear()
+        self.img_list.clear()
+        self.img_count_lbl.setText("0 ảnh đã chọn")
+
+    def _generate_script(self):
+        if not self.image_paths:
+            QMessageBox.warning(self, "Chưa có ảnh", "Thêm ảnh chat vào trước nhé!")
+            return
+        api_key = self.settings.get("gemini_api_key", "").strip()
+        if not api_key:
+            QMessageBox.warning(self, "Thiếu Gemini API Key",
+                                "Vào Settings nhập Gemini API Key trước nhé!")
+            return
+
+        self.btn_gen_script.setEnabled(False)
+        self.gemini_worker = GeminiWorker(self.image_paths, api_key)
+        self.gemini_worker.status.connect(self._on_chat_status)
+        self.gemini_worker.done.connect(self._on_script_done)
+        self.gemini_worker.error.connect(self._on_script_error)
+        self.gemini_worker.start()
+
+    def _on_chat_status(self, msg: str):
+        self.chat_status_lbl.setText(msg)
+        self.chat_status_lbl.setStyleSheet(
+            "color:#b45309; font-size:11px; background:transparent;"
+        )
+
+    def _on_script_done(self, text: str):
+        self.btn_gen_script.setEnabled(True)
+        self.script_output.setPlainText(text)
+        self.chat_status_lbl.setText("✅  Tạo kịch bản thành công!")
+        self.chat_status_lbl.setStyleSheet(
+            "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
+        )
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(4000, self._reset_chat_status)
+
+    def _on_script_error(self, msg: str):
+        self.btn_gen_script.setEnabled(True)
+        self.chat_status_lbl.setText("Có lỗi xảy ra")
+        self.chat_status_lbl.setStyleSheet(
+            "color:#dc2626; font-size:11px; background:transparent;"
+        )
+        QMessageBox.critical(self, "Lỗi Gemini", msg)
+
+    def _reset_chat_status(self):
+        self.chat_status_lbl.setText("Sẵn sàng")
+        self.chat_status_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+        )
+
+    def _copy_script(self):
+        text = self.script_output.toPlainText().strip()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.chat_status_lbl.setText("✅  Đã copy!")
+            self.chat_status_lbl.setStyleSheet(
+                "color:#15803d; font-size:11px; background:transparent;"
+            )
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(2000, self._reset_chat_status)
+
+    def _use_for_tts(self):
+        text = self.script_output.toPlainText().strip()
+        if text:
+            self.text_input.setPlainText(text)
+            self.tabs.setCurrentIndex(0)
+
+    # ── TTS tab handlers ───────────────────────────────────────────
     def _set_prompt_style(self, name: str):
         self.settings["enhance_prompt"] = PROMPTS[name]
         save_settings(self.settings)
@@ -738,13 +1219,11 @@ class MainWindow(QWidget):
         for name, btn in self._prompt_btns.items():
             btn.setChecked(name == active)
             if name == active:
-                # White pill — Apple active segment
                 btn.setStyleSheet(
                     f"QPushButton{{background:{SURFACE};color:{TEXT};border:none;"
                     f"border-radius:6px;padding:0px 14px;font-size:12px;font-weight:600;}}"
                 )
             else:
-                # Transparent inactive segment
                 btn.setStyleSheet(
                     f"QPushButton{{background:transparent;color:{TEXT_MUTE};border:none;"
                     f"border-radius:6px;padding:0px 14px;font-size:12px;}}"
@@ -760,9 +1239,6 @@ class MainWindow(QWidget):
         self._update_url = url
         self._banner_text.setText(f"Có bản cập nhật v{version} — nhấn để tải về")
         self.update_banner.setVisible(True)
-
-    def _open_update(self):
-        webbrowser.open(self._update_url)
 
     def _do_update(self):
         self._btn_dl.setEnabled(False)
@@ -790,39 +1266,81 @@ class MainWindow(QWidget):
 
     def _install_update(self, file_path: str):
         if sys.platform == "darwin":
-            # Find current .app location from the running executable
             if getattr(sys, "frozen", False):
-                # sys.executable = .../Hedra Studio.app/Contents/MacOS/HedraStudio
-                # 2 levels up  →  .../Hedra Studio.app
                 app_dest = os.path.normpath(
                     os.path.join(os.path.dirname(sys.executable), "..", "..")
                 )
             else:
                 app_dest = "/Applications/Hedra Studio.app"
 
-            mount_point = "/tmp/hedra_studio_update_mnt"
             script = f"""#!/bin/bash
-sleep 2
-mkdir -p "{mount_point}"
-hdiutil attach -nobrowse -quiet "{file_path}" -mountpoint "{mount_point}"
-if [ -d "{mount_point}/Hedra Studio.app" ]; then
-    rm -rf "{app_dest}"
-    cp -R "{mount_point}/Hedra Studio.app" "{app_dest}"
+# Hedra Studio auto-update script
+set -e
+
+DMG="{file_path}"
+APP_DEST="{app_dest}"
+LOG="/tmp/hedra_update.log"
+
+echo "$(date): Starting update" >> "$LOG"
+echo "DMG: $DMG" >> "$LOG"
+echo "Dest: $APP_DEST" >> "$LOG"
+
+# Wait for old app to fully exit
+sleep 3
+
+# Mount DMG — let macOS pick mountpoint, parse from output
+MOUNT_OUTPUT=$(hdiutil attach -nobrowse "$DMG" 2>>"$LOG")
+echo "Mount output: $MOUNT_OUTPUT" >> "$LOG"
+
+# Extract mountpoint (last column of output)
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | awk '/Apple_HFS|APFS/ {{print $NF}}' | head -1)
+
+# Fallback: grep for /Volumes/
+if [ -z "$MOUNT_POINT" ]; then
+    MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^\\n]*' | head -1)
 fi
-hdiutil detach "{mount_point}" -quiet
-rm -rf "{mount_point}"
-open "{app_dest}"
+
+echo "Mount point: $MOUNT_POINT" >> "$LOG"
+
+if [ -z "$MOUNT_POINT" ]; then
+    echo "ERROR: Could not determine mount point" >> "$LOG"
+    exit 1
+fi
+
+APP_IN_DMG="$MOUNT_POINT/Hedra Studio.app"
+
+if [ ! -d "$APP_IN_DMG" ]; then
+    echo "ERROR: App not found in DMG at $APP_IN_DMG" >> "$LOG"
+    hdiutil detach "$MOUNT_POINT" -quiet 2>>"$LOG" || true
+    exit 1
+fi
+
+echo "Replacing app..." >> "$LOG"
+rm -rf "$APP_DEST"
+cp -R "$APP_IN_DMG" "$APP_DEST"
+echo "Copy done" >> "$LOG"
+
+# Unmount DMG
+hdiutil detach "$MOUNT_POINT" -quiet 2>>"$LOG" || true
+
+# Remove quarantine flag so macOS doesn't block launch
+xattr -dr com.apple.quarantine "$APP_DEST" 2>>"$LOG" || true
+
+echo "Launching new app..." >> "$LOG"
+# -n = force new instance, -a = treat as app bundle
+open -n "$APP_DEST"
+
+echo "Done" >> "$LOG"
 """
             script_path = "/tmp/hedra_auto_update.sh"
             with open(script_path, "w") as f:
                 f.write(script)
             os.chmod(script_path, 0o755)
-            subprocess.Popen(["/bin/bash", script_path])
-
+            subprocess.Popen(["/bin/bash", script_path],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
         elif sys.platform == "win32":
-            # Inno Setup supports /SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
             subprocess.Popen([file_path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
-
         QApplication.instance().quit()
 
     def _refresh_credits(self):
@@ -842,7 +1360,9 @@ open "{app_dest}"
                     used  = d.get("character_count", 0)
                     limit = d.get("character_limit", 0)
                     total_remaining += limit - used
-            label = f"Credits: {total_remaining:,} còn lại" + (f"  ({len(keys)} keys)" if len(keys) > 1 else "")
+            label = f"Credits: {total_remaining:,} còn lại" + (
+                f"  ({len(keys)} keys)" if len(keys) > 1 else ""
+            )
             self.credits_lbl.setText(label)
         except Exception:
             self.credits_lbl.setText("Không check được credits")
@@ -860,43 +1380,42 @@ open "{app_dest}"
             QMessageBox.warning(self, "Thiếu tên file", "Nhập tên file trước khi generate nhé!")
             self.filename_input.setFocus()
             return
-
         speed = self.slider.value() / 10
         self.btn_gen.setEnabled(False)
         self.worker = Worker(text, speed, filename.replace(" ", "_"), self.settings)
-        self.worker.status.connect(self._on_status)
+        self.worker.status.connect(self._on_tts_status)
         self.worker.done.connect(self._on_done)
         self.worker.error.connect(self._on_error)
         self.worker.start()
 
-    def _on_status(self, msg: str):
-        self.status_lbl.setText(msg)
-        self.status_lbl.setStyleSheet(
-            f"color:#b45309; font-size:11px; background:transparent;"
+    def _on_tts_status(self, msg: str):
+        self.tts_status_lbl.setText(msg)
+        self.tts_status_lbl.setStyleSheet(
+            "color:#b45309; font-size:11px; background:transparent;"
         )
 
     def _on_done(self, path: str):
         self.btn_gen.setEnabled(True)
-        self.status_lbl.setText("✅  Tạo audio thành công!")
-        self.status_lbl.setStyleSheet(
-            f"color:#15803d; font-size:14px; font-weight:600; background:transparent;"
+        self.tts_status_lbl.setText("✅  Tạo audio thành công!")
+        self.tts_status_lbl.setStyleSheet(
+            "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
         )
         reveal_file(path)
         self._refresh_credits()
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(4000, self._reset_status)
+        QTimer.singleShot(4000, self._reset_tts_status)
 
-    def _reset_status(self):
-        self.status_lbl.setText("Sẵn sàng")
-        self.status_lbl.setStyleSheet(
+    def _reset_tts_status(self):
+        self.tts_status_lbl.setText("Sẵn sàng")
+        self.tts_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
         )
 
     def _on_error(self, msg: str):
         self.btn_gen.setEnabled(True)
-        self.status_lbl.setText("Có lỗi xảy ra")
-        self.status_lbl.setStyleSheet(
-            f"color:#dc2626; font-size:11px; background:transparent;"
+        self.tts_status_lbl.setText("Có lỗi xảy ra")
+        self.tts_status_lbl.setStyleSheet(
+            "color:#dc2626; font-size:11px; background:transparent;"
         )
         QMessageBox.critical(self, "Lỗi", msg)
 

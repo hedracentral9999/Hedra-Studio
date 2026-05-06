@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
+sys.path.insert(0, '.')
+from version import VERSION
 
 block_cipher = None
 
@@ -45,8 +47,8 @@ if sys.platform == 'darwin':
         name='Hedra Studio.app',
         bundle_identifier='com.hedracentral.hedrastudio',
         info_plist={
-            'CFBundleShortVersionString': '1.0.0',
-            'CFBundleVersion': '1.0.0',
+            'CFBundleShortVersionString': VERSION,
+            'CFBundleVersion': VERSION,
             'NSHighResolutionCapable': True,
             'LSUIElement': False,
         },
