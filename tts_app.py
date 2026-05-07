@@ -2627,13 +2627,13 @@ class MainWindow(QWidget):
         )
         header_row.addWidget(ver_lbl)
 
-        btn_feedback = QPushButton("💬")
-        btn_feedback.setFixedSize(28, 28)
+        btn_feedback = QPushButton("Feedback")
+        btn_feedback.setFixedHeight(28)
         btn_feedback.setToolTip("Gửi phản hồi / Báo lỗi")
         btn_feedback.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
-            f"background:{SURFACE};font-size:14px;}}"
-            f"QPushButton:hover{{background:#ebebf0;}}"
+            f"padding:3px 14px;background:{SURFACE};color:{TEXT_MUTE};font-size:12px;}}"
+            f"QPushButton:hover{{background:#ebebf0;color:{TEXT};}}"
             f"QPushButton:pressed{{background:{SEG_BG};}}"
         )
         btn_feedback.clicked.connect(self._open_feedback)
