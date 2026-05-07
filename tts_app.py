@@ -4272,61 +4272,73 @@ class MainWindow(QWidget):
         vw.addStretch()
         self._card_row(c1, "Giọng đọc", voice_w)
 
-        # — Row: Ngôn ngữ (chips)
+        # — Row: Ngôn ngữ (chips — HIG: > 5 options → QScrollArea horizontal)
         _lang_options = [
-            ("Tự động", ""),
-            ("Việt",    "vi"),
-            ("EN",      "en"),
-            ("中文",     "zh"),
-            ("日本語",   "ja"),
-            ("한국어",   "ko"),
-            ("ES",      "es"),
-            ("FR",      "fr"),
-            ("DE",      "de"),
+            ("🌐  Tự động",       ""),
+            ("🇻🇳  Tiếng Việt",   "vi"),
+            ("🇺🇸  Tiếng Anh",    "en"),
+            ("🇨🇳  Tiếng Trung",  "zh"),
+            ("🇯🇵  Tiếng Nhật",   "ja"),
+            ("🇰🇷  Tiếng Hàn",    "ko"),
+            ("🇪🇸  Tây Ban Nha",  "es"),
+            ("🇫🇷  Tiếng Pháp",   "fr"),
+            ("🇩🇪  Tiếng Đức",    "de"),
         ]
         _saved_lang = self.settings.get("tts_language_code", "")
         self._lang_code = _saved_lang
         self._lang_btns: dict[str, QPushButton] = {}
 
-        lang_w = QWidget()
-        lang_w.setStyleSheet("background:transparent;border:none;")
-        lw = QHBoxLayout(lang_w)
-        lw.setContentsMargins(0, 0, 0, 0)
-        lw.setSpacing(6)
-
-        def _chip_sel(code: str) -> str:
+        # Chip styles — đúng chuẩn HIG: radius 20px, padding 5px 14px, border 1.5px
+        def _chip_sel_lang() -> str:
             return (
                 f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
-                f"border:1.5px solid {ACCENT};border-radius:12px;"
-                "padding:3px 10px;font-size:12px;font-weight:600;}}"
-                f"QPushButton:hover{{background:#dce9fd;}}"
-                f"QPushButton:pressed{{background:#cfe0fc;}}"
+                f"border:1.5px solid {ACCENT};border-radius:20px;"
+                "padding:5px 14px;font-size:13px;font-weight:600;}}"
+                "QPushButton:hover{background:#dce9fd;}"
+                "QPushButton:pressed{background:#cfe0fc;}"
             )
 
-        def _chip_unsel(code: str) -> str:
+        def _chip_unsel_lang() -> str:
             return (
-                f"QPushButton{{background:{SURFACE};color:{TEXT};"
-                f"border:1px solid {BORDER};border-radius:12px;"
-                "padding:3px 10px;font-size:12px;font-weight:400;}}"
-                f"QPushButton:hover{{background:#e5e5ea;border-color:#aeaeb2;}}"
-                f"QPushButton:pressed{{background:#d2d2d7;}}"
+                "QPushButton{background:#f5f5f7;color:#1d1d1f;"
+                "border:1.5px solid #d2d2d7;border-radius:20px;"
+                "padding:5px 14px;font-size:13px;font-weight:400;}"
+                "QPushButton:hover{background:#e5e5ea;border-color:#aeaeb2;}"
+                "QPushButton:pressed{background:#d2d2d7;}"
             )
 
         def _on_lang_chip(code: str):
             self._lang_code = code
             for c, b in self._lang_btns.items():
-                b.setStyleSheet(_chip_sel(c) if c == code else _chip_unsel(c))
+                b.setStyleSheet(_chip_sel_lang() if c == code else _chip_unsel_lang())
+
+        # Inner widget chứa chips
+        chips_inner = QWidget()
+        chips_inner.setStyleSheet("background:transparent;border:none;")
+        chips_lay = QHBoxLayout(chips_inner)
+        chips_lay.setContentsMargins(0, 2, 8, 2)
+        chips_lay.setSpacing(8)
 
         for label, code in _lang_options:
             btn = QPushButton(label)
-            btn.setFixedHeight(26)
             is_sel = (code == _saved_lang)
-            btn.setStyleSheet(_chip_sel(code) if is_sel else _chip_unsel(code))
+            btn.setStyleSheet(_chip_sel_lang() if is_sel else _chip_unsel_lang())
             btn.clicked.connect(lambda _, c=code: _on_lang_chip(c))
             self._lang_btns[code] = btn
-            lw.addWidget(btn)
-        lw.addStretch()
-        self._card_row(c1, "Ngôn ngữ", lang_w, last=True)
+            chips_lay.addWidget(btn)
+        chips_lay.addStretch()
+
+        # QScrollArea horizontal — ẩn scrollbar, scroll bằng gesture/wheel
+        lang_scroll = QScrollArea()
+        lang_scroll.setWidget(chips_inner)
+        lang_scroll.setWidgetResizable(True)
+        lang_scroll.setFixedHeight(40)
+        lang_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        lang_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        lang_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        lang_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+
+        self._card_row(c1, "Ngôn ngữ", lang_scroll, last=True)
 
         layout.addWidget(card1)
 
