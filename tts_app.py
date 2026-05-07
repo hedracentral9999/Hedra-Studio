@@ -809,11 +809,9 @@ class AddSharedVoiceWorker(QThread):
     def run(self):
         try:
             r = requests.post(
-                "https://api.elevenlabs.io/v1/voices/add",
+                f"https://api.elevenlabs.io/v1/voices/add/{self.public_user_id}/{self.voice_id}",
                 headers={"xi-api-key": self.api_key, "Content-Type": "application/json"},
-                json={"public_user_id": self.public_user_id,
-                      "voice_id": self.voice_id,
-                      "new_name": self.name},
+                json={"name": self.name},
                 timeout=15,
             )
             if r.status_code == 200:
