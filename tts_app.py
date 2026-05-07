@@ -358,7 +358,7 @@ class AddStyleDialog(QDialog):
         btn_wizard = QPushButton("🧙")
         btn_wizard.setFixedHeight(32)
         btn_wizard.setFixedWidth(36)
-        btn_wizard.setToolTip("Prompt Wizard — trả lời 7 câu hỏi để AI tạo prompt chi tiết nhất")
+        btn_wizard.setToolTip("Prompt Wizard — bạn trả lời 7 câu, AI hỗ trợ gợi ý phần còn thiếu")
         btn_wizard.setStyleSheet(
             "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
             "border-radius:8px;font-size:16px;}"
@@ -1143,7 +1143,7 @@ class PromptWizardDialog(QDialog):
         h_lbl.setStyleSheet("background:transparent;border:none;")
         v.addWidget(h_lbl)
 
-        sub = QLabel("Trả lời 7 câu hỏi để AI tạo system prompt chuẩn nhất cho phong cách của bạn.")
+        sub = QLabel("Bạn trả lời 7 câu hỏi — AI chỉ gợi ý thêm cho những câu bạn chưa điền.")
         sub.setStyleSheet(
             "font-size:12px;color:#6e6e73;background:transparent;border:none;"
         )
@@ -1160,7 +1160,7 @@ class PromptWizardDialog(QDialog):
         af.setSpacing(8)
         self._brief_edit = QLineEdit()
         self._brief_edit.setPlaceholderText(
-            "Mô tả ngắn → AI điền giúp...  (vd: shop thời trang nữ miền Nam)"
+            "Mô tả ngắn về bạn → AI gợi ý câu chưa trả lời  (vd: shop thời trang nữ miền Nam)"
         )
         self._brief_edit.setStyleSheet(
             "QLineEdit{background:#fff;border:1px solid #bfdbfe;"
@@ -1316,24 +1316,23 @@ class PromptWizardDialog(QDialog):
             btn.setStyleSheet(self._chip_style(True))
 
     def _fill_from_suggestions(self, data: dict):
-        """Điền gợi ý AI vào chip + text fields."""
+        """Điền gợi ý AI — chỉ fill những field người dùng chưa trả lời."""
         for key, value in data.items():
             if not value:
                 continue
             val_str = str(value).strip()
-            # Text field
+            # Text field — bỏ qua nếu người dùng đã nhập
             if key in self._text_fields:
+                if self._text_fields[key].text().strip():
+                    continue          # người dùng đã điền → không ghi đè
                 self._text_fields[key].setText(val_str)
-            # Chips
+            # Chips — bỏ qua nếu người dùng đã chọn ít nhất 1 chip
             if key in self._chip_btns:
-                btns   = self._chip_btns[key]
-                texts  = [b.text() for b in btns]
+                btns = self._chip_btns[key]
+                if any(b.isChecked() for b in btns):
+                    continue          # đã có lựa chọn → không ghi đè
+                texts    = [b.text() for b in btns]
                 is_multi = key in ("audience", "tone")
-                # Uncheck all first
-                for b in btns:
-                    b.setChecked(False)
-                    b.setStyleSheet(self._chip_style(False))
-                # Try to match values
                 candidates = [v.strip() for v in val_str.split(",")]
                 for cand in candidates:
                     for i, chip_text in enumerate(texts):
@@ -1369,7 +1368,7 @@ class PromptWizardDialog(QDialog):
             return
         self._btn_suggest.setEnabled(False)
         self._btn_suggest.setText("...")
-        self._suggest_status.setText("💡  AI đang phân tích...")
+        self._suggest_status.setText("💡  AI đang xem câu nào cần gợi ý...")
         self._suggest_worker = SuggestAnswersWorker(brief, self._ds_key)
         self._suggest_worker.done.connect(self._on_suggest_done)
         self._suggest_worker.error.connect(self._on_suggest_error)
@@ -1377,7 +1376,7 @@ class PromptWizardDialog(QDialog):
 
     def _on_suggest_done(self, data: dict):
         self._fill_from_suggestions(data)
-        self._suggest_status.setText("✅  Đã điền gợi ý — bạn có thể chỉnh thêm!")
+        self._suggest_status.setText("✅  Đã gợi ý xong — đọc lại 1 lượt xem có đúng ý bạn chưa nhé!")
         self._btn_suggest.setEnabled(True)
         self._btn_suggest.setText("💡 AI gợi ý")
 
