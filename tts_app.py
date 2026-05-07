@@ -2378,8 +2378,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings = settings.copy()
         self.setWindowTitle("Settings")
-        # Fixed size — không để resize tràn màn hình
-        self.setFixedSize(700, 520)
+        self.setMinimumSize(700, 540)
+        self.resize(820, 700)
         # Voice selection state (edited in dialog, saved on accept)
         self._sel_voice_id   = self.settings.get("selected_voice_id",   VOICE_ID)
         self._sel_voice_name = self.settings.get("selected_voice_name",  "Adam")
@@ -2602,7 +2602,7 @@ class SettingsDialog(QDialog):
         self.gemini_prompt = QTextEdit()
         self.gemini_prompt.setPlainText(_gp_init)
         self.gemini_prompt.setReadOnly(True)
-        self.gemini_prompt.setMinimumHeight(280)
+        self.gemini_prompt.setMinimumHeight(340)
         self.gemini_prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
             "background:transparent;border:none;padding:14px 16px;}"
@@ -2796,7 +2796,7 @@ class SettingsDialog(QDialog):
         self.prompt = QTextEdit()
         self.prompt.setPlainText(_saved_ep)
         self.prompt.setReadOnly(True)
-        self.prompt.setMinimumHeight(230)
+        self.prompt.setMinimumHeight(340)
         self.prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
             "background:transparent;border:none;padding:14px 14px;}"
