@@ -4248,58 +4248,90 @@ class MainWindow(QWidget):
         sw.addStretch()
         self._card_row(c1, "Phong cách", style_w)
 
-        # — Row: Giọng đọc + Ngôn ngữ (gộp chung — chọn giọng rồi chọn ngôn ngữ)
+        # — Row: Giọng đọc (voice name + language pill-dropdown + đổi giọng — 1 hàng)
         _lang_options = [
-            ("🌐  Tự động",       ""),
-            ("🇻🇳  Tiếng Việt",   "vi"),
-            ("🇺🇸  Tiếng Anh",    "en"),
-            ("🇨🇳  Tiếng Trung",  "zh"),
-            ("🇯🇵  Tiếng Nhật",   "ja"),
-            ("🇰🇷  Tiếng Hàn",    "ko"),
-            ("🇪🇸  Tây Ban Nha",  "es"),
-            ("🇫🇷  Tiếng Pháp",   "fr"),
-            ("🇩🇪  Tiếng Đức",    "de"),
+            ("🌐  Tự động",      ""),
+            ("🇻🇳  Tiếng Việt",  "vi"),
+            ("🇺🇸  Tiếng Anh",   "en"),
+            ("🇨🇳  Tiếng Trung", "zh"),
+            ("🇯🇵  Tiếng Nhật",  "ja"),
+            ("🇰🇷  Tiếng Hàn",   "ko"),
+            ("🇪🇸  Tây Ban Nha", "es"),
+            ("🇫🇷  Tiếng Pháp",  "fr"),
+            ("🇩🇪  Tiếng Đức",   "de"),
         ]
         _saved_lang = self.settings.get("tts_language_code", "")
         self._lang_code = _saved_lang
-        self._lang_btns: dict[str, QPushButton] = {}
+        # Map code → label (để update button text)
+        _lang_map = {code: lbl for lbl, code in _lang_options}
 
-        def _chip_sel_lang() -> str:
-            return (
-                f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
-                f"border:1.5px solid {ACCENT};border-radius:20px;"
-                "padding:5px 14px;font-size:13px;font-weight:600;}}"
-                "QPushButton:hover{background:#dce9fd;}"
-                "QPushButton:pressed{background:#cfe0fc;}"
-            )
-
-        def _chip_unsel_lang() -> str:
+        def _lang_btn_style(active: bool) -> str:
+            if active:
+                return (
+                    f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
+                    f"border:1.5px solid {ACCENT};border-radius:20px;"
+                    "padding:4px 12px 4px 14px;font-size:13px;font-weight:600;}}"
+                    "QPushButton:hover{background:#dce9fd;}"
+                    "QPushButton:pressed{background:#cfe0fc;}"
+                )
             return (
                 "QPushButton{background:#f5f5f7;color:#1d1d1f;"
                 "border:1.5px solid #d2d2d7;border-radius:20px;"
-                "padding:5px 14px;font-size:13px;font-weight:400;}"
+                "padding:4px 12px 4px 14px;font-size:13px;font-weight:400;}"
                 "QPushButton:hover{background:#e5e5ea;border-color:#aeaeb2;}"
                 "QPushButton:pressed{background:#d2d2d7;}"
             )
 
-        def _on_lang_chip(code: str):
-            self._lang_code = code
-            for c, b in self._lang_btns.items():
-                b.setStyleSheet(_chip_sel_lang() if c == code else _chip_unsel_lang())
+        # Pill dropdown button — hiển thị lựa chọn hiện tại + chevron
+        _init_label = _lang_map.get(_saved_lang, "🌐  Tự động") + "  ▾"
+        self._lang_btn = QPushButton(_init_label)
+        self._lang_btn.setFixedHeight(32)
+        self._lang_btn.setStyleSheet(_lang_btn_style(_saved_lang != ""))
+        self._lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        # Outer wrapper: QVBoxLayout — voice line trên, language chips dưới
+        def _show_lang_menu():
+            menu = QMenu(self._lang_btn)
+            menu.setStyleSheet(
+                "QMenu{background:#ffffff;border:1px solid #d2d2d7;"
+                "border-radius:10px;padding:4px 0;}"
+                "QMenu::item{padding:8px 20px;font-size:13px;color:#1d1d1f;}"
+                "QMenu::item:selected{background:#e8f0fd;color:#0071e3;}"
+                "QMenu::item:checked{font-weight:600;color:#0071e3;}"
+                "QMenu::separator{height:1px;background:#e5e5ea;margin:4px 0;}"
+            )
+            for lbl, code in _lang_options:
+                action = QAction(lbl, menu)
+                action.setCheckable(True)
+                action.setChecked(self._lang_code == code)
+                def _pick(checked, c=code, l=lbl):
+                    self._lang_code = c
+                    self._lang_btn.setText(l + "  ▾")
+                    self._lang_btn.setStyleSheet(_lang_btn_style(c != ""))
+                action.triggered.connect(_pick)
+                menu.addAction(action)
+            # Separator + reset nhanh
+            menu.addSeparator()
+            reset = QAction("↺  Về Tự động", menu)
+            def _reset():
+                self._lang_code = ""
+                self._lang_btn.setText("🌐  Tự động  ▾")
+                self._lang_btn.setStyleSheet(_lang_btn_style(False))
+            reset.triggered.connect(_reset)
+            menu.addAction(reset)
+            # Hiện menu ngay bên dưới button
+            menu.exec(self._lang_btn.mapToGlobal(
+                self._lang_btn.rect().bottomLeft()
+            ))
+
+        self._lang_btn.clicked.connect(_show_lang_menu)
+
+        # Layout 1 hàng: voice name | lang dropdown | stretch | đổi giọng
         voice_w = QWidget()
         voice_w.setStyleSheet("background:transparent;border:none;")
-        voice_vlay = QVBoxLayout(voice_w)
-        voice_vlay.setContentsMargins(0, 4, 0, 4)
-        voice_vlay.setSpacing(10)
-
-        # Dòng 1: voice name + đổi giọng
-        voice_top = QWidget()
-        voice_top.setStyleSheet("background:transparent;border:none;")
-        vw = QHBoxLayout(voice_top)
+        vw = QHBoxLayout(voice_w)
         vw.setContentsMargins(0, 0, 0, 0)
-        vw.setSpacing(8)
+        vw.setSpacing(10)
+
         self._voice_name_lbl = QLabel(self.settings.get("selected_voice_name", "Adam"))
         self._voice_name_lbl.setStyleSheet(
             f"color:{TEXT};font-size:13px;background:transparent;border:none;"
@@ -4313,35 +4345,11 @@ class MainWindow(QWidget):
             "QPushButton:pressed{color:#005bb5;}"
         )
         btn_change_voice.clicked.connect(self._open_voices_settings)
+
         vw.addWidget(self._voice_name_lbl)
-        vw.addWidget(btn_change_voice)
+        vw.addWidget(self._lang_btn)
         vw.addStretch()
-        voice_vlay.addWidget(voice_top)
-
-        # Dòng 2: language chips (HIG: > 5 → QScrollArea horizontal)
-        chips_inner = QWidget()
-        chips_inner.setStyleSheet("background:transparent;border:none;")
-        chips_lay = QHBoxLayout(chips_inner)
-        chips_lay.setContentsMargins(0, 0, 8, 0)
-        chips_lay.setSpacing(8)
-        for label, code in _lang_options:
-            btn = QPushButton(label)
-            is_sel = (code == _saved_lang)
-            btn.setStyleSheet(_chip_sel_lang() if is_sel else _chip_unsel_lang())
-            btn.clicked.connect(lambda _, c=code: _on_lang_chip(c))
-            self._lang_btns[code] = btn
-            chips_lay.addWidget(btn)
-        chips_lay.addStretch()
-
-        lang_scroll = QScrollArea()
-        lang_scroll.setWidget(chips_inner)
-        lang_scroll.setWidgetResizable(True)
-        lang_scroll.setFixedHeight(40)
-        lang_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        lang_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        lang_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        lang_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        voice_vlay.addWidget(lang_scroll)
+        vw.addWidget(btn_change_voice)
 
         self._card_row(c1, "Giọng đọc", voice_w, last=True)
 
