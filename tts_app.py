@@ -2464,8 +2464,50 @@ class SettingsDialog(QDialog):
         v.setContentsMargins(20, 16, 20, 20)
         v.setSpacing(0)
 
-        # Group: ElevenLabs
-        v.addWidget(self._section_label("ElevenLabs"))
+        # ── Helper: section header có nút link lấy API key ──────────
+        def _api_link_btn(label: str, url: str, is_ref: bool = False) -> QPushButton:
+            btn = QPushButton(label)
+            btn.setFixedHeight(24)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            accent = "#0071e3"
+            if is_ref:
+                # Ref link ElevenLabs — nổi bật hơn chút
+                btn.setStyleSheet(
+                    f"QPushButton{{font-size:11px;font-weight:600;color:{accent};"
+                    "background:#e8f0fd;border:1px solid #c5d9f8;border-radius:6px;"
+                    "padding:0 10px;}}"
+                    f"QPushButton:hover{{background:#dce9fd;border-color:{accent};}}"
+                    "QPushButton:pressed{background:#cfe0fc;}"
+                )
+            else:
+                btn.setStyleSheet(
+                    f"QPushButton{{font-size:11px;color:{accent};"
+                    "background:transparent;border:none;padding:0 4px;}}"
+                    "QPushButton:hover{text-decoration:underline;}"
+                    f"QPushButton:pressed{{color:#005bb5;}}"
+                )
+            btn.clicked.connect(lambda: webbrowser.open(url))
+            return btn
+
+        def _svc_header(title: str, btn: QPushButton) -> QWidget:
+            w = QWidget()
+            w.setStyleSheet("background:transparent;border:none;")
+            h = QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(8)
+            h.addWidget(self._section_label(title))
+            h.addStretch()
+            h.addWidget(btn)
+            return w
+
+        # ── Group: ElevenLabs ────────────────────────────────────────
+        el_btn = _api_link_btn(
+            "🔑  Đăng ký & lấy API key  →",
+            "https://try.elevenlabs.io/rinor1xaj4ze",
+            is_ref=True,
+        )
+        el_btn.setToolTip("Đăng ký ElevenLabs qua link này — hỗ trợ Hedra Studio 🙏")
+        v.addWidget(_svc_header("ElevenLabs", el_btn))
         grp, glay = self._group()
         self.el_keys = QTextEdit()
         self.el_keys.setPlaceholderText("sk_abc123...\nsk_def456...")
@@ -2479,8 +2521,12 @@ class SettingsDialog(QDialog):
                   "Mỗi key 1 dòng — tự xoay khi hết credit", last=True)
         v.addWidget(grp)
 
-        # Group: DeepSeek
-        v.addWidget(self._section_label("DeepSeek"))
+        # ── Group: DeepSeek ──────────────────────────────────────────
+        ds_btn = _api_link_btn(
+            "Lấy API key  →",
+            "https://platform.deepseek.com/api_keys",
+        )
+        v.addWidget(_svc_header("DeepSeek", ds_btn))
         grp2, glay2 = self._group()
         self.ds_key = QLineEdit(self.settings.get("ds_api_key", ""))
         self.ds_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -2491,8 +2537,12 @@ class SettingsDialog(QDialog):
         self._row(glay2, "API Key", self.ds_key, last=True)
         v.addWidget(grp2)
 
-        # Group: Gemini
-        v.addWidget(self._section_label("Gemini"))
+        # ── Group: Gemini ────────────────────────────────────────────
+        gm_btn = _api_link_btn(
+            "Lấy API key  →",
+            "https://aistudio.google.com/app/apikey",
+        )
+        v.addWidget(_svc_header("Gemini", gm_btn))
         grp3, glay3 = self._group()
         self.gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
         self.gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
