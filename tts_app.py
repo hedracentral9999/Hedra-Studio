@@ -22,6 +22,9 @@ from version import VERSION, GITHUB_REPO
 VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Adam
 MODEL    = "eleven_v3"
 
+TELEGRAM_BOT_TOKEN = "8637057705:AAGM2Pe7H0Dg5Dd8Y_Dn79U1v6LuZIyhmxQ"
+TELEGRAM_CHAT_ID   = "6085801664"
+
 DEFAULT_PROMPT = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam.
 
 ## GIỌNG ADAM — ĐẶC ĐIỂM
@@ -351,6 +354,18 @@ class AddStyleDialog(QDialog):
         )
         self._btn_gen.clicked.connect(self._generate_prompt)
         desc_row.addWidget(self._btn_gen)
+
+        btn_wizard = QPushButton("🧙")
+        btn_wizard.setFixedHeight(32)
+        btn_wizard.setFixedWidth(36)
+        btn_wizard.setToolTip("Prompt Wizard — trả lời 7 câu hỏi để AI tạo prompt chi tiết nhất")
+        btn_wizard.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+            "border-radius:8px;font-size:16px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_wizard.clicked.connect(self._open_wizard)
+        desc_row.addWidget(btn_wizard)
         v.addLayout(desc_row)
 
         # AI status label
@@ -437,6 +452,13 @@ class AddStyleDialog(QDialog):
         self._ai_status.setText(f"❌ {err[:80]}")
         self._btn_gen.setEnabled(True)
         self._btn_gen.setText("✨ Tạo")
+
+    def _open_wizard(self):
+        """Mở Prompt Wizard — kết quả điền thẳng vào textarea."""
+        dlg = PromptWizardDialog(self, ds_api_key=self._ds_key)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.result_prompt:
+            self._prompt.setPlainText(dlg.result_prompt)
+            self._ai_status.setText("✅ Đã nhập prompt từ Wizard — bạn có thể chỉnh sửa thêm.")
 
     def _pick_icon(self):
         dlg = EmojiPickerDialog(self)
@@ -546,6 +568,67 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                 )
             else:
                 self.error.emit(f"DeepSeek {res.status_code}: {res.text[:200]}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class SuggestAnswersWorker(QThread):
+    """Dùng DeepSeek để gợi ý 7 trường từ mô tả ngắn — trả về dict."""
+    done  = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    _SYSTEM = """Bạn là trợ lý tư vấn phong cách TTS chuyên nghiệp.
+Dựa trên mô tả ngắn của user, hãy phân tích và gợi ý 7 trường thông tin để tạo prompt TTS tốt nhất.
+
+Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải thích):
+{
+  "purpose":  "mục đích chính — 1 trong: Bán hàng | Tư vấn | Giáo dục | Kể chuyện | Truyền cảm hứng | Khác",
+  "audience": "đối tượng (nhiều giá trị cách nhau dấu phẩy nếu cần)",
+  "region":   "vùng miền — 1 trong: Miền Nam | Miền Bắc | Trung lập",
+  "tone":     "tông cảm xúc (nhiều giá trị cách nhau dấu phẩy nếu cần)",
+  "product":  "sản phẩm hoặc lĩnh vực cụ thể",
+  "keywords": "từ ngữ đặc trưng muốn dùng trong kịch bản TTS",
+  "avoid":    "điều cần tránh khi enhance kịch bản"
+}"""
+
+    def __init__(self, description: str, api_key: str):
+        super().__init__()
+        self.description = description
+        self.api_key     = api_key
+
+    def run(self):
+        try:
+            res = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": self._SYSTEM},
+                        {"role": "user",   "content": f"Mô tả: {self.description}"},
+                    ],
+                    "temperature": 0.4,
+                    "max_tokens":  600,
+                },
+                timeout=20,
+            )
+            if res.status_code == 200:
+                raw = res.json()["choices"][0]["message"]["content"].strip()
+                # Xóa markdown code block nếu có
+                if raw.startswith("```"):
+                    parts = raw.split("```")
+                    raw = parts[1] if len(parts) > 1 else raw
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                data = json.loads(raw.strip())
+                self.done.emit(data)
+            else:
+                self.error.emit(f"DeepSeek {res.status_code}")
+        except json.JSONDecodeError:
+            self.error.emit("AI trả về sai format — thử lại nhé!")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -1008,6 +1091,532 @@ class DropZone(QFrame):
                 files.append(p)
         if files:
             self.files_added.emit(files)
+
+
+# ── Prompt Wizard dialog ───────────────────────────────────────────
+class PromptWizardDialog(QDialog):
+    """Wizard 7 câu hỏi chi tiết — AI tạo system prompt TTS tốt nhất."""
+
+    _QUESTIONS = [
+        # (key, label, chips, multi_select, placeholder)
+        ("purpose",  "1. Mục đích chính",
+         ["Bán hàng", "Tư vấn", "Giáo dục", "Kể chuyện", "Truyền cảm hứng", "Khác"],
+         False, ""),
+        ("audience", "2. Đối tượng nghe",
+         ["Người trẻ", "Gia đình", "Doanh nhân", "Học sinh / SV", "Tất cả"],
+         True, ""),
+        ("region",   "3. Vùng miền / Phong cách",
+         ["Miền Nam", "Miền Bắc", "Trung lập"],
+         False, ""),
+        ("tone",     "4. Tông cảm xúc",
+         ["Vui vẻ", "Nghiêm túc", "Ấm áp", "Hài hước", "Mạnh mẽ", "Chuyên nghiệp"],
+         True, ""),
+        ("product",  "5. Sản phẩm / Lĩnh vực  ✱",
+         [], False, "Vd: shop quần áo nữ, khoá học online, dịch vụ tư vấn..."),
+        ("keywords", "6. Từ ngữ đặc trưng muốn dùng",
+         [], False, 'Vd: "sis", "chị ơi", "xịn xò"...  (tùy chọn)'),
+        ("avoid",    "7. Điều tuyệt đối tránh",
+         [], False, 'Vd: không quá formal, không nói "quý khách"...  (tùy chọn)'),
+    ]
+
+    def __init__(self, parent=None, ds_api_key: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Prompt Wizard")
+        self.setFixedSize(560, 640)
+        self._ds_key         = ds_api_key
+        self._suggest_worker = None
+        self._gen_worker     = None
+        self._chip_btns:  dict[str, list[QPushButton]] = {}
+        self._text_fields: dict[str, QLineEdit]         = {}
+        self.result_prompt   = ""
+        self._build()
+
+    # ── Build UI ──────────────────────────────────────────────────
+    def _build(self):
+        v = QVBoxLayout(self)
+        v.setContentsMargins(20, 16, 20, 16)
+        v.setSpacing(10)
+
+        # Header
+        h_lbl = QLabel("🧙  Prompt Wizard")
+        h_lbl.setFont(QFont("", 15, QFont.Weight.Bold))
+        h_lbl.setStyleSheet("background:transparent;border:none;")
+        v.addWidget(h_lbl)
+
+        sub = QLabel("Trả lời 7 câu hỏi để AI tạo system prompt chuẩn nhất cho phong cách của bạn.")
+        sub.setStyleSheet(
+            "font-size:12px;color:#6e6e73;background:transparent;border:none;"
+        )
+        sub.setWordWrap(True)
+        v.addWidget(sub)
+
+        # AI gợi ý nhanh
+        ai_frame = QFrame()
+        ai_frame.setStyleSheet(
+            "QFrame{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}"
+        )
+        af = QHBoxLayout(ai_frame)
+        af.setContentsMargins(12, 8, 12, 8)
+        af.setSpacing(8)
+        self._brief_edit = QLineEdit()
+        self._brief_edit.setPlaceholderText(
+            "Mô tả ngắn → AI điền giúp...  (vd: shop thời trang nữ miền Nam)"
+        )
+        self._brief_edit.setStyleSheet(
+            "QLineEdit{background:#fff;border:1px solid #bfdbfe;"
+            "border-radius:6px;padding:4px 8px;font-size:12px;}"
+        )
+        self._brief_edit.returnPressed.connect(self._ai_suggest)
+        af.addWidget(self._brief_edit, 1)
+        self._btn_suggest = QPushButton("💡 AI gợi ý")
+        self._btn_suggest.setFixedHeight(30)
+        self._btn_suggest.setFixedWidth(90)
+        self._btn_suggest.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:6px;font-size:12px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:disabled{background:#a8d0fb;}"
+        )
+        self._btn_suggest.clicked.connect(self._ai_suggest)
+        af.addWidget(self._btn_suggest)
+        v.addWidget(ai_frame)
+
+        self._suggest_status = QLabel("")
+        self._suggest_status.setStyleSheet(
+            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+        )
+        v.addWidget(self._suggest_status)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#e5e5ea;")
+        v.addWidget(sep)
+
+        # Scroll area — 7 câu hỏi
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollBar:vertical{width:6px;background:transparent;}"
+            "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+        )
+        inner = QWidget()
+        inner.setStyleSheet("QWidget{background:transparent;border:none;}")
+        qv = QVBoxLayout(inner)
+        qv.setContentsMargins(0, 0, 8, 0)
+        qv.setSpacing(10)
+
+        for key, label, chips, multi, placeholder in self._QUESTIONS:
+            q_frame = QFrame()
+            q_frame.setStyleSheet(
+                "QFrame{background:#ffffff;border:1px solid #e5e5ea;border-radius:10px;}"
+            )
+            qf = QVBoxLayout(q_frame)
+            qf.setContentsMargins(14, 10, 14, 10)
+            qf.setSpacing(8)
+
+            q_lbl = QLabel(label)
+            q_lbl.setStyleSheet(
+                "QLabel{font-size:13px;font-weight:600;color:#1d1d1f;"
+                "background:transparent;border:none;}"
+            )
+            qf.addWidget(q_lbl)
+
+            if chips:
+                chip_h = QHBoxLayout()
+                chip_h.setSpacing(6)
+                chip_h.setContentsMargins(0, 0, 0, 0)
+                btns: list[QPushButton] = []
+                for chip in chips:
+                    cb = QPushButton(chip)
+                    cb.setFixedHeight(26)
+                    cb.setCheckable(True)
+                    cb.setStyleSheet(self._chip_style(False))
+                    cb.clicked.connect(
+                        lambda checked, k=key, c=chip, m=multi: self._toggle_chip(k, c, m)
+                    )
+                    chip_h.addWidget(cb)
+                    btns.append(cb)
+                chip_h.addStretch()
+                self._chip_btns[key] = btns
+                qf.addLayout(chip_h)
+
+            if placeholder:
+                txt = QLineEdit()
+                txt.setPlaceholderText(placeholder)
+                txt.setStyleSheet(
+                    "QLineEdit{background:#f5f5f7;border:1px solid #e5e5ea;"
+                    "border-radius:6px;padding:4px 8px;font-size:12px;}"
+                    "QLineEdit:focus{border-color:#0071e3;background:#fff;}"
+                )
+                self._text_fields[key] = txt
+                qf.addWidget(txt)
+
+            qv.addWidget(q_frame)
+
+        qv.addStretch()
+        scroll.setWidget(inner)
+        v.addWidget(scroll)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("color:#e5e5ea;")
+        v.addWidget(sep2)
+
+        # Footer
+        foot = QHBoxLayout()
+        foot.setSpacing(8)
+        foot.addStretch()
+        btn_cancel = QPushButton("Hủy")
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.clicked.connect(self.reject)
+        self._btn_gen = QPushButton("✨  Tạo Prompt")
+        self._btn_gen.setFixedHeight(32)
+        self._btn_gen.setDefault(True)
+        self._btn_gen.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:8px;padding:0 20px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:disabled{background:#a8d0fb;}"
+        )
+        self._btn_gen.clicked.connect(self._generate_prompt)
+        foot.addWidget(btn_cancel)
+        foot.addWidget(self._btn_gen)
+        v.addLayout(foot)
+
+    # ── Helpers ───────────────────────────────────────────────────
+    def _chip_style(self, active: bool) -> str:
+        if active:
+            return (
+                "QPushButton{font-size:11px;background:#0071e3;color:white;"
+                "border:none;border-radius:13px;padding:0 10px;}"
+            )
+        return (
+            "QPushButton{font-size:11px;background:#f0f0f5;color:#1d1d1f;"
+            "border:1px solid #d2d2d7;border-radius:13px;padding:0 10px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+
+    def _toggle_chip(self, key: str, chip: str, multi: bool):
+        btns = self._chip_btns.get(key, [])
+        texts = [b.text() for b in btns]
+        if chip not in texts:
+            return
+        idx = texts.index(chip)
+        btn = btns[idx]
+        if multi:
+            btn.setChecked(not btn.isChecked())
+            btn.setStyleSheet(self._chip_style(btn.isChecked()))
+        else:
+            for b in btns:
+                b.setChecked(False)
+                b.setStyleSheet(self._chip_style(False))
+            btn.setChecked(True)
+            btn.setStyleSheet(self._chip_style(True))
+
+    def _fill_from_suggestions(self, data: dict):
+        """Điền gợi ý AI vào chip + text fields."""
+        for key, value in data.items():
+            if not value:
+                continue
+            val_str = str(value).strip()
+            # Text field
+            if key in self._text_fields:
+                self._text_fields[key].setText(val_str)
+            # Chips
+            if key in self._chip_btns:
+                btns   = self._chip_btns[key]
+                texts  = [b.text() for b in btns]
+                is_multi = key in ("audience", "tone")
+                # Uncheck all first
+                for b in btns:
+                    b.setChecked(False)
+                    b.setStyleSheet(self._chip_style(False))
+                # Try to match values
+                candidates = [v.strip() for v in val_str.split(",")]
+                for cand in candidates:
+                    for i, chip_text in enumerate(texts):
+                        if cand.lower() in chip_text.lower() or chip_text.lower() in cand.lower():
+                            btns[i].setChecked(True)
+                            btns[i].setStyleSheet(self._chip_style(True))
+                            if not is_multi:
+                                break
+
+    def _gather_answers(self) -> dict:
+        answers: dict[str, str] = {}
+        for key, _, chips, _, _ in self._QUESTIONS:
+            if key in self._chip_btns:
+                selected = [b.text() for b in self._chip_btns[key] if b.isChecked()]
+                answers[key] = ", ".join(selected)
+            else:
+                answers[key] = ""
+            # Text field overrides / extends
+            if key in self._text_fields:
+                tf = self._text_fields[key].text().strip()
+                if tf:
+                    answers[key] = tf
+        return answers
+
+    # ── AI suggest ────────────────────────────────────────────────
+    def _ai_suggest(self):
+        brief = self._brief_edit.text().strip()
+        if not brief:
+            self._suggest_status.setText("⚠️  Nhập mô tả ngắn trước nhé!")
+            return
+        if not self._ds_key:
+            self._suggest_status.setText("⚠️  Chưa có DeepSeek key — vào Settings → API Keys")
+            return
+        self._btn_suggest.setEnabled(False)
+        self._btn_suggest.setText("...")
+        self._suggest_status.setText("💡  AI đang phân tích...")
+        self._suggest_worker = SuggestAnswersWorker(brief, self._ds_key)
+        self._suggest_worker.done.connect(self._on_suggest_done)
+        self._suggest_worker.error.connect(self._on_suggest_error)
+        self._suggest_worker.start()
+
+    def _on_suggest_done(self, data: dict):
+        self._fill_from_suggestions(data)
+        self._suggest_status.setText("✅  Đã điền gợi ý — bạn có thể chỉnh thêm!")
+        self._btn_suggest.setEnabled(True)
+        self._btn_suggest.setText("💡 AI gợi ý")
+
+    def _on_suggest_error(self, err: str):
+        self._suggest_status.setText(f"❌  {err[:60]}")
+        self._btn_suggest.setEnabled(True)
+        self._btn_suggest.setText("💡 AI gợi ý")
+
+    # ── Generate prompt ───────────────────────────────────────────
+    def _generate_prompt(self):
+        if not self._ds_key:
+            QMessageBox.warning(self, "Thiếu API Key",
+                                "Cần DeepSeek API key để tạo prompt.\nVào Settings → API Keys!")
+            return
+        answers = self._gather_answers()
+        if not answers.get("product", "").strip():
+            QMessageBox.warning(self, "Thiếu thông tin",
+                                "Mục 5 (Sản phẩm / Lĩnh vực) là bắt buộc nhé!")
+            return
+
+        self._btn_gen.setEnabled(False)
+        self._btn_gen.setText("✨ Đang tạo...")
+
+        parts = []
+        labels = {
+            "purpose":  "Mục đích",
+            "audience": "Đối tượng",
+            "region":   "Vùng miền",
+            "tone":     "Tông",
+            "product":  "Sản phẩm/lĩnh vực",
+            "keywords": "Từ ngữ đặc trưng",
+            "avoid":    "Tuyệt đối tránh",
+        }
+        for key, lbl in labels.items():
+            val = answers.get(key, "").strip()
+            if val:
+                parts.append(f"{lbl}: {val}")
+        full_desc = " | ".join(parts)
+
+        self._gen_worker = PromptGeneratorWorker(full_desc, self._ds_key)
+        self._gen_worker.done.connect(self._on_prompt_done)
+        self._gen_worker.error.connect(self._on_prompt_error)
+        self._gen_worker.start()
+
+    def _on_prompt_done(self, prompt: str):
+        self.result_prompt = prompt
+        self._btn_gen.setEnabled(True)
+        self._btn_gen.setText("✨  Tạo Prompt")
+        self.accept()
+
+    def _on_prompt_error(self, err: str):
+        self._btn_gen.setEnabled(True)
+        self._btn_gen.setText("✨  Tạo Prompt")
+        QMessageBox.critical(self, "Lỗi AI", err[:200])
+
+
+# ── Feedback sender thread ─────────────────────────────────────────
+class FeedbackSender(QThread):
+    """Gửi phản hồi đến Telegram Bot."""
+    done  = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+    def run(self):
+        try:
+            res = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id":    TELEGRAM_CHAT_ID,
+                    "text":       self.text,
+                    "parse_mode": "Markdown",
+                },
+                timeout=10,
+            )
+            if res.status_code == 200:
+                self.done.emit()
+            else:
+                self.error.emit(f"Telegram {res.status_code}: {res.text[:200]}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+# ── Feedback dialog ────────────────────────────────────────────────
+class FeedbackDialog(QDialog):
+    """In-app feedback form — gửi trực tiếp đến dev qua Telegram."""
+
+    _CATS = ["🐛  Báo lỗi", "💡  Tính năng mới", "💬  Góp ý chung"]
+
+    def __init__(self, parent=None, version: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Phản hồi")
+        self.setFixedSize(460, 390)
+        self._version = version
+        self._sender  = None
+        self._sel_cat = self._CATS[2]
+        self._build()
+
+    def _build(self):
+        v = QVBoxLayout(self)
+        v.setContentsMargins(20, 16, 20, 16)
+        v.setSpacing(12)
+
+        # Title
+        title = QLabel("💬  Gửi phản hồi cho dev")
+        title.setFont(QFont("", 15, QFont.Weight.Bold))
+        title.setStyleSheet("background:transparent;border:none;")
+        v.addWidget(title)
+
+        sub = QLabel("Góp ý, báo lỗi hoặc yêu cầu tính năng mới — sẽ đến thẳng nhà phát triển.")
+        sub.setStyleSheet("font-size:12px;color:#6e6e73;background:transparent;border:none;")
+        sub.setWordWrap(True)
+        v.addWidget(sub)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#e5e5ea;")
+        v.addWidget(sep)
+
+        # Category
+        cat_lbl = QLabel("Loại phản hồi")
+        cat_lbl.setStyleSheet(
+            "font-size:12px;font-weight:600;background:transparent;border:none;"
+        )
+        v.addWidget(cat_lbl)
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(8)
+        self._cat_btns: list[QPushButton] = []
+        for cat in self._CATS:
+            btn = QPushButton(cat)
+            btn.setFixedHeight(28)
+            btn.setCheckable(True)
+            btn.setChecked(cat == self._sel_cat)
+            btn.setStyleSheet(self._cat_style(cat == self._sel_cat))
+            btn.clicked.connect(lambda _, c=cat: self._select_cat(c))
+            self._cat_btns.append(btn)
+            chip_row.addWidget(btn)
+        chip_row.addStretch()
+        v.addLayout(chip_row)
+
+        # Title input
+        t_lbl = QLabel("Tiêu đề ngắn")
+        t_lbl.setStyleSheet(
+            "font-size:12px;font-weight:600;background:transparent;border:none;"
+        )
+        v.addWidget(t_lbl)
+        self._title_edit = QLineEdit()
+        self._title_edit.setPlaceholderText("Tóm tắt vấn đề trong 1 dòng...")
+        v.addWidget(self._title_edit)
+
+        # Description
+        d_lbl = QLabel("Mô tả chi tiết")
+        d_lbl.setStyleSheet(
+            "font-size:12px;font-weight:600;background:transparent;border:none;"
+        )
+        v.addWidget(d_lbl)
+        self._desc_edit = QTextEdit()
+        self._desc_edit.setPlaceholderText(
+            "Mô tả cụ thể: lỗi xảy ra khi nào, muốn tính năng gì, góp ý gì..."
+        )
+        self._desc_edit.setMinimumHeight(80)
+        v.addWidget(self._desc_edit)
+
+        # Footer
+        foot = QHBoxLayout()
+        foot.setSpacing(8)
+        self._status_lbl = QLabel("")
+        self._status_lbl.setStyleSheet(
+            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+        )
+        foot.addWidget(self._status_lbl, 1)
+        btn_cancel = QPushButton("Đóng")
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.clicked.connect(self.reject)
+        self._btn_send = QPushButton("📨  Gửi phản hồi")
+        self._btn_send.setFixedHeight(32)
+        self._btn_send.setDefault(True)
+        self._btn_send.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:disabled{background:#a8d0fb;}"
+        )
+        self._btn_send.clicked.connect(self._send)
+        foot.addWidget(btn_cancel)
+        foot.addWidget(self._btn_send)
+        v.addLayout(foot)
+
+    def _cat_style(self, active: bool) -> str:
+        if active:
+            return (
+                "QPushButton{font-size:12px;background:#0071e3;color:white;"
+                "border:none;border-radius:14px;padding:0 12px;}"
+            )
+        return (
+            "QPushButton{font-size:12px;background:#f0f0f5;color:#1d1d1f;"
+            "border:1px solid #d2d2d7;border-radius:14px;padding:0 12px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+
+    def _select_cat(self, cat: str):
+        self._sel_cat = cat
+        for btn, c in zip(self._cat_btns, self._CATS):
+            btn.setChecked(c == cat)
+            btn.setStyleSheet(self._cat_style(c == cat))
+
+    def _send(self):
+        title_text = self._title_edit.text().strip()
+        desc_text  = self._desc_edit.toPlainText().strip()
+        if not title_text and not desc_text:
+            self._status_lbl.setText("⚠️  Nhập tiêu đề hoặc mô tả nhé!")
+            return
+
+        msg = (
+            f"*{self._sel_cat}*\n\n"
+            f"*Phiên bản:* v{self._version}\n"
+            f"*Tiêu đề:* {title_text or '(không có)'}\n\n"
+            f"{desc_text}"
+        )
+        self._btn_send.setEnabled(False)
+        self._btn_send.setText("Đang gửi...")
+        self._status_lbl.setText("")
+        self._sender = FeedbackSender(msg)
+        self._sender.done.connect(self._on_sent)
+        self._sender.error.connect(self._on_send_error)
+        self._sender.start()
+
+    def _on_sent(self):
+        self._btn_send.setEnabled(True)
+        self._btn_send.setText("✅  Đã gửi!")
+        self._status_lbl.setText("Cảm ơn bạn đã phản hồi! 🙏")
+        QTimer.singleShot(2500, self.accept)
+
+    def _on_send_error(self, err: str):
+        self._btn_send.setEnabled(True)
+        self._btn_send.setText("📨  Gửi phản hồi")
+        self._status_lbl.setText(f"❌  {err[:60]}")
 
 
 # ── Settings dialog — Apple HIG style ─────────────────────────────
@@ -1935,6 +2544,19 @@ class MainWindow(QWidget):
         )
         header_row.addWidget(ver_lbl)
 
+        btn_feedback = QPushButton("💬")
+        btn_feedback.setFixedSize(28, 28)
+        btn_feedback.setToolTip("Gửi phản hồi / Báo lỗi")
+        btn_feedback.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
+            f"background:{SURFACE};font-size:14px;}}"
+            f"QPushButton:hover{{background:#ebebf0;}}"
+            f"QPushButton:pressed{{background:{SEG_BG};}}"
+        )
+        btn_feedback.clicked.connect(self._open_feedback)
+        header_row.addWidget(btn_feedback)
+        header_row.addSpacing(6)
+
         btn_settings = QPushButton("Settings")
         btn_settings.setFixedHeight(28)
         btn_settings.setStyleSheet(
@@ -2623,6 +3245,10 @@ echo "$(date): Done ✅" >> "$LOG"
             "color:#dc2626; font-size:11px; background:transparent;"
         )
         QMessageBox.critical(self, "Lỗi", msg)
+
+    def _open_feedback(self):
+        dlg = FeedbackDialog(self, version=VERSION)
+        dlg.exec()
 
     def open_settings(self):
         dlg = SettingsDialog(self.settings, self)
