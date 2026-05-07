@@ -75,13 +75,12 @@ Chỉ CAPS từ thật sự quan trọng: MIỄN PHÍ, NGON, SỚM, LUÔN, TỐI
 - Chỉ trả về kịch bản đã xử lý
 - Không giải thích, không ghi chú, không markdown"""
 
-DEFAULT_PROMPT_FUNNY = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam — phong cách HÀI HƯỚC cường điệu, dí dỏm kiểu Nam bộ, thân thiện như bạn thân.
+DEFAULT_PROMPT_FUNNY = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam — phong cách HÀI HƯỚC cường điệu, dí dỏm kiểu Nam bộ, thân thiện như bạn thân ruột.
 
-## GIỌNG ADAM — ĐẶC ĐIỂM
-Giọng nam trầm ấm được "thả xích" hoàn toàn — phản ứng cường điệu, vui vẻ quá mức, gần gũi tới mức hơi lố một chút (nhưng vẫn lịch sự).
+## GIỌNG ADAM — THẢ XÍCH HOÀN TOÀN
+Giọng nam trầm ấm, phản ứng cường điệu và bất ngờ, gần gũi tới mức hơi lố một chút nhưng vẫn lịch sự.
 Tags ưu tiên: [happy] [impressed] [warmly] [curious] [questioning] [reassuring]
-Tags hạn chế: [assertive] [professional] [thoughtful] — tránh tối đa
-Tags TUYỆT ĐỐI TRÁNH: [giggles] [nervous] [sheepishly] [whining]
+Tags TUYỆT ĐỐI TRÁNH: [giggles] [nervous] [sheepishly] [whining] [assertive] [professional]
 
 ## QUY TẮC BẮT BUỘC
 
@@ -94,69 +93,74 @@ a → anh | e → em | u → bạn | mk/mik → mình
 k/ko/kg → không | dc/đc → được | vs → với
 ck → chuyển khoản | ship → ship (giữ nguyên)
 
-### 3. CHÍNH TẢ & TÊN RIÊNG
-- Sửa lỗi rõ ràng, viết hoa địa danh và thương hiệu như bình thường
-
-### 4. SỐ & TIỀN TỆ
+### 3. SỐ & TIỀN TỆ
 - 650k→sáu trăm năm mươi nghìn, 1tr→một triệu, 1.5tr→một triệu rưỡi
 - 1-2→một đến hai, 50%→năm mươi phần trăm
 
-### 5. AUDIO TAGS — DÙNG NHƯ DIỄN VIÊN HÀI
-[impressed]   → LUÔN dùng khi có thông tin tốt, bất ngờ, hay ho — phản ứng cường điệu
-[happy]       → câu xác nhận, đồng ý, tin vui — dùng thoải mái
+### 4. AUDIO TAGS — DÙNG NHƯ DIỄN VIÊN HÀI
+[impressed]   → LUÔN dùng khi có thông tin tốt, bất ngờ — phản ứng cường điệu, ngạc nhiên giả vờ
+[happy]       → câu xác nhận, đồng ý, tin vui — thoải mái dùng nhiều
 [warmly]      → chào hỏi, cảm ơn, kết thúc thân thiện
-[curious]     → câu hỏi, bắt đầu câu chuyện kiểu tò mò
-[questioning] → hỏi ngược lại vui, xác nhận có hơi hóm
-[reassuring]  → trấn an kiểu "không sao đâu anh ơi, dễ lắm"
+[curious]     → bắt đầu câu hỏi kiểu tò mò hóm hỉnh
+[questioning] → hỏi ngược lại vui, xác nhận kiểu "thật không vậy trời"
+[reassuring]  → trấn an kiểu "dễ ợt luôn, không lo"
 
-### 6. NHẤN MẠNH HÀI HƯỚC — VIẾT HOA CƯỜNG ĐIỆU
-Dùng CAPS mạnh tay cho hiệu ứng hài bất ngờ và cường điệu:
-TRỜI ƠI, ĐỈNh CỦA ĐỈNH, SIÊU XỊN, KHỦNG, DỄ NHƯ ĂN KẸO, CHUẨN KHÔNG CẦN CHỈNH,
-NGON LÀNH, HẾT XẨY, XONG NGAY, DỄ ỢT, GÌ MÀ, ỦA, CHỨ SAO, LUÔN LUÔN
+### 5. VIẾT HOA CƯỜNG ĐIỆU — DÙNG MẠNH TAY
+Đây là vũ khí chính tạo tính hài. Phải có ít nhất 2-3 chỗ CAPS per đoạn:
+TRỜI ƠI | ĐỈNh CỦA ĐỈNH | SIÊU XỊN | KHỦNG | DỄ NHƯ ĂN KẸO | DỄ ỢT
+CHUẨN KHÔNG CẦN CHỈNH | NGON LÀNH | HẾT XẨY | XỊN XÒ | THẦN THÁNH
+GÌ MÀ | ỦA | CHỨ SAO | LUÔN LUÔN | KHÔNG ĐÙA ĐÂU NHA | THẬT SỰ
 
-### 7. PAUSE DRAMATIC — DÙNG NHIỀU HƠN
-... → trước punchline, thông tin bất ngờ, hoặc tạo hồi hộp giả
-— → plot twist, ngắt nhanh kiểu "mà thật ra..."
-Ví dụ: "nghe có vẻ khó... thật ra DỄ NHƯ ĂN KẸO luôn anh ơi!"
+### 6. PAUSE DRAMATIC — TẠO HÀI BẰNG NHỊP
+... → dừng rồi "plot twist" bất ngờ — đây là cú punchline
+— → ngắt nhanh giữa setup và punchline
+Công thức vàng: "[setup bình thường]... [PUNCHLINE CAPS cường điệu]"
+Ví dụ: "nghe có vẻ khó lắm... thật ra DỄ NHƯ ĂN KẸO luôn anh ơi KHÔNG ĐÙA ĐÂU!"
 
-### 8. TỪ ĐỆM NAM BỘ (thêm 1-2 từ mỗi đoạn khi phù hợp)
-Nhóm bất ngờ: "ủa", "ủa mà", "gì mà", "trời"
-Nhóm xác nhận: "vậy đó", "đó nha", "đó anh", "nghen", "nha anh"
-Nhóm thân thiện: "nói thật nha", "thật ra", "kiểu như", "xong là", "vậy là xong"
-Nhóm cường điệu: "luôn luôn", "siêu siêu", "cực kỳ", "không đùa đâu nha"
+### 7. TỪ ĐỆM NAM BỘ — BẮT BUỘC CÓ MỖI ĐOẠN
+Bất ngờ: "ủa", "ủa mà", "gì mà", "trời ơi"
+Xác nhận hóm: "vậy đó", "đó nha", "nghen", "nha anh", "đó anh ơi"
+Thân thiện: "nói thật nha", "thật ra á", "kiểu như", "xong là xong"
+Cường điệu: "luôn luôn", "siêu siêu", "cực kỳ", "không đùa đâu nha"
 
-### 9. CẤU TRÚC
-- Mỗi câu/ý trên một dòng riêng
-- Câu ngắn — nhịp nhanh như hội thoại thật, không kéo dài
+### 8. CẤU TRÚC
+- Mỗi câu/ý trên một dòng riêng — nhịp nhanh
 - Xóa hoàn toàn: kkk, haha, hehe, hihi, :), XD, ^^, :D
 
-### 10. OUTPUT
+### 9. OUTPUT
 - Chỉ trả về kịch bản đã xử lý
 - Không giải thích, không ghi chú, không markdown
 
 ---
 
-## VÍ DỤ
+## VÍ DỤ CHUẨN (học kỹ tone này)
 
 INPUT: còn box 650k không shop ơi
-OUTPUT: [curious] Ủa anh hỏi còn box sáu trăm năm mươi nghìn không ạ?
+OUTPUT: [curious] Ủa anh hỏi còn box sáu trăm năm mươi nghìn không?
+[happy] Còn CHỨ anh — LUÔN LUÔN có sẵn nha!
 
 INPUT: dạ còn a ơi sáng nay e vừa lắp xong chục box kkk
-OUTPUT: [impressed] TRỜI ƠI còn CHỨ anh — sáng nay em vừa lắp xong chục box luôn... SIÊU XỊN không?
+OUTPUT: [impressed] TRỜI ƠI còn chứ anh — sáng nay em vừa lắp xong cả chục box...
+[happy] SIÊU XỊN không, không đùa đâu nha anh!
+
+INPUT: mình k rành kỹ thuật lắm sợ phức tạp
+OUTPUT: [impressed] Ủa GÌ MÀ phức tạp anh ơi — không rành kỹ thuật thì CÀNG TỐT...
+[reassuring] thật ra á... DỄ NHƯ ĂN KẸO luôn, KHÔNG ĐÙA ĐÂU NHA!
 
 INPUT: bên shop có ship cod không
-OUTPUT: [questioning] Ủa bên shop có ship COD không anh — để em xác nhận lại nha?
+OUTPUT: [questioning] Ủa anh hỏi có ship COD không?
+[happy] Có LUÔN LUÔN anh ơi — COD CHUẨN KHÔNG CẦN CHỈNH đó!
 
 INPUT: dạ có nhé a cọc 150k còn lại cod nhận hàng kiểm tra đúng đủ mới thanh toán nhé
-OUTPUT: [warmly] Dạ có LUÔN LUÔN nhé anh — cọc một trăm năm mươi nghìn... còn lại COD thôi.
-[happy] Nhận hàng kiểm tra ưng rồi mới trả — CHUẨN KHÔNG CẦN CHỈNH đó anh!
+OUTPUT: [warmly] Dạ có LUÔN nha anh — cọc một trăm năm mươi nghìn thôi...
+[happy] Còn lại COD, nhận hàng kiểm tra ưng rồi mới trả — THẦN THÁNH chưa anh!
 
-INPUT: hay quá mình k rành kỹ thuật lắm sợ phức tạp
-OUTPUT: [impressed] GÌ MÀ phức tạp — không rành kỹ thuật thì càng tốt...
-[reassuring] thật ra DỄ NHƯ ĂN KẸO luôn anh ơi, không đùa đâu nha!
+INPUT: ship về miền tây được không
+OUTPUT: [impressed] Ủa ĐƯỢC CHỨ anh — miền Tây ship NGON LÀNH luôn, không lo gì hết nha!
 
-INPUT: phí ship bao nhiêu vậy shop
-OUTPUT: [happy] Phí ship... để em báo nha anh — NGON LÀNH lắm đó, đừng lo!"""
+INPUT: mấy ngày nhận được vậy
+OUTPUT: [curious] Anh ở đâu để em báo chính xác nha...
+[reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮM đó anh ơi, không đùa!"""
 
 PROMPTS = {
     "🎯  Nghiêm túc": DEFAULT_PROMPT,
@@ -449,7 +453,8 @@ class Worker(QThread):
                     {"role": "system", "content": self.s.get("enhance_prompt", DEFAULT_PROMPT)},
                     {"role": "user",   "content": self.text},
                 ],
-                "temperature": 0.3,
+                # Funny mode cần temperature cao hơn để model sáng tạo, bớt bảo thủ
+                "temperature": 0.7 if self.s.get("enhance_style_name", "") == "😄  Hài hước" else 0.3,
                 "max_tokens":  2000,
             },
             timeout=30,
@@ -1247,6 +1252,7 @@ class MainWindow(QWidget):
     # ── TTS tab handlers ───────────────────────────────────────────
     def _set_prompt_style(self, name: str):
         self.settings["enhance_prompt"] = PROMPTS[name]
+        self.settings["enhance_style_name"] = name
         save_settings(self.settings)
         self._apply_prompt_btn_styles(name)
 
