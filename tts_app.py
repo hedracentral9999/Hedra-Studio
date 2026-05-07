@@ -169,6 +169,18 @@ PROMPTS = {
     "😄  Hài hước":   DEFAULT_PROMPT_FUNNY,
 }
 
+# ── Template starters cho AI prompt generation ────────────────────
+PROMPT_TEMPLATES = [
+    ("🛍️", "Bán hàng",     "Phong cách bán hàng online vui vẻ, thuyết phục, thân thiện kiểu shop Facebook/Zalo"),
+    ("👔", "Chuyên nghiệp", "Tư vấn chuyên nghiệp, lịch sự, rõ ràng, súc tích — dùng cho dịch vụ hoặc B2B"),
+    ("😊", "Thân thiện",    "Thân thiện miền Nam, gần gũi, ấm áp, không quá hài hước, phù hợp mọi lứa tuổi"),
+    ("📚", "Giáo dục",      "Giải thích dễ hiểu, từng bước rõ ràng, kiên nhẫn, phù hợp dạy học hoặc hướng dẫn"),
+    ("💼", "Doanh nghiệp",  "Phong cách corporate formal, súc tích, trung lập, chuyên nghiệp cao"),
+    ("🎭", "Kể chuyện",     "Kể chuyện cuốn hút, có cảm xúc, tạo không khí, dẫn dắt từng bước"),
+    ("🌟", "Truyền cảm hứng", "Motivational, truyền cảm hứng, mạnh mẽ, tích cực, phù hợp content coaching"),
+    ("🍜", "Ẩm thực",       "Mô tả món ăn hấp dẫn, gợi cảm giác thèm, sinh động, ấm cúng kiểu food vlog"),
+]
+
 # ── Emoji palette cho custom style picker ─────────────────────────
 EMOJI_LIST = [
     "🎯","😄","🚀","💡","🔥","⭐","🎨","📢","💬","🎤","🎧","🎵",
@@ -216,14 +228,17 @@ class EmojiPickerDialog(QDialog):
 
 
 class AddStyleDialog(QDialog):
-    """Dialog thêm / sửa phong cách prompt."""
-    def __init__(self, parent=None, existing: dict = None):
+    """Dialog thêm / sửa phong cách prompt — có AI prompt generator."""
+
+    def __init__(self, parent=None, existing: dict = None, ds_api_key: str = ""):
         super().__init__(parent)
         data = existing or {}
         self.setWindowTitle("Thêm phong cách" if not existing else "Sửa phong cách")
-        self.setFixedSize(480, 400)
-        self._icon = data.get("icon", "🎯")
+        self.setFixedSize(520, 540)
+        self._icon       = data.get("icon", "🎯")
         self._result: dict = {}
+        self._ds_key     = ds_api_key
+        self._gen_worker = None
         self._build(data)
 
     def _build(self, data: dict):
@@ -231,7 +246,7 @@ class AddStyleDialog(QDialog):
         v.setContentsMargins(20, 16, 20, 16)
         v.setSpacing(10)
 
-        # Icon + Name
+        # ── Icon + Name ───────────────────────────────────────────
         top = QHBoxLayout()
         self._icon_btn = QPushButton(self._icon)
         self._icon_btn.setFixedSize(48, 48)
@@ -243,7 +258,6 @@ class AddStyleDialog(QDialog):
         self._icon_btn.clicked.connect(self._pick_icon)
         top.addWidget(self._icon_btn)
         top.addSpacing(10)
-
         name_col = QVBoxLayout()
         name_col.setSpacing(4)
         name_lbl = QLabel("Tên phong cách")
@@ -251,13 +265,13 @@ class AddStyleDialog(QDialog):
             "font-size:11px;color:#6e6e73;background:transparent;border:none;"
         )
         self._name_edit = QLineEdit(data.get("name", ""))
-        self._name_edit.setPlaceholderText("Vd: Chuyên nghiệp, Thân thiện...")
+        self._name_edit.setPlaceholderText("Vd: Bán hàng, Tư vấn, Kể chuyện...")
         name_col.addWidget(name_lbl)
         name_col.addWidget(self._name_edit)
         top.addLayout(name_col, 1)
         v.addLayout(top)
 
-        # Creative level
+        # ── Creative level ────────────────────────────────────────
         cr_row = QHBoxLayout()
         cr_lbl = QLabel("Mức sáng tạo")
         cr_lbl.setStyleSheet(
@@ -272,18 +286,99 @@ class AddStyleDialog(QDialog):
         cr_row.addWidget(self._creative)
         v.addLayout(cr_row)
 
-        # Prompt textarea
-        p_lbl = QLabel("System prompt")
+        # ── AI Prompt Generator section ───────────────────────────
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#e5e5ea;")
+        v.addWidget(sep)
+
+        ai_lbl = QLabel("✨  Tạo prompt với AI")
+        ai_lbl.setStyleSheet(
+            "font-size:12px;font-weight:600;color:#1d1d1f;"
+            "background:transparent;border:none;"
+        )
+        v.addWidget(ai_lbl)
+
+        # Template starters
+        tmpl_scroll = QScrollArea()
+        tmpl_scroll.setFixedHeight(42)
+        tmpl_scroll.setWidgetResizable(True)
+        tmpl_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tmpl_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tmpl_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tmpl_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+
+        tmpl_inner = QWidget()
+        tmpl_inner.setStyleSheet("QWidget{background:transparent;border:none;}")
+        tmpl_h = QHBoxLayout(tmpl_inner)
+        tmpl_h.setContentsMargins(0, 0, 0, 0)
+        tmpl_h.setSpacing(6)
+
+        for icon, label, desc in PROMPT_TEMPLATES:
+            chip = QPushButton(f"{icon} {label}")
+            chip.setFixedHeight(28)
+            chip.setStyleSheet(
+                "QPushButton{font-size:11px;background:#f0f0f5;"
+                "border:1px solid #d2d2d7;border-radius:14px;padding:0 10px;"
+                "color:#1d1d1f;}"
+                "QPushButton:hover{background:#e5e5ea;border-color:#0071e3;"
+                "color:#0071e3;}"
+            )
+            chip.clicked.connect(lambda _, d=desc: self._fill_description(d))
+            tmpl_h.addWidget(chip)
+        tmpl_h.addStretch()
+        tmpl_scroll.setWidget(tmpl_inner)
+        v.addWidget(tmpl_scroll)
+
+        # Description input + AI button
+        desc_row = QHBoxLayout()
+        desc_row.setSpacing(8)
+        self._desc_edit = QLineEdit(data.get("description", ""))
+        self._desc_edit.setPlaceholderText(
+            "Mô tả phong cách bạn muốn... (vd: Bán hàng vui vẻ kiểu miền Nam)"
+        )
+        self._desc_edit.returnPressed.connect(self._generate_prompt)
+        desc_row.addWidget(self._desc_edit, 1)
+
+        self._btn_gen = QPushButton("✨ Tạo")
+        self._btn_gen.setFixedHeight(32)
+        self._btn_gen.setFixedWidth(72)
+        self._btn_gen.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:8px;font-size:12px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:disabled{background:#a8d0fb;}"
+        )
+        self._btn_gen.clicked.connect(self._generate_prompt)
+        desc_row.addWidget(self._btn_gen)
+        v.addLayout(desc_row)
+
+        # AI status label
+        self._ai_status = QLabel("")
+        self._ai_status.setStyleSheet(
+            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+        )
+        v.addWidget(self._ai_status)
+
+        # ── Prompt textarea ───────────────────────────────────────
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("color:#e5e5ea;")
+        v.addWidget(sep2)
+
+        p_lbl = QLabel("System prompt  (có thể sửa tự do)")
         p_lbl.setStyleSheet(
             "font-size:11px;color:#6e6e73;background:transparent;border:none;"
         )
         v.addWidget(p_lbl)
         self._prompt = QTextEdit()
         self._prompt.setPlainText(data.get("prompt", ""))
-        self._prompt.setPlaceholderText("Nhập system prompt cho phong cách này...")
+        self._prompt.setPlaceholderText(
+            "Nhập thủ công hoặc nhấn ✨ Tạo để AI viết cho bạn..."
+        )
         v.addWidget(self._prompt)
 
-        # Buttons
+        # ── Footer buttons ────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_cancel = QPushButton("Hủy")
@@ -302,6 +397,47 @@ class AddStyleDialog(QDialog):
         btn_row.addWidget(btn_save)
         v.addLayout(btn_row)
 
+    def _fill_description(self, desc: str):
+        """Khi click template chip → điền mô tả."""
+        self._desc_edit.setText(desc)
+        self._desc_edit.setFocus()
+
+    def _generate_prompt(self):
+        desc = self._desc_edit.text().strip()
+        if not desc:
+            self._ai_status.setText("⚠️ Nhập mô tả trước nhé!")
+            return
+        if not self._ds_key:
+            self._ai_status.setText("⚠️ Chưa có DeepSeek API key — vào Settings → API Keys")
+            return
+
+        self._btn_gen.setEnabled(False)
+        self._btn_gen.setText("...")
+        self._ai_status.setText("✨ AI đang viết prompt...")
+        self._prompt.setPlaceholderText("Đang tạo...")
+
+        self._gen_worker = PromptGeneratorWorker(desc, self._ds_key)
+        self._gen_worker.done.connect(self._on_gen_done)
+        self._gen_worker.error.connect(self._on_gen_error)
+        self._gen_worker.start()
+
+    def _on_gen_done(self, prompt: str):
+        self._prompt.setPlainText(prompt)
+        self._ai_status.setText("✅ Xong! Bạn có thể chỉnh sửa thêm.")
+        self._btn_gen.setEnabled(True)
+        self._btn_gen.setText("✨ Tạo")
+        # Auto-fill tên nếu chưa có
+        if not self._name_edit.text().strip():
+            desc = self._desc_edit.text().strip()
+            # Lấy 2 từ đầu làm tên ngắn
+            words = desc.split()
+            self._name_edit.setText(" ".join(words[:2]) if words else desc[:20])
+
+    def _on_gen_error(self, err: str):
+        self._ai_status.setText(f"❌ {err[:80]}")
+        self._btn_gen.setEnabled(True)
+        self._btn_gen.setText("✨ Tạo")
+
     def _pick_icon(self):
         dlg = EmojiPickerDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.chosen:
@@ -315,13 +451,15 @@ class AddStyleDialog(QDialog):
             QMessageBox.warning(self, "Thiếu tên", "Nhập tên phong cách nhé!")
             return
         if not prompt:
-            QMessageBox.warning(self, "Thiếu prompt", "Nhập prompt cho phong cách nhé!")
+            QMessageBox.warning(self, "Thiếu prompt",
+                                "Nhập prompt hoặc nhấn ✨ Tạo để AI viết nhé!")
             return
         self._result = {
-            "icon":     self._icon,
-            "name":     name,
-            "prompt":   prompt,
-            "creative": self._creative.currentIndex() == 1,
+            "icon":        self._icon,
+            "name":        name,
+            "prompt":      prompt,
+            "creative":    self._creative.currentIndex() == 1,
+            "description": self._desc_edit.text().strip(),
         }
         self.accept()
 
@@ -351,6 +489,63 @@ class VoiceFetcher(QThread):
                 self.done.emit(voices)
             else:
                 self.error.emit(f"HTTP {r.status_code}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class PromptGeneratorWorker(QThread):
+    """Dùng DeepSeek để tạo system prompt từ mô tả ngắn của user."""
+    done  = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    _META_PROMPT = """Bạn là chuyên gia viết system prompt cho TTS với ElevenLabs v3.
+
+Nhiệm vụ: Dựa trên mô tả ngắn, tạo system prompt hoàn chỉnh để AI enhance kịch bản TTS.
+
+System prompt phải có đủ các phần:
+1. Mô tả vai trò + phong cách + tông giọng phù hợp mô tả
+2. Quy tắc xử lý viết tắt tiếng Việt (a→anh, e→em, k→không, dc→được...)
+3. Quy tắc số & tiền tệ (650k→sáu trăm năm mươi nghìn, 1tr→một triệu...)
+4. Hướng dẫn dùng ElevenLabs v3 audio tags phù hợp với phong cách
+   Tags khả dụng: [professional] [assertive] [thoughtful] [impressed]
+   [curious] [warmly] [happy] [questioning] [reassuring]
+   → Chỉ dùng tags phù hợp với phong cách được mô tả
+5. Quy tắc nhấn mạnh bằng CAPS (tối thiểu 2-3 từ per đoạn nếu phong cách cần)
+6. Quy tắc pause và nhịp (... và —)
+7. Quy tắc output: chỉ trả về kịch bản đã xử lý, không giải thích
+
+Trả về CHỈ nội dung system prompt, không có markdown ngoài, không có tiêu đề."""
+
+    def __init__(self, description: str, api_key: str):
+        super().__init__()
+        self.description = description
+        self.api_key     = api_key
+
+    def run(self):
+        try:
+            res = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": self._META_PROMPT},
+                        {"role": "user",   "content": f"Tạo prompt cho phong cách: {self.description}"},
+                    ],
+                    "temperature": 0.6,
+                    "max_tokens":  1800,
+                },
+                timeout=30,
+            )
+            if res.status_code == 200:
+                self.done.emit(
+                    res.json()["choices"][0]["message"]["content"].strip()
+                )
+            else:
+                self.error.emit(f"DeepSeek {res.status_code}: {res.text[:200]}")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -1134,7 +1329,7 @@ class SettingsDialog(QDialog):
             self._custom_styles_glay.addWidget(row_w)
 
     def _add_custom_style(self):
-        dlg = AddStyleDialog(self)
+        dlg = AddStyleDialog(self, ds_api_key=self.settings.get("ds_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
             styles = self.settings.setdefault("custom_styles", [])
@@ -1145,7 +1340,8 @@ class SettingsDialog(QDialog):
         styles = self.settings.get("custom_styles", [])
         if idx >= len(styles):
             return
-        dlg = AddStyleDialog(self, existing=styles[idx])
+        dlg = AddStyleDialog(self, existing=styles[idx],
+                             ds_api_key=self.settings.get("ds_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             styles[idx] = dlg.get_result()
             self._refresh_custom_styles()
@@ -2197,7 +2393,7 @@ class MainWindow(QWidget):
 
     def _quick_add_style(self):
         """Mở AddStyleDialog nhanh từ main UI."""
-        dlg = AddStyleDialog(self)
+        dlg = AddStyleDialog(self, ds_api_key=self.settings.get("ds_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
             self.settings.setdefault("custom_styles", []).append(result)
