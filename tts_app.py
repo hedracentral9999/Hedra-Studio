@@ -364,14 +364,16 @@ class UpdateChecker(QThread):
             latest = data["tag_name"].lstrip("v")
             if not self._is_newer(latest, VERSION):
                 return
-            url = data["html_url"]
+            html_url = data["html_url"]
+            download_url = None
             for asset in data.get("assets", []):
                 name = asset["name"].lower()
                 if sys.platform == "darwin" and name.endswith(".dmg"):
-                    url = asset["browser_download_url"]; break
+                    download_url = asset["browser_download_url"]; break
                 elif sys.platform == "win32" and name.endswith(".exe"):
-                    url = asset["browser_download_url"]; break
-            self.update_found.emit(latest, url)
+                    download_url = asset["browser_download_url"]; break
+            # Emit: download_url nếu có file trực tiếp, ngược lại emit html_url để mở browser
+            self.update_found.emit(latest, download_url or html_url)
         except Exception:
             pass
 
@@ -1282,9 +1284,15 @@ class MainWindow(QWidget):
         self.update_banner.setVisible(True)
 
     def _do_update(self):
+        url = self._update_url
+        # Nếu URL là trang HTML GitHub (không phải file trực tiếp) → mở browser
+        if url and not (url.endswith(".dmg") or url.endswith(".exe")):
+            import webbrowser
+            webbrowser.open(url)
+            return
         self._btn_dl.setEnabled(False)
         self._btn_dl.setText("Đang tải... 0%")
-        self._dl = UpdateDownloader(self._update_url)
+        self._dl = UpdateDownloader(url)
         self._dl.progress.connect(self._on_dl_progress)
         self._dl.done.connect(self._on_dl_done)
         self._dl.error.connect(self._on_dl_error)
