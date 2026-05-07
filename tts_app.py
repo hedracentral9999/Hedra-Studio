@@ -289,6 +289,7 @@ class AddStyleDialog(QDialog):
             "QPushButton{font-size:26px;border:1px solid #d2d2d7;"
             "border-radius:10px;background:#f5f5f7;}"
             "QPushButton:hover{background:#e5e5ea;}"
+            "QPushButton:pressed{background:#d2d2d7;}"
         )
         self._icon_btn.clicked.connect(self._pick_icon)
         top.addWidget(self._icon_btn)
@@ -377,7 +378,7 @@ class AddStyleDialog(QDialog):
             "QFrame{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;}"
         )
         af = QHBoxLayout(ai_frame)
-        af.setContentsMargins(10, 7, 10, 7)
+        af.setContentsMargins(12, 8, 12, 8)
         af.setSpacing(8)
         self._brief_edit = QLineEdit()
         self._brief_edit.setPlaceholderText(
@@ -394,8 +395,9 @@ class AddStyleDialog(QDialog):
         self._btn_suggest.setFixedWidth(86)
         self._btn_suggest.setStyleSheet(
             "QPushButton{background:#0071e3;color:white;border:none;"
-            "border-radius:6px;font-size:11px;font-weight:600;}"
+            "border-radius:6px;font-size:12px;font-weight:600;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
             "QPushButton:disabled{background:#a8d0fb;}"
         )
         self._btn_suggest.clicked.connect(self._ai_suggest_wiz)
@@ -425,7 +427,7 @@ class AddStyleDialog(QDialog):
                 "QFrame{background:#ffffff;border:1px solid #e5e5ea;border-radius:10px;}"
             )
             qf = QVBoxLayout(q_frame)
-            qf.setContentsMargins(14, 10, 14, 10)
+            qf.setContentsMargins(12, 8, 12, 8)
             qf.setSpacing(8)
 
             q_lbl = QLabel(label)
@@ -442,7 +444,7 @@ class AddStyleDialog(QDialog):
                 btns: list[QPushButton] = []
                 for chip_text in chips:
                     cb = QPushButton(chip_text)
-                    cb.setFixedHeight(26)
+                    cb.setFixedHeight(28)
                     cb.setCheckable(True)
                     cb.setStyleSheet(self._wiz_chip_style(False))
                     cb.clicked.connect(
@@ -480,6 +482,7 @@ class AddStyleDialog(QDialog):
             "QPushButton{background:#0071e3;color:white;border:none;"
             "border-radius:8px;padding:0 20px;font-size:13px;font-weight:600;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
             "QPushButton:disabled{background:#a8d0fb;}"
         )
         self._btn_gen.clicked.connect(self._generate_from_wizard)
@@ -525,6 +528,7 @@ class AddStyleDialog(QDialog):
             "QPushButton{background:#0071e3;color:white;border:none;"
             "border-radius:6px;padding:0 20px;font-size:13px;font-weight:600;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
         )
         btn_save.clicked.connect(self._save)
         btn_row.addWidget(btn_cancel)
@@ -535,13 +539,16 @@ class AddStyleDialog(QDialog):
     def _wiz_chip_style(self, active: bool) -> str:
         if active:
             return (
-                "QPushButton{font-size:11px;background:#0071e3;color:white;"
-                "border:none;border-radius:13px;padding:0 10px;}"
+                "QPushButton{font-size:12px;background:#0071e3;color:white;"
+                "border:none;border-radius:12px;padding:0 10px;}"
+                "QPushButton:hover{background:#0077ed;}"
+                "QPushButton:pressed{background:#005bb5;}"
             )
         return (
-            "QPushButton{font-size:11px;background:#f0f0f5;color:#1d1d1f;"
-            "border:1px solid #d2d2d7;border-radius:13px;padding:0 10px;}"
+            "QPushButton{font-size:12px;background:#f0f0f5;color:#1d1d1f;"
+            "border:1px solid #d2d2d7;border-radius:12px;padding:0 10px;}"
             "QPushButton:hover{background:#e5e5ea;}"
+            "QPushButton:pressed{background:#d2d2d7;}"
         )
 
     def _toggle_wiz_chip(self, key: str, chip: str, multi: bool):
@@ -1520,7 +1527,7 @@ class PromptWizardDialog(QDialog):
                 "QFrame{background:#ffffff;border:1px solid #e5e5ea;border-radius:10px;}"
             )
             qf = QVBoxLayout(q_frame)
-            qf.setContentsMargins(14, 10, 14, 10)
+            qf.setContentsMargins(12, 8, 12, 8)
             qf.setSpacing(8)
 
             q_lbl = QLabel(label)
@@ -1537,7 +1544,7 @@ class PromptWizardDialog(QDialog):
                 btns: list[QPushButton] = []
                 for chip in chips:
                     cb = QPushButton(chip)
-                    cb.setFixedHeight(26)
+                    cb.setFixedHeight(28)
                     cb.setCheckable(True)
                     cb.setStyleSheet(self._chip_style(False))
                     cb.clicked.connect(
@@ -1596,13 +1603,16 @@ class PromptWizardDialog(QDialog):
     def _chip_style(self, active: bool) -> str:
         if active:
             return (
-                "QPushButton{font-size:11px;background:#0071e3;color:white;"
-                "border:none;border-radius:13px;padding:0 10px;}"
+                "QPushButton{font-size:12px;background:#0071e3;color:white;"
+                "border:none;border-radius:12px;padding:0 10px;}"
+                "QPushButton:hover{background:#0077ed;}"
+                "QPushButton:pressed{background:#005bb5;}"
             )
         return (
-            "QPushButton{font-size:11px;background:#f0f0f5;color:#1d1d1f;"
-            "border:1px solid #d2d2d7;border-radius:13px;padding:0 10px;}"
+            "QPushButton{font-size:12px;background:#f0f0f5;color:#1d1d1f;"
+            "border:1px solid #d2d2d7;border-radius:12px;padding:0 10px;}"
             "QPushButton:hover{background:#e5e5ea;}"
+            "QPushButton:pressed{background:#d2d2d7;}"
         )
 
     def _toggle_chip(self, key: str, chip: str, multi: bool):
@@ -2094,11 +2104,13 @@ class VoiceLibraryDialog(QDialog):
             return ("QPushButton{background:#e8f0fd;color:#0071e3;"
                     "border:1.5px solid #0071e3;border-radius:14px;"
                     "padding:0 12px;font-size:12px;font-weight:600;}"
-                    "QPushButton:hover{background:#dce9fd;}")
+                    "QPushButton:hover{background:#dce9fd;}"
+                    "QPushButton:pressed{background:#c8defa;}")
         return ("QPushButton{background:#f5f5f7;color:#1d1d1f;"
                 "border:1.5px solid #d2d2d7;border-radius:14px;"
                 "padding:0 12px;font-size:12px;}"
-                "QPushButton:hover{background:#e5e5ea;}")
+                "QPushButton:hover{background:#e5e5ea;}"
+                "QPushButton:pressed{background:#d2d2d7;}")
 
     def _set_lang(self, lang: str):
         self._sel_lang = lang
@@ -2162,7 +2174,7 @@ class VoiceLibraryDialog(QDialog):
             + "}"
         )
         h = QHBoxLayout(row)
-        h.setContentsMargins(14, 10, 12, 10)
+        h.setContentsMargins(12, 8, 12, 8)
         h.setSpacing(10)
 
         # Name + meta
@@ -2250,7 +2262,8 @@ class VoiceLibraryDialog(QDialog):
                     "QPushButton:hover{background:#dce9fd;}")
         return ("QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
                 "border-radius:6px;font-size:12px;color:#1d1d1f;}"
-                "QPushButton:hover{background:#e5e5ea;}")
+                "QPushButton:hover{background:#e5e5ea;}"
+                "QPushButton:pressed{background:#d2d2d7;}")
 
     def _safe_btn(self, btn: QPushButton | None) -> QPushButton | None:
         """Trả về btn nếu widget còn sống, None nếu đã bị delete."""
@@ -2511,11 +2524,13 @@ class SettingsDialog(QDialog):
                 return ("QPushButton{background:#ffffff;color:#0071e3;"
                         "border:1px solid #d2d2d7;font-size:13px;font-weight:600;"
                         "padding:7px 20px;}"
-                        "QPushButton:hover{background:#f0f6ff;}")
+                        "QPushButton:hover{background:#f0f6ff;}"
+                        "QPushButton:pressed{background:#e0edff;}")
             return ("QPushButton{background:#f5f5f7;color:#6e6e73;"
                     "border:1px solid #d2d2d7;font-size:13px;font-weight:400;"
                     "padding:7px 20px;}"
-                    "QPushButton:hover{background:#ebebf0;color:#1d1d1f;}")
+                    "QPushButton:hover{background:#ebebf0;color:#1d1d1f;}"
+                    "QPushButton:pressed{background:#d8d8de;color:#1d1d1f;}")
 
         btn_tab_chat = QPushButton("💬  Chat → Kịch bản")
         btn_tab_chat.setFixedHeight(36)
@@ -2596,14 +2611,15 @@ class SettingsDialog(QDialog):
         gp_card_v.addWidget(gp_div)
 
         gp_foot = QHBoxLayout()
-        gp_foot.setContentsMargins(14, 8, 14, 10)
+        gp_foot.setContentsMargins(12, 8, 12, 8)
         gp_foot.setSpacing(8)
         btn_cancel_gp = QPushButton("↺ Về mặc định")
         btn_cancel_gp.setFixedHeight(30)
         btn_cancel_gp.setStyleSheet(
             "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
-            "border:1px solid #d2d2d7;border-radius:7px;padding:0 12px;}"
+            "border:1px solid #d2d2d7;border-radius:8px;padding:0 12px;}"
             "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
+            "QPushButton:pressed{background:#e5e5ea;}"
         )
         gp_foot.addWidget(btn_cancel_gp)
         gp_foot.addStretch()
@@ -2611,8 +2627,9 @@ class SettingsDialog(QDialog):
         btn_edit_gp.setFixedHeight(30)
         btn_edit_gp.setStyleSheet(
             "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-            "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+            "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
         )
         gp_foot.addWidget(btn_edit_gp)
         gp_card_v.addLayout(gp_foot)
@@ -2637,8 +2654,9 @@ class SettingsDialog(QDialog):
                 btn_edit_gp.setText("✅  Lưu")
                 btn_edit_gp.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#15803d;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#15803d;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#16a34a;}"
+                    "QPushButton:pressed{background:#0f6b2f;}"
                 )
                 btn_cancel_gp.setText("✕  Hủy")
                 self.gemini_prompt.setFocus()
@@ -2656,8 +2674,9 @@ class SettingsDialog(QDialog):
                 btn_edit_gp.setText("✏️  Chỉnh sửa")
                 btn_edit_gp.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#0077ed;}"
+                    "QPushButton:pressed{background:#005bb5;}"
                 )
                 btn_cancel_gp.setText("↺ Về mặc định")
 
@@ -2676,8 +2695,9 @@ class SettingsDialog(QDialog):
                 btn_edit_gp.setText("✏️  Chỉnh sửa")
                 btn_edit_gp.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#0077ed;}"
+                    "QPushButton:pressed{background:#005bb5;}"
                 )
                 btn_cancel_gp.setText("↺ Về mặc định")
             else:
@@ -2714,7 +2734,7 @@ class SettingsDialog(QDialog):
             "border-bottom-left-radius:10px;}"
         )
         ep_tab_v = QVBoxLayout(ep_tab_col)
-        ep_tab_v.setContentsMargins(6, 10, 6, 10)
+        ep_tab_v.setContentsMargins(8, 8, 8, 8)
         ep_tab_v.setSpacing(4)
 
         self._ep_style_tabs: dict[str, QPushButton] = {}
@@ -2728,11 +2748,11 @@ class SettingsDialog(QDialog):
         def _ep_tab_style(active: bool) -> str:
             if active:
                 return ("QPushButton{background:#ffffff;color:#0071e3;"
-                        "border:1px solid #d2d2d7;border-radius:7px;"
+                        "border:1px solid #d2d2d7;border-radius:8px;"
                         "font-size:12px;font-weight:600;padding:7px 8px;"
                         "text-align:left;}")
             return ("QPushButton{background:transparent;color:#1d1d1f;"
-                    "border:none;border-radius:7px;"
+                    "border:none;border-radius:8px;"
                     "font-size:12px;padding:7px 8px;text-align:left;}"
                     "QPushButton:hover{background:#ebebf0;}")
 
@@ -2785,14 +2805,15 @@ class SettingsDialog(QDialog):
         ep_right.addWidget(ep_div2)
 
         ep_foot = QHBoxLayout()
-        ep_foot.setContentsMargins(14, 8, 14, 10)
+        ep_foot.setContentsMargins(12, 8, 12, 8)
         ep_foot.setSpacing(8)
         btn_cancel_ep = QPushButton("↺ Về mặc định")
         btn_cancel_ep.setFixedHeight(30)
         btn_cancel_ep.setStyleSheet(
             "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
-            "border:1px solid #d2d2d7;border-radius:7px;padding:0 12px;}"
+            "border:1px solid #d2d2d7;border-radius:8px;padding:0 12px;}"
             "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
+            "QPushButton:pressed{background:#e5e5ea;}"
         )
         ep_foot.addWidget(btn_cancel_ep)
         ep_foot.addStretch()
@@ -2800,8 +2821,9 @@ class SettingsDialog(QDialog):
         btn_edit_ep.setFixedHeight(30)
         btn_edit_ep.setStyleSheet(
             "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-            "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+            "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
         )
         ep_foot.addWidget(btn_edit_ep)
         ep_right.addLayout(ep_foot)
@@ -2825,8 +2847,9 @@ class SettingsDialog(QDialog):
                 btn_edit_ep.setText("✅  Lưu")
                 btn_edit_ep.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#15803d;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#15803d;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#16a34a;}"
+                    "QPushButton:pressed{background:#0f6b2f;}"
                 )
                 btn_cancel_ep.setText("✕  Hủy")
                 self.prompt.setFocus()
@@ -2843,8 +2866,9 @@ class SettingsDialog(QDialog):
                 btn_edit_ep.setText("✏️  Chỉnh sửa")
                 btn_edit_ep.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#0077ed;}"
+                    "QPushButton:pressed{background:#005bb5;}"
                 )
                 btn_cancel_ep.setText("↺ Về mặc định")
 
@@ -2862,8 +2886,9 @@ class SettingsDialog(QDialog):
                 btn_edit_ep.setText("✏️  Chỉnh sửa")
                 btn_edit_ep.setStyleSheet(
                     "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "background:#0071e3;border:none;border-radius:8px;padding:0 16px;}"
                     "QPushButton:hover{background:#0077ed;}"
+                    "QPushButton:pressed{background:#005bb5;}"
                 )
                 btn_cancel_ep.setText("↺ Về mặc định")
             else:
@@ -2924,11 +2949,12 @@ class SettingsDialog(QDialog):
         custom_hdr.addWidget(self._section_label("Phong cách tuỳ chỉnh"))
         custom_hdr.addStretch()
         btn_add_style = QPushButton("+ Thêm")
-        btn_add_style.setFixedHeight(22)
+        btn_add_style.setFixedHeight(28)
         btn_add_style.setStyleSheet(
-            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
             "border:none;padding:0 4px;}"
             "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+            "QPushButton:pressed{color:#005bb5;}"
         )
         btn_add_style.clicked.connect(self._add_custom_style)
         custom_hdr.addWidget(btn_add_style)
@@ -2996,6 +3022,7 @@ class SettingsDialog(QDialog):
             btn_edit.setStyleSheet(
                 "QPushButton{background:transparent;border:none;font-size:14px;}"
                 "QPushButton:hover{background:#f0f0f5;border-radius:6px;}"
+                "QPushButton:pressed{background:#e5e5ea;border-radius:6px;}"
             )
             btn_edit.clicked.connect(lambda _, idx=i: self._edit_custom_style(idx))
 
@@ -3005,6 +3032,7 @@ class SettingsDialog(QDialog):
             btn_del.setStyleSheet(
                 "QPushButton{background:transparent;border:none;font-size:14px;}"
                 "QPushButton:hover{background:#fee2e2;border-radius:6px;}"
+                "QPushButton:pressed{background:#fecaca;border-radius:6px;}"
             )
             btn_del.clicked.connect(lambda _, idx=i: self._delete_custom_style(idx))
 
@@ -3122,11 +3150,12 @@ class SettingsDialog(QDialog):
         lib_hdr.addWidget(self._section_label("Thư viện ElevenLabs"))
         lib_hdr.addStretch()
         btn_browse = QPushButton("🌐  Thêm từ thư viện")
-        btn_browse.setFixedHeight(24)
+        btn_browse.setFixedHeight(28)
         btn_browse.setStyleSheet(
-            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
             "border:none;padding:0 4px;}"
             "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+            "QPushButton:pressed{color:#005bb5;}"
         )
         btn_browse.clicked.connect(self._open_voice_library)
         lib_hdr.addWidget(btn_browse)
@@ -3173,11 +3202,12 @@ class SettingsDialog(QDialog):
         custom_hdr.addWidget(self._section_label("Giọng tuỳ chỉnh"))
         custom_hdr.addStretch()
         btn_add_v = QPushButton("+ Thêm")
-        btn_add_v.setFixedHeight(22)
+        btn_add_v.setFixedHeight(28)
         btn_add_v.setStyleSheet(
-            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
             "border:none;padding:0 4px;}"
             "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+            "QPushButton:pressed{color:#005bb5;}"
         )
         btn_add_v.clicked.connect(self._add_custom_voice)
         custom_hdr.addWidget(btn_add_v)
@@ -3289,7 +3319,7 @@ class SettingsDialog(QDialog):
         all_langs = [("all", "Tất cả")] + [(l, LANG_NAMES.get(l, l.upper())) for l in langs]
         for code, label in all_langs:
             btn = QPushButton(label)
-            btn.setFixedHeight(26)
+            btn.setFixedHeight(28)
             btn.setCheckable(True)
             btn.setChecked(code == self._active_lang_filter)
             btn.setStyleSheet(self._lang_chip_style(code == self._active_lang_filter))
@@ -3301,13 +3331,15 @@ class SettingsDialog(QDialog):
     def _lang_chip_style(self, active: bool) -> str:
         if active:
             return ("QPushButton{background:#e8f0fd;color:#0071e3;"
-                    "border:1.5px solid #0071e3;border-radius:13px;"
+                    "border:1.5px solid #0071e3;border-radius:12px;"
                     "padding:0 12px;font-size:12px;font-weight:600;}"
-                    "QPushButton:hover{background:#dce9fd;}")
+                    "QPushButton:hover{background:#dce9fd;}"
+                    "QPushButton:pressed{background:#c8defa;}")
         return ("QPushButton{background:#f5f5f7;color:#1d1d1f;"
-                "border:1.5px solid #d2d2d7;border-radius:13px;"
+                "border:1.5px solid #d2d2d7;border-radius:12px;"
                 "padding:0 12px;font-size:12px;}"
-                "QPushButton:hover{background:#e5e5ea;}")
+                "QPushButton:hover{background:#e5e5ea;}"
+                "QPushButton:pressed{background:#d2d2d7;}")
 
     def _set_lang_filter(self, lang: str):
         self._active_lang_filter = lang
@@ -3341,7 +3373,7 @@ class SettingsDialog(QDialog):
             + "}"
         )
         rh = QHBoxLayout(row_w)
-        rh.setContentsMargins(16, 10, 12, 10)
+        rh.setContentsMargins(16, 8, 12, 8)
         rh.setSpacing(10)
 
         # Checkmark (radio-style)
@@ -3380,6 +3412,7 @@ class SettingsDialog(QDialog):
                 "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
                 "border-radius:6px;font-size:12px;color:#1d1d1f;padding:0 8px;}"
                 "QPushButton:hover{background:#e8f0fd;border-color:#0071e3;color:#0071e3;}"
+                "QPushButton:pressed{background:#dce9fd;}"
             )
             btn_prev.clicked.connect(
                 lambda _, u=preview_url, b=btn_prev: self._toggle_voice_preview(u, b)
@@ -3394,6 +3427,7 @@ class SettingsDialog(QDialog):
             btn_del.setStyleSheet(
                 "QPushButton{background:transparent;border:none;font-size:14px;}"
                 "QPushButton:hover{background:#fee2e2;border-radius:6px;}"
+                "QPushButton:pressed{background:#fecaca;border-radius:6px;}"
             )
             btn_del.clicked.connect(lambda _, v_id=vid: self._delete_custom_voice(v_id))
             rh.addWidget(btn_del)
@@ -3410,6 +3444,7 @@ class SettingsDialog(QDialog):
             "QPushButton{background:transparent;border:2px solid #c7c7cc;"
             "border-radius:10px;}"
             "QPushButton:hover{border-color:#0071e3;}"
+            "QPushButton:pressed{border-color:#005bb5;}"
         )
 
     def _select_voice(self, voice_id: str, voice_name: str):
@@ -3711,6 +3746,7 @@ class SettingsDialog(QDialog):
                 "margin:0 8px;padding:0 12px;font-size:13px;"
                 f"color:{self._SB_TEXT};background:transparent;}}"
                 "QPushButton:hover{background:rgba(0,0,0,0.06);}"
+                "QPushButton:pressed{background:rgba(0,0,0,0.1);}"
                 f"QPushButton:checked{{background:{self._SB_ACTIVE};"
                 "color:#0071e3;font-weight:600;}}"
             )
@@ -3781,6 +3817,7 @@ class SettingsDialog(QDialog):
             "QPushButton{background:#0071e3;color:white;border:none;"
             "border-radius:6px;padding:0 20px;font-size:13px;font-weight:600;}"
             "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
         )
         btn_save.clicked.connect(self._save)
         fl.addWidget(btn_cancel)
@@ -4091,7 +4128,7 @@ class MainWindow(QWidget):
         badge = QLabel("NEW")
         badge.setStyleSheet(
             f"background:{ACCENT};color:white;border-radius:4px;"
-            f"padding:1px 7px;font-size:10px;font-weight:bold;"
+            f"padding:1px 7px;font-size:11px;font-weight:bold;"
         )
         badge.setFixedHeight(18)
         self._banner_text = QLabel()
@@ -4099,10 +4136,10 @@ class MainWindow(QWidget):
             "color:#004499;font-size:12px;background:transparent;border:none;"
         )
         self._btn_dl = QPushButton("Cập nhật ngay")
-        self._btn_dl.setFixedHeight(26)
+        self._btn_dl.setFixedHeight(28)
         self._btn_dl.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:13px;padding:3px 14px;font-size:12px;font-weight:600;}}"
+            f"border-radius:8px;padding:0 14px;font-size:12px;font-weight:600;}}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
             f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
         )
@@ -4167,12 +4204,12 @@ class MainWindow(QWidget):
 
         # — Row: Phong cách
         seg_frame = QFrame()
-        seg_frame.setFixedHeight(30)
+        seg_frame.setFixedHeight(36)
         seg_frame.setStyleSheet(
-            f"QFrame{{background:{SEG_BG};border-radius:9px;border:none;}}"
+            f"QFrame{{background:{SEG_BG};border-radius:8px;border:none;}}"
         )
         seg_layout = QHBoxLayout(seg_frame)
-        seg_layout.setContentsMargins(3, 3, 3, 3)
+        seg_layout.setContentsMargins(4, 4, 4, 4)
         seg_layout.setSpacing(2)
 
         self._prompt_btns: dict[str, QPushButton] = {}
@@ -4215,11 +4252,12 @@ class MainWindow(QWidget):
             f"color:{TEXT};font-size:13px;background:transparent;border:none;"
         )
         btn_change_voice = QPushButton("Đổi giọng →")
-        btn_change_voice.setFixedHeight(26)
+        btn_change_voice.setFixedHeight(28)
         btn_change_voice.setStyleSheet(
             f"QPushButton{{font-size:12px;color:{ACCENT};background:transparent;"
             "border:none;padding:0 4px;}"
             "QPushButton:hover{text-decoration:underline;}"
+            "QPushButton:pressed{color:#005bb5;}"
         )
         btn_change_voice.clicked.connect(self._open_voices_settings)
         vw.addWidget(self._voice_name_lbl)
@@ -4303,6 +4341,7 @@ class MainWindow(QWidget):
             f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
             f"background:{SURFACE};font-size:14px;}}"
             "QPushButton:hover{background:#ebebf0;}"
+            "QPushButton:pressed{background:#d8d8de;}"
         )
         status_row.addWidget(self._btn_open_folder)
         layout.addLayout(status_row)
@@ -4366,12 +4405,13 @@ class MainWindow(QWidget):
             f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
         )
         btn_clear_imgs = QPushButton("Xóa tất cả")
-        btn_clear_imgs.setFixedHeight(24)
+        btn_clear_imgs.setFixedHeight(28)
         btn_clear_imgs.setStyleSheet(
-            f"QPushButton{{border:1px solid {BORDER};border-radius:5px;"
+            f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
             f"padding:2px 10px;background:{SURFACE};color:{TEXT_MUTE};"
             "font-size:11px;}"
             "QPushButton:hover{background:#ebebf0;}"
+            "QPushButton:pressed{background:#d8d8de;}"
         )
         btn_clear_imgs.clicked.connect(self._clear_images)
         count_row.addWidget(self.img_count_lbl)
@@ -4440,6 +4480,7 @@ class MainWindow(QWidget):
             f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
             f"padding:0 14px;background:{SURFACE};color:{TEXT};font-size:13px;}}"
             "QPushButton:hover{background:#ebebf0;}"
+            "QPushButton:pressed{background:#d8d8de;}"
         )
 
         btn_use_tts = QPushButton("→  Dùng cho TTS")
@@ -4450,6 +4491,7 @@ class MainWindow(QWidget):
             f"padding:0 14px;background:#f0f7ff;color:{ACCENT};"
             "font-size:13px;font-weight:600;}"
             "QPushButton:hover{background:#dbeafe;}"
+            "QPushButton:pressed{background:#c4d9f7;}"
         )
 
         action_row.addWidget(btn_copy)
@@ -4583,7 +4625,7 @@ class MainWindow(QWidget):
         for style in self._all_styles():
             name = style["name"]
             btn = QPushButton(name)
-            btn.setFixedHeight(24)
+            btn.setFixedHeight(28)
             btn.setCheckable(True)
             btn.setChecked(name == active_name)
             btn.clicked.connect(lambda checked, n=name: self._set_prompt_style(n))
