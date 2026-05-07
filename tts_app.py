@@ -626,121 +626,384 @@ class DropZone(QFrame):
             self.files_added.emit(files)
 
 
-# ── Settings dialog ────────────────────────────────────────────────
+# ── Settings dialog — Apple HIG style ─────────────────────────────
+#
+# Layout: sidebar trái (nav items) + content phải (scroll area)
+# Mỗi section là một "page" — không dump tất cả vào 1 cột
+# Fixed window size, content scroll bên trong — không tràn màn hình
+#
 class SettingsDialog(QDialog):
+    # Màu sidebar kiểu macOS System Settings
+    _SB_BG       = "#f0f0f5"
+    _SB_ACTIVE   = "#ffffff"
+    _SB_TEXT     = "#1d1d1f"
+    _SB_MUTE     = "#6e6e73"
+    _GROUP_BG    = "#ffffff"
+    _GROUP_BORDER= "#e5e5ea"
+    _LABEL_W     = 140          # chiều rộng cột label trong form
+
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
         self.settings = settings.copy()
-        self.setWindowTitle("⚙️  Settings")
-        self.setMinimumWidth(520)
+        self.setWindowTitle("Settings")
+        # Fixed size — không để resize tràn màn hình
+        self.setFixedSize(660, 480)
         self._build()
 
-    def _build(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(20, 20, 20, 20)
+    # ── Helper: tạo một "grouped section" kiểu macOS ──────────────
+    def _group(self, title: str = "") -> tuple:
+        """Trả về (outer_widget, form_layout) để thêm rows vào."""
+        outer = QWidget()
+        outer.setStyleSheet(
+            f"QWidget{{background:{self._GROUP_BG};"
+            f"border:1px solid {self._GROUP_BORDER};"
+            f"border-radius:10px;}}"
+        )
+        vbox = QVBoxLayout(outer)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+        if title:
+            hdr = QLabel(title)
+            hdr.setStyleSheet(
+                "QLabel{font-size:11px;font-weight:600;color:#6e6e73;"
+                "background:transparent;border:none;"
+                "padding:10px 16px 6px 16px;}"
+            )
+            vbox.addWidget(hdr)
+        return outer, vbox
 
-        def section(label, widget):
-            layout.addWidget(QLabel(f"<b>{label}</b>"))
-            layout.addWidget(widget)
+    def _row(self, container_layout, label: str, widget: QWidget,
+             note: str = "", last: bool = False):
+        """Thêm một form row vào group: label trái + widget phải."""
+        row_w = QWidget()
+        row_w.setStyleSheet(
+            "QWidget{background:transparent;border:none;"
+            + ("" if last else f"border-bottom:1px solid {self._GROUP_BORDER};")
+            + "}"
+        )
+        h = QHBoxLayout(row_w)
+        h.setContentsMargins(16, 10, 16, 10)
+        h.setSpacing(12)
 
-        layout.addWidget(QLabel(
-            "<b>ElevenLabs API Keys</b> "
-            "<span style='color:#6b7280;font-weight:normal'>"
-            "(mỗi key 1 dòng — tự động xoay khi hết credit)</span>"
-        ))
+        lbl = QLabel(label)
+        lbl.setFixedWidth(self._LABEL_W)
+        lbl.setStyleSheet(
+            "QLabel{font-size:13px;color:#1d1d1f;"
+            "background:transparent;border:none;}"
+        )
+        lbl.setWordWrap(True)
+        h.addWidget(lbl)
+
+        right = QVBoxLayout()
+        right.setSpacing(3)
+        right.addWidget(widget)
+        if note:
+            n = QLabel(note)
+            n.setStyleSheet(
+                "QLabel{font-size:11px;color:#6e6e73;"
+                "background:transparent;border:none;}"
+            )
+            n.setWordWrap(True)
+            right.addWidget(n)
+        h.addLayout(right)
+        container_layout.addWidget(row_w)
+
+    def _section_label(self, text: str) -> QLabel:
+        lbl = QLabel(text.upper())
+        lbl.setStyleSheet(
+            "QLabel{font-size:11px;font-weight:600;color:#6e6e73;"
+            "letter-spacing:0.5px;padding:16px 0 6px 0;"
+            "background:transparent;border:none;}"
+        )
+        return lbl
+
+    # ── Tạo từng trang ────────────────────────────────────────────
+    def _page_api(self) -> QWidget:
+        page = QWidget()
+        page.setStyleSheet("QWidget{background:transparent;border:none;}")
+        v = QVBoxLayout(page)
+        v.setContentsMargins(20, 16, 20, 20)
+        v.setSpacing(0)
+
+        # Group: ElevenLabs
+        v.addWidget(self._section_label("ElevenLabs"))
+        grp, glay = self._group()
         self.el_keys = QTextEdit()
-        self.el_keys.setPlaceholderText("sk_abc123...\nsk_def456...\nsk_ghi789...")
-        self.el_keys.setFixedHeight(80)
+        self.el_keys.setPlaceholderText("sk_abc123...\nsk_def456...")
+        self.el_keys.setFixedHeight(72)
         self.el_keys.setPlainText("\n".join(self.settings.get("el_api_keys", [])))
-        self.el_keys.setStyleSheet("font-family: monospace; font-size: 11px;")
-        layout.addWidget(self.el_keys)
+        self.el_keys.setStyleSheet(
+            "QTextEdit{font-family:monospace;font-size:11px;"
+            "background:transparent;border:none;}"
+        )
+        self._row(glay, "API Keys", self.el_keys,
+                  "Mỗi key 1 dòng — tự xoay khi hết credit", last=True)
+        v.addWidget(grp)
 
+        # Group: DeepSeek
+        v.addWidget(self._section_label("DeepSeek"))
+        grp2, glay2 = self._group()
         self.ds_key = QLineEdit(self.settings.get("ds_api_key", ""))
         self.ds_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.ds_key.setPlaceholderText("sk-...")
-        section("DeepSeek API Key", self.ds_key)
+        self.ds_key.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
+        )
+        self._row(glay2, "API Key", self.ds_key, last=True)
+        v.addWidget(grp2)
 
+        # Group: Gemini
+        v.addWidget(self._section_label("Gemini"))
+        grp3, glay3 = self._group()
         self.gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
         self.gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.gemini_key.setPlaceholderText("AIza...")
-        section("Gemini API Key", self.gemini_key)
-
-        # ── Gemini Prompt (Chat → Kịch Bản) ───────────────────────
-        prompt_header = QHBoxLayout()
-        prompt_lbl = QLabel("<b>Gemini Prompt</b> "
-                            "<span style='color:#6b7280;font-weight:normal'>"
-                            "(prompt gửi kèm ảnh Zalo để tạo kịch bản)</span>")
-        btn_reset_prompt = QPushButton("↺  Mặc định")
-        btn_reset_prompt.setFixedHeight(24)
-        btn_reset_prompt.setStyleSheet(
-            "QPushButton{border:1px solid #d1d5db;border-radius:5px;"
-            "padding:1px 10px;background:#f9fafb;font-size:11px;}"
-            "QPushButton:hover{background:#e5e7eb;}"
+        self.gemini_key.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
         )
-        prompt_header.addWidget(prompt_lbl)
-        prompt_header.addStretch()
-        prompt_header.addWidget(btn_reset_prompt)
-        layout.addLayout(prompt_header)
+        self._row(glay3, "API Key", self.gemini_key, last=True)
+        v.addWidget(grp3)
 
+        v.addStretch()
+        return page
+
+    def _page_prompts(self) -> QWidget:
+        page = QWidget()
+        page.setStyleSheet("QWidget{background:transparent;border:none;}")
+        v = QVBoxLayout(page)
+        v.setContentsMargins(20, 16, 20, 20)
+        v.setSpacing(0)
+
+        # Group: Gemini Chat Prompt
+        hdr_row = QHBoxLayout()
+        hdr_row.addWidget(self._section_label("Gemini — Chat → Kịch bản"))
+        hdr_row.addStretch()
+        btn_reset_gp = QPushButton("↺ Mặc định")
+        btn_reset_gp.setFixedHeight(22)
+        btn_reset_gp.setStyleSheet(
+            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "border:none;padding:0 4px;}"
+            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+        )
+        hdr_row.addWidget(btn_reset_gp)
+        hdr_row.setContentsMargins(0, 16, 0, 6)
+        v.addLayout(hdr_row)
+
+        grp, glay = self._group()
         self.gemini_prompt = QTextEdit()
-        saved_prompt = self.settings.get("gemini_chat_prompt", "").strip()
-        self.gemini_prompt.setPlainText(saved_prompt if saved_prompt else GEMINI_CHAT_PROMPT)
-        self.gemini_prompt.setMinimumHeight(200)
-        self.gemini_prompt.setStyleSheet("font-family: monospace; font-size: 11px;")
-        layout.addWidget(self.gemini_prompt)
-        btn_reset_prompt.clicked.connect(
+        saved_gp = self.settings.get("gemini_chat_prompt", "").strip()
+        self.gemini_prompt.setPlainText(saved_gp if saved_gp else GEMINI_CHAT_PROMPT)
+        self.gemini_prompt.setFixedHeight(140)
+        self.gemini_prompt.setStyleSheet(
+            "QTextEdit{font-family:monospace;font-size:11px;"
+            "background:transparent;border:none;padding:8px 12px;}"
+        )
+        glay.addWidget(self.gemini_prompt)
+        v.addWidget(grp)
+        btn_reset_gp.clicked.connect(
             lambda: self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
         )
 
-        layout.addWidget(QLabel("<b>Output Folder</b>"))
-        row = QHBoxLayout()
-        self.out_dir = QLineEdit(self.settings.get("output_dir", DEFAULT_OUT))
-        self.out_dir.setReadOnly(True)
-        btn_browse = QPushButton("Chọn...")
-        btn_browse.setFixedWidth(70)
-        btn_browse.clicked.connect(self._browse)
-        row.addWidget(self.out_dir)
-        row.addWidget(btn_browse)
-        layout.addLayout(row)
+        # Group: Enhance Prompt
+        hdr_ep = QHBoxLayout()
+        hdr_ep.addWidget(self._section_label("Enhance Prompt (TTS)"))
+        hdr_ep.addStretch()
 
-        layout.addWidget(QLabel("<b>Enhance Prompt</b>"))
-        style_row = QHBoxLayout()
-        style_row.setSpacing(6)
+        # Style switcher buttons
         for name, prompt_text in PROMPTS.items():
-            btn = QPushButton(name)
-            btn.setFixedHeight(28)
-            btn.setStyleSheet(
-                "QPushButton{border:1px solid #d1d5db;border-radius:5px;"
-                "padding:2px 10px;background:#f9fafb;}"
-                "QPushButton:hover{background:#e5e7eb;}"
+            b = QPushButton(name)
+            b.setFixedHeight(22)
+            b.setStyleSheet(
+                "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+                "border:none;padding:0 6px;}"
+                "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
             )
-            btn.clicked.connect(lambda checked, t=prompt_text: self.prompt.setPlainText(t))
-            style_row.addWidget(btn)
-        style_row.addStretch()
-        layout.addLayout(style_row)
+            b.clicked.connect(lambda checked, t=prompt_text: self.prompt.setPlainText(t))
+            hdr_ep.addWidget(b)
+
+        btn_reset_ep = QPushButton("↺ Mặc định")
+        btn_reset_ep.setFixedHeight(22)
+        btn_reset_ep.setStyleSheet(
+            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "border:none;padding:0 4px;}"
+            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+        )
+        btn_reset_ep.clicked.connect(
+            lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
+        )
+        hdr_ep.addWidget(btn_reset_ep)
+        hdr_ep.setContentsMargins(0, 8, 0, 6)
+        v.addLayout(hdr_ep)
+
+        grp2, glay2 = self._group()
         self.prompt = QTextEdit()
         self.prompt.setPlainText(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
-        self.prompt.setMinimumHeight(180)
-        layout.addWidget(self.prompt)
-
-        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(line)
-        btns = QHBoxLayout()
-        btn_cancel = QPushButton("Hủy")
-        btn_cancel.clicked.connect(self.reject)
-        btn_save = QPushButton("💾  Lưu")
-        btn_save.setDefault(True)
-        btn_save.clicked.connect(self._save)
-        btn_save.setStyleSheet(
-            "QPushButton{background:#2563eb;color:white;border-radius:6px;"
-            "padding:6px 18px;border:none;}"
-            "QPushButton:hover{background:#1d4ed8;}"
+        self.prompt.setFixedHeight(140)
+        self.prompt.setStyleSheet(
+            "QTextEdit{font-family:monospace;font-size:11px;"
+            "background:transparent;border:none;padding:8px 12px;}"
         )
-        btns.addStretch()
-        btns.addWidget(btn_cancel)
-        btns.addWidget(btn_save)
-        layout.addLayout(btns)
+        glay2.addWidget(self.prompt)
+        v.addWidget(grp2)
+
+        v.addStretch()
+        return page
+
+    def _page_output(self) -> QWidget:
+        page = QWidget()
+        page.setStyleSheet("QWidget{background:transparent;border:none;}")
+        v = QVBoxLayout(page)
+        v.setContentsMargins(20, 16, 20, 20)
+        v.setSpacing(0)
+
+        v.addWidget(self._section_label("Output"))
+        grp, glay = self._group()
+
+        folder_w = QWidget()
+        folder_w.setStyleSheet("QWidget{background:transparent;border:none;}")
+        fh = QHBoxLayout(folder_w)
+        fh.setContentsMargins(0, 0, 0, 0)
+        fh.setSpacing(8)
+        self.out_dir = QLineEdit(self.settings.get("output_dir", DEFAULT_OUT))
+        self.out_dir.setReadOnly(True)
+        self.out_dir.setStyleSheet(
+            "QLineEdit{background:#f5f5f7;border:1px solid #e5e5ea;"
+            "border-radius:6px;padding:4px 8px;font-size:12px;}"
+        )
+        btn_browse = QPushButton("Chọn…")
+        btn_browse.setFixedWidth(64)
+        btn_browse.setFixedHeight(28)
+        btn_browse.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+            "border-radius:6px;font-size:12px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_browse.clicked.connect(self._browse)
+        fh.addWidget(self.out_dir)
+        fh.addWidget(btn_browse)
+        self._row(glay, "Thư mục lưu", folder_w, last=True)
+        v.addWidget(grp)
+
+        v.addStretch()
+        return page
+
+    def _build(self):
+        # ── Root layout: sidebar + content ────────────────────────
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ── Sidebar ────────────────────────────────────────────────
+        sidebar = QWidget()
+        sidebar.setFixedWidth(168)
+        sidebar.setStyleSheet(f"QWidget{{background:{self._SB_BG};}}")
+        sb_layout = QVBoxLayout(sidebar)
+        sb_layout.setContentsMargins(0, 20, 0, 0)
+        sb_layout.setSpacing(2)
+
+        nav_items = [
+            ("🔑", "API Keys"),
+            ("📝", "Prompts"),
+            ("📁", "Output"),
+        ]
+
+        self._nav_btns: list[QPushButton] = []
+        for icon, label in nav_items:
+            btn = QPushButton(f"  {icon}  {label}")
+            btn.setCheckable(True)
+            btn.setFixedHeight(36)
+            btn.setStyleSheet(
+                "QPushButton{text-align:left;border:none;border-radius:8px;"
+                "margin:0 8px;padding:0 12px;font-size:13px;"
+                f"color:{self._SB_TEXT};background:transparent;}}"
+                "QPushButton:hover{background:rgba(0,0,0,0.06);}"
+                f"QPushButton:checked{{background:{self._SB_ACTIVE};"
+                "color:#0071e3;font-weight:600;}}"
+            )
+            self._nav_btns.append(btn)
+            sb_layout.addWidget(btn)
+
+        sb_layout.addStretch()
+        root.addWidget(sidebar)
+
+        # ── Divider ────────────────────────────────────────────────
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.VLine)
+        div.setStyleSheet(f"color:{self._GROUP_BORDER};")
+        root.addWidget(div)
+
+        # ── Content area ───────────────────────────────────────────
+        content_wrapper = QWidget()
+        content_wrapper.setStyleSheet(f"QWidget{{background:{BG};}}")
+        cw_layout = QVBoxLayout(content_wrapper)
+        cw_layout.setContentsMargins(0, 0, 0, 0)
+        cw_layout.setSpacing(0)
+
+        # Stacked pages
+        self._stack = QStackedWidget()
+        self._stack.setStyleSheet("QStackedWidget{background:transparent;}")
+
+        pages = [self._page_api(), self._page_prompts(), self._page_output()]
+        for p in pages:
+            # Wrap mỗi page trong ScrollArea — không bao giờ tràn màn hình
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(p)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setStyleSheet(
+                f"QScrollArea{{background:{BG};border:none;}}"
+                "QScrollBar:vertical{width:6px;background:transparent;}"
+                "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+            )
+            self._stack.addWidget(scroll)
+
+        cw_layout.addWidget(self._stack)
+
+        # ── Footer: Hủy / Lưu ─────────────────────────────────────
+        footer = QWidget()
+        footer.setStyleSheet(
+            f"QWidget{{background:{BG};"
+            f"border-top:1px solid {self._GROUP_BORDER};}}"
+        )
+        footer.setFixedHeight(52)
+        fl = QHBoxLayout(footer)
+        fl.setContentsMargins(16, 10, 16, 10)
+        fl.setSpacing(8)
+        fl.addStretch()
+
+        btn_cancel = QPushButton("Hủy")
+        btn_cancel.setFixedHeight(28)
+        btn_cancel.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+            "border-radius:6px;padding:0 16px;font-size:13px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("Lưu")
+        btn_save.setFixedHeight(28)
+        btn_save.setDefault(True)
+        btn_save.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:6px;padding:0 20px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+        )
+        btn_save.clicked.connect(self._save)
+        fl.addWidget(btn_cancel)
+        fl.addWidget(btn_save)
+        cw_layout.addWidget(footer)
+
+        root.addWidget(content_wrapper)
+
+        # ── Connect nav ────────────────────────────────────────────
+        for i, btn in enumerate(self._nav_btns):
+            btn.clicked.connect(lambda checked, idx=i: self._switch(idx))
+        self._switch(0)
+
+    def _switch(self, idx: int):
+        self._stack.setCurrentIndex(idx)
+        for i, btn in enumerate(self._nav_btns):
+            btn.setChecked(i == idx)
 
     def _browse(self):
         folder = QFileDialog.getExistingDirectory(self, "Chọn output folder")
@@ -754,7 +1017,6 @@ class SettingsDialog(QDialog):
         self.settings["gemini_api_key"]    = self.gemini_key.text().strip()
         self.settings["output_dir"]        = self.out_dir.text()
         self.settings["enhance_prompt"]    = self.prompt.toPlainText()
-        # Lưu "" nếu giống mặc định để không phình file settings
         gp = self.gemini_prompt.toPlainText().strip()
         self.settings["gemini_chat_prompt"] = "" if gp == GEMINI_CHAT_PROMPT.strip() else gp
         self.accept()
