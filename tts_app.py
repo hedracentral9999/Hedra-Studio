@@ -4819,20 +4819,36 @@ class MainWindow(QWidget):
             else:
                 app_dest = "/Applications/Hedra Studio.app"
 
+            current_pid = os.getpid()
+
             script = f"""#!/bin/bash
-# Hedra Studio auto-update script v2
+# Hedra Studio auto-update script v3
 DMG="{file_path}"
 APP_DEST="{app_dest}"
+APP_PID={current_pid}
 MNT="/tmp/hedrastudio_mnt"
 LOG="/tmp/hedra_update.log"
 
-echo "$(date): Starting update v2" > "$LOG"
+echo "$(date): Starting update v3" > "$LOG"
 echo "DMG: $DMG" >> "$LOG"
 echo "Dest: $APP_DEST" >> "$LOG"
-echo "PID: $$" >> "$LOG"
+echo "Waiting for PID $APP_PID to exit..." >> "$LOG"
 
-# Chờ app cũ thoát hoàn toàn
-sleep 5
+# Chờ app cũ thoát — poll PID thay vì sleep cố định (max 30s)
+for i in $(seq 1 30); do
+    if ! kill -0 $APP_PID 2>/dev/null; then
+        echo "$(date): App exited after ${{i}}s" >> "$LOG"
+        break
+    fi
+    sleep 1
+done
+
+# Force kill nếu vẫn còn chạy
+if kill -0 $APP_PID 2>/dev/null; then
+    echo "$(date): Force killing PID $APP_PID" >> "$LOG"
+    kill -9 $APP_PID 2>/dev/null || true
+    sleep 2
+fi
 
 # Dọn mountpoint cũ nếu còn
 if [ -d "$MNT" ]; then
@@ -4842,7 +4858,7 @@ if [ -d "$MNT" ]; then
 fi
 mkdir -p "$MNT"
 
-# Mount DMG vào mountpoint cố định (không có dấu cách trong path)
+# Mount DMG
 echo "$(date): Mounting DMG..." >> "$LOG"
 hdiutil attach -nobrowse -mountpoint "$MNT" "$DMG" >> "$LOG" 2>&1
 ATTACH_CODE=$?
@@ -4852,8 +4868,6 @@ if [ $ATTACH_CODE -ne 0 ]; then
 fi
 
 APP_IN_DMG="$MNT/Hedra Studio.app"
-echo "Looking for: $APP_IN_DMG" >> "$LOG"
-
 if [ ! -d "$APP_IN_DMG" ]; then
     echo "ERROR: App not found in DMG" >> "$LOG"
     ls -la "$MNT" >> "$LOG" 2>&1
@@ -4861,13 +4875,21 @@ if [ ! -d "$APP_IN_DMG" ]; then
     exit 1
 fi
 
-# Thay thế app
-echo "$(date): Replacing app..." >> "$LOG"
+# Xóa app cũ — verify thành công
+echo "$(date): Removing old app..." >> "$LOG"
 rm -rf "$APP_DEST" 2>>"$LOG"
-cp -R "$APP_IN_DMG" "$APP_DEST" 2>>"$LOG"
+if [ -d "$APP_DEST" ]; then
+    echo "ERROR: Could not remove old app (permission?)" >> "$LOG"
+    hdiutil detach "$MNT" -quiet 2>>"$LOG" || true
+    exit 1
+fi
+
+# Copy bằng ditto (giữ đúng metadata, reliable hơn cp -R)
+echo "$(date): Copying new app with ditto..." >> "$LOG"
+ditto "$APP_IN_DMG" "$APP_DEST" 2>>"$LOG"
 
 if [ ! -d "$APP_DEST" ]; then
-    echo "ERROR: Copy failed — $APP_DEST not found after copy" >> "$LOG"
+    echo "ERROR: ditto failed — $APP_DEST not found" >> "$LOG"
     hdiutil detach "$MNT" -quiet 2>>"$LOG" || true
     exit 1
 fi
@@ -4877,24 +4899,25 @@ echo "$(date): Copy done" >> "$LOG"
 hdiutil detach "$MNT" -quiet 2>>"$LOG" || true
 rm -rf "$MNT" 2>/dev/null
 
-# Xóa toàn bộ quarantine + extended attributes
+# Xóa quarantine + extended attributes
 xattr -cr "$APP_DEST" 2>>"$LOG" || true
 
 # Đăng ký lại với Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DEST" >> "$LOG" 2>&1 || true
 
-# Mở app mới
+# Mở app mới — dùng open -n để force launch instance mới (không reuse cached)
 echo "$(date): Launching new app..." >> "$LOG"
-open "$APP_DEST"
+open -n "$APP_DEST"
 sleep 2
 echo "$(date): Done ✅" >> "$LOG"
+
+# Dọn DMG tạm
+rm -f "$DMG" 2>/dev/null
 """
             script_path = "/tmp/hedra_auto_update.sh"
             with open(script_path, "w") as f:
                 f.write(script)
             os.chmod(script_path, 0o755)
-            # start_new_session=True: tách khỏi process group của app
-            # → script tiếp tục chạy sau khi app Python quit (không bị SIGHUP)
             subprocess.Popen(
                 ["/bin/bash", script_path],
                 stdout=subprocess.DEVNULL,
