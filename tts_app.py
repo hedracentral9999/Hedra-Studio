@@ -3857,7 +3857,7 @@ class SettingsDialog(QDialog):
         self.settings["selected_voice_id"]   = self._sel_voice_id
         self.settings["selected_voice_name"] = self._sel_voice_name
         # Language
-        self.settings["tts_language_code"] = self._lang_combo.currentData()
+        self.settings["tts_language_code"] = self._lang_code
         self.accept()
 
     def get_settings(self) -> dict:
@@ -4164,6 +4164,7 @@ class MainWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
         self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
+        self.tabs.setCurrentIndex(1)  # TTS mặc định
         layout.addWidget(self.tabs)
 
     # ── Tab 1: TTS ─────────────────────────────────────────────────
@@ -4225,14 +4226,15 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        btn_add_style = QPushButton("+ Thêm")
-        btn_add_style.setFixedHeight(28)
+        btn_add_style = QPushButton("+")
+        btn_add_style.setFixedSize(28, 28)
         btn_add_style.setToolTip("Thêm phong cách tùy chỉnh")
         btn_add_style.setStyleSheet(
             f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
-            f"border-radius:8px;color:{TEXT};font-size:12px;font-weight:500;"
-            f"padding:0 10px;}}"
+            f"border-radius:8px;color:{TEXT};font-size:16px;font-weight:400;"
+            f"padding:0;}}"
             "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;}"
+            "QPushButton:pressed{background:#c7c7cc;}"
         )
         btn_add_style.clicked.connect(self._quick_add_style)
 
@@ -4270,43 +4272,59 @@ class MainWindow(QWidget):
         vw.addStretch()
         self._card_row(c1, "Giọng đọc", voice_w)
 
-        # — Row: Ngôn ngữ
+        # — Row: Ngôn ngữ (chips)
+        _lang_options = [
+            ("Tự động", ""),
+            ("Việt",    "vi"),
+            ("EN",      "en"),
+            ("中文",     "zh"),
+            ("日本語",   "ja"),
+            ("한국어",   "ko"),
+            ("ES",      "es"),
+            ("FR",      "fr"),
+            ("DE",      "de"),
+        ]
+        _saved_lang = self.settings.get("tts_language_code", "")
+        self._lang_code = _saved_lang
+        self._lang_btns: dict[str, QPushButton] = {}
+
         lang_w = QWidget()
         lang_w.setStyleSheet("background:transparent;border:none;")
         lw = QHBoxLayout(lang_w)
         lw.setContentsMargins(0, 0, 0, 0)
-        lw.setSpacing(8)
-        self._lang_combo = QComboBox()
-        self._lang_combo.setFixedHeight(28)
-        self._lang_combo.setStyleSheet(
-            f"QComboBox{{background:{BG};border:1px solid {BORDER};"
-            "border-radius:6px;padding:0 8px;font-size:13px;color:#1d1d1f;}"
-            f"QComboBox:focus{{border-color:{ACCENT};}}"
-            "QComboBox::drop-down{border:none;width:20px;}"
-        )
-        _lang_options = [
-            ("Tự động",          ""),
-            ("Tiếng Việt",       "vi"),
-            ("English",          "en"),
-            ("Tiếng Trung",      "zh"),
-            ("日本語",            "ja"),
-            ("한국어",             "ko"),
-            ("Español",          "es"),
-            ("Français",         "fr"),
-            ("Deutsch",          "de"),
-            ("Português",        "pt"),
-            ("हिन्दी",            "hi"),
-            ("العربية",           "ar"),
-        ]
+        lw.setSpacing(6)
+
+        def _chip_sel(code: str) -> str:
+            return (
+                f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
+                f"border:1.5px solid {ACCENT};border-radius:12px;"
+                "padding:3px 10px;font-size:12px;font-weight:600;}}"
+                f"QPushButton:hover{{background:#dce9fd;}}"
+                f"QPushButton:pressed{{background:#cfe0fc;}}"
+            )
+
+        def _chip_unsel(code: str) -> str:
+            return (
+                f"QPushButton{{background:{SURFACE};color:{TEXT};"
+                f"border:1px solid {BORDER};border-radius:12px;"
+                "padding:3px 10px;font-size:12px;font-weight:400;}}"
+                f"QPushButton:hover{{background:#e5e5ea;border-color:#aeaeb2;}}"
+                f"QPushButton:pressed{{background:#d2d2d7;}}"
+            )
+
+        def _on_lang_chip(code: str):
+            self._lang_code = code
+            for c, b in self._lang_btns.items():
+                b.setStyleSheet(_chip_sel(c) if c == code else _chip_unsel(c))
+
         for label, code in _lang_options:
-            self._lang_combo.addItem(label, code)
-        # Restore saved value
-        _saved_lang = self.settings.get("tts_language_code", "")
-        for i in range(self._lang_combo.count()):
-            if self._lang_combo.itemData(i) == _saved_lang:
-                self._lang_combo.setCurrentIndex(i)
-                break
-        lw.addWidget(self._lang_combo)
+            btn = QPushButton(label)
+            btn.setFixedHeight(26)
+            is_sel = (code == _saved_lang)
+            btn.setStyleSheet(_chip_sel(code) if is_sel else _chip_unsel(code))
+            btn.clicked.connect(lambda _, c=code: _on_lang_chip(c))
+            self._lang_btns[code] = btn
+            lw.addWidget(btn)
         lw.addStretch()
         self._card_row(c1, "Ngôn ngữ", lang_w, last=True)
 
