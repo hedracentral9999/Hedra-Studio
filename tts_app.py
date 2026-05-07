@@ -2487,53 +2487,62 @@ class SettingsDialog(QDialog):
         v.setContentsMargins(20, 16, 20, 20)
         v.setSpacing(0)
 
-        # Group: Gemini Chat Prompt
-        hdr_row = QHBoxLayout()
-        hdr_row.addWidget(self._section_label("Gemini — Chat → Kịch bản"))
-        hdr_row.addStretch()
-        btn_reset_gp = QPushButton("↺ Mặc định")
-        btn_reset_gp.setFixedHeight(22)
-        btn_reset_gp.setStyleSheet(
-            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
-            "border:none;padding:0 4px;}"
-            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
-        )
-        hdr_row.addWidget(btn_reset_gp)
-        btn_expand_gp = QPushButton("↗ Mở rộng")
-        btn_expand_gp.setFixedHeight(22)
-        btn_expand_gp.setStyleSheet(
-            "QPushButton{font-size:11px;color:#6e6e73;background:#f0f0f5;"
-            "border:none;border-radius:5px;padding:0 8px;}"
-            "QPushButton:hover{background:#e5e5ea;color:#1d1d1f;}"
-        )
-        hdr_row.addWidget(btn_expand_gp)
-        hdr_row.setContentsMargins(0, 16, 0, 6)
-        v.addLayout(hdr_row)
+        # ── Card: Gemini Chat Prompt ──────────────────────────────
+        v.addSpacing(8)
+        v.addWidget(self._section_label("Gemini — Chat → Kịch bản"))
+        v.addSpacing(6)
 
         grp, glay = self._group()
         self.gemini_prompt = QTextEdit()
         saved_gp = self.settings.get("gemini_chat_prompt", "").strip()
         self.gemini_prompt.setPlainText(saved_gp if saved_gp else GEMINI_CHAT_PROMPT)
-        self.gemini_prompt.setFixedHeight(140)
+        self.gemini_prompt.setReadOnly(True)
+        self.gemini_prompt.setFixedHeight(90)
         self.gemini_prompt.setStyleSheet(
-            "QTextEdit{font-family:monospace;font-size:11px;"
-            "background:transparent;border:none;padding:8px 12px;}"
+            "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+            "background:transparent;border:none;padding:10px 14px;}"
         )
         glay.addWidget(self.gemini_prompt)
+
+        # Footer hành động trong card
+        gp_foot = QHBoxLayout()
+        gp_foot.setContentsMargins(14, 0, 14, 10)
+        gp_foot.setSpacing(8)
+        btn_reset_gp = QPushButton("↺ Về mặc định")
+        btn_reset_gp.setFixedHeight(28)
+        btn_reset_gp.setStyleSheet(
+            "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
+            "border:1px solid #d2d2d7;border-radius:6px;padding:0 10px;}"
+            "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
+        )
+        gp_foot.addWidget(btn_reset_gp)
+        gp_foot.addStretch()
+        btn_edit_gp = QPushButton("✏️  Chỉnh sửa prompt")
+        btn_edit_gp.setFixedHeight(28)
+        btn_edit_gp.setStyleSheet(
+            "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+            "background:#0071e3;border:none;border-radius:6px;padding:0 14px;}"
+            "QPushButton:hover{background:#0077ed;}"
+        )
+        gp_foot.addWidget(btn_edit_gp)
+        glay.addLayout(gp_foot)
         v.addWidget(grp)
+
         btn_reset_gp.clicked.connect(
             lambda: self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
         )
-        btn_expand_gp.clicked.connect(
+        btn_edit_gp.clicked.connect(
             lambda: self._expand_prompt_dialog("Gemini — Chat → Kịch bản", self.gemini_prompt)
         )
 
-        # Group: Enhance Prompt
-        hdr_ep = QHBoxLayout()
-        hdr_ep.addWidget(self._section_label("Enhance Prompt (TTS)"))
-        hdr_ep.addStretch()
+        # ── Card: Enhance Prompt (TTS) ────────────────────────────
+        v.addSpacing(16)
 
-        # Style switcher buttons
+        ep_hdr = QHBoxLayout()
+        ep_hdr.setContentsMargins(0, 0, 0, 6)
+        ep_hdr.addWidget(self._section_label("Enhance Prompt (TTS)"))
+        ep_hdr.addStretch()
+        # Style switcher chips
         for name, prompt_text in PROMPTS.items():
             b = QPushButton(name)
             b.setFixedHeight(22)
@@ -2543,41 +2552,47 @@ class SettingsDialog(QDialog):
                 "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
             )
             b.clicked.connect(lambda checked, t=prompt_text: self.prompt.setPlainText(t))
-            hdr_ep.addWidget(b)
-
-        btn_reset_ep = QPushButton("↺ Mặc định")
-        btn_reset_ep.setFixedHeight(22)
-        btn_reset_ep.setStyleSheet(
-            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
-            "border:none;padding:0 4px;}"
-            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
-        )
-        btn_reset_ep.clicked.connect(
-            lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
-        )
-        hdr_ep.addWidget(btn_reset_ep)
-        btn_expand_ep = QPushButton("↗ Mở rộng")
-        btn_expand_ep.setFixedHeight(22)
-        btn_expand_ep.setStyleSheet(
-            "QPushButton{font-size:11px;color:#6e6e73;background:#f0f0f5;"
-            "border:none;border-radius:5px;padding:0 8px;}"
-            "QPushButton:hover{background:#e5e5ea;color:#1d1d1f;}"
-        )
-        hdr_ep.addWidget(btn_expand_ep)
-        hdr_ep.setContentsMargins(0, 8, 0, 6)
-        v.addLayout(hdr_ep)
+            ep_hdr.addWidget(b)
+        v.addLayout(ep_hdr)
 
         grp2, glay2 = self._group()
         self.prompt = QTextEdit()
         self.prompt.setPlainText(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
-        self.prompt.setFixedHeight(140)
+        self.prompt.setReadOnly(True)
+        self.prompt.setFixedHeight(90)
         self.prompt.setStyleSheet(
-            "QTextEdit{font-family:monospace;font-size:11px;"
-            "background:transparent;border:none;padding:8px 12px;}"
+            "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+            "background:transparent;border:none;padding:10px 14px;}"
         )
         glay2.addWidget(self.prompt)
+
+        ep_foot = QHBoxLayout()
+        ep_foot.setContentsMargins(14, 0, 14, 10)
+        ep_foot.setSpacing(8)
+        btn_reset_ep = QPushButton("↺ Về mặc định")
+        btn_reset_ep.setFixedHeight(28)
+        btn_reset_ep.setStyleSheet(
+            "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
+            "border:1px solid #d2d2d7;border-radius:6px;padding:0 10px;}"
+            "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
+        )
+        ep_foot.addWidget(btn_reset_ep)
+        ep_foot.addStretch()
+        btn_edit_ep = QPushButton("✏️  Chỉnh sửa prompt")
+        btn_edit_ep.setFixedHeight(28)
+        btn_edit_ep.setStyleSheet(
+            "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+            "background:#0071e3;border:none;border-radius:6px;padding:0 14px;}"
+            "QPushButton:hover{background:#0077ed;}"
+        )
+        ep_foot.addWidget(btn_edit_ep)
+        glay2.addLayout(ep_foot)
         v.addWidget(grp2)
-        btn_expand_ep.clicked.connect(
+
+        btn_reset_ep.clicked.connect(
+            lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
+        )
+        btn_edit_ep.clicked.connect(
             lambda: self._expand_prompt_dialog("Enhance Prompt (TTS)", self.prompt)
         )
 
