@@ -2456,6 +2456,219 @@ class SettingsDialog(QDialog):
         )
         return lbl
 
+    # ── Hướng dẫn lấy API key ─────────────────────────────────────
+    def _show_api_guide(self, service: str):
+        """Dialog hướng dẫn từng bước lấy API key theo service."""
+        _GUIDES = {
+            "elevenlabs": {
+                "title":     "Hướng dẫn lấy ElevenLabs API Key",
+                "subtitle":  "Đăng ký qua link này để hỗ trợ Hedra Studio 🙏",
+                "url":       "https://try.elevenlabs.io/rinor1xaj4ze",
+                "url_label": "🔑  Mở trang đăng ký ElevenLabs",
+                "steps": [
+                    ("Mở trang đăng ký",
+                     "Nhấn nút bên dưới → trình duyệt mở elevenlabs.io"),
+                    ("Tạo tài khoản",
+                     'Điền email + mật khẩu → nhấn "Create Account"\n'
+                     "(hoặc đăng nhập nhanh bằng Google/Apple)"),
+                    ("Xác nhận email",
+                     "Kiểm tra hộp thư → nhấn link xác nhận từ ElevenLabs\n"
+                     "(kiểm tra thư mục Spam nếu không thấy)"),
+                    ("Vào trang Profile",
+                     'Sau khi đăng nhập → nhấn ảnh đại diện góc trên phải\n'
+                     '→ chọn "Profile + API Key"'),
+                    ("Tạo API Key mới",
+                     'Kéo xuống mục "API Keys"\n'
+                     '→ nhấn "Create new API Key" → đặt tên bất kỳ (vd: "Hedra")'),
+                    ("Copy key vào app",
+                     "Copy key vừa tạo\n"
+                     "→ Paste vào ô API Keys trong Hedra Studio\n"
+                     "→ Mỗi key 1 dòng — có thể thêm nhiều key để tự xoay"),
+                ],
+            },
+            "deepseek": {
+                "title":     "Hướng dẫn lấy DeepSeek API Key",
+                "subtitle":  "DeepSeek tặng free credits khi đăng ký tài khoản mới",
+                "url":       "https://platform.deepseek.com/api_keys",
+                "url_label": "🔗  Mở DeepSeek Platform",
+                "steps": [
+                    ("Mở DeepSeek Platform",
+                     "Nhấn nút bên dưới → platform.deepseek.com"),
+                    ("Tạo tài khoản",
+                     'Nhấn "Sign Up" → điền email + mật khẩu\n'
+                     "(hoặc đăng nhập bằng Google)"),
+                    ("Xác nhận email",
+                     "Kiểm tra hộp thư → nhấn link xác nhận"),
+                    ("Vào trang API Keys",
+                     'Đăng nhập xong → nhấn "API Keys" ở sidebar trái'),
+                    ("Tạo API Key",
+                     'Nhấn "Create new API key" → đặt tên → nhấn "OK"\n'
+                     "→ Chú ý: copy key ngay, sau này không xem lại được"),
+                    ("Paste vào app",
+                     "Paste key vào ô API Key của DeepSeek trong Hedra Studio\n"
+                     "→ nhấn Lưu"),
+                ],
+            },
+            "gemini": {
+                "title":     "Hướng dẫn lấy Gemini API Key",
+                "subtitle":  "Cần tài khoản Google. Gemini có free tier miễn phí",
+                "url":       "https://aistudio.google.com/app/apikey",
+                "url_label": "🔗  Mở Google AI Studio",
+                "steps": [
+                    ("Mở Google AI Studio",
+                     "Nhấn nút bên dưới → aistudio.google.com"),
+                    ("Đăng nhập Google",
+                     "Đăng nhập bằng tài khoản Google của bạn"),
+                    ("Vào trang API Keys",
+                     'Nhấn "Get API Key" ở sidebar trái\n'
+                     "(hoặc vào trực tiếp: aistudio.google.com/app/apikey)"),
+                    ("Tạo API Key",
+                     '→ Nhấn "Create API key"\n'
+                     "→ Chọn project Google Cloud (hoặc tạo mới — nhấn \"New project\")"),
+                    ("Copy & Paste vào app",
+                     "Copy key → Paste vào ô API Key của Gemini trong Hedra Studio\n"
+                     "→ nhấn Lưu"),
+                    ("Kiểm tra",
+                     "Mở tab Chat → Kịch bản trong app để test Gemini đã hoạt động"),
+                ],
+            },
+        }
+
+        guide = _GUIDES.get(service)
+        if not guide:
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(guide["title"])
+        dlg.setModal(True)
+        dlg.setFixedWidth(500)
+        dlg.setStyleSheet("QDialog{background:#f5f5f7;}")
+
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ── Header ────────────────────────────────────────────────
+        hdr = QWidget()
+        hdr.setStyleSheet(
+            "QWidget{background:#ffffff;"
+            "border-bottom:1px solid #e5e5ea;border:none;}"
+        )
+        hlay = QVBoxLayout(hdr)
+        hlay.setContentsMargins(24, 20, 24, 16)
+        hlay.setSpacing(4)
+        ttl = QLabel(guide["title"])
+        ttl.setStyleSheet(
+            "QLabel{font-size:17px;font-weight:700;color:#1d1d1f;"
+            "background:transparent;border:none;}"
+        )
+        sub = QLabel(guide["subtitle"])
+        sub.setStyleSheet(
+            "QLabel{font-size:12px;color:#6e6e73;"
+            "background:transparent;border:none;}"
+        )
+        hlay.addWidget(ttl)
+        hlay.addWidget(sub)
+        root.addWidget(hdr)
+
+        # ── Steps ─────────────────────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            "QScrollArea{background:#f5f5f7;border:none;}"
+            "QScrollBar:vertical{width:6px;background:transparent;}"
+            "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+        )
+        steps_w = QWidget()
+        steps_w.setStyleSheet("QWidget{background:#f5f5f7;border:none;}")
+        sv = QVBoxLayout(steps_w)
+        sv.setContentsMargins(20, 16, 20, 16)
+        sv.setSpacing(8)
+
+        for idx, (step_title, step_desc) in enumerate(guide["steps"], 1):
+            card = QWidget()
+            card.setStyleSheet(
+                "QWidget{background:#ffffff;border-radius:10px;border:none;}"
+            )
+            ch = QHBoxLayout(card)
+            ch.setContentsMargins(14, 12, 14, 12)
+            ch.setSpacing(12)
+
+            # Number badge
+            num = QLabel(str(idx))
+            num.setFixedSize(28, 28)
+            num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            num.setStyleSheet(
+                "QLabel{background:#0071e3;color:#ffffff;"
+                "border-radius:14px;font-size:12px;font-weight:700;"
+                "border:none;}"
+            )
+            ch.addWidget(num)
+            ch.setAlignment(num, Qt.AlignmentFlag.AlignTop)
+
+            # Text
+            txt = QVBoxLayout()
+            txt.setSpacing(3)
+            t_lbl = QLabel(step_title)
+            t_lbl.setStyleSheet(
+                "QLabel{font-size:13px;font-weight:600;color:#1d1d1f;"
+                "background:transparent;border:none;}"
+            )
+            d_lbl = QLabel(step_desc)
+            d_lbl.setStyleSheet(
+                "QLabel{font-size:12px;color:#6e6e73;line-height:1.5;"
+                "background:transparent;border:none;}"
+            )
+            d_lbl.setWordWrap(True)
+            txt.addWidget(t_lbl)
+            txt.addWidget(d_lbl)
+            ch.addLayout(txt, 1)
+            sv.addWidget(card)
+
+        sv.addStretch()
+        scroll.setWidget(steps_w)
+        scroll.setMinimumHeight(320)
+        root.addWidget(scroll, 1)
+
+        # ── Footer ────────────────────────────────────────────────
+        ftr = QWidget()
+        ftr.setStyleSheet(
+            "QWidget{background:#ffffff;"
+            "border-top:1px solid #e5e5ea;border:none;}"
+        )
+        flay = QHBoxLayout(ftr)
+        flay.setContentsMargins(20, 12, 20, 12)
+        flay.setSpacing(8)
+
+        btn_open = QPushButton(guide["url_label"])
+        btn_open.setFixedHeight(34)
+        btn_open.setStyleSheet(
+            "QPushButton{background:#0071e3;color:#ffffff;border:none;"
+            "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#005bb5;}"
+        )
+        _url = guide["url"]
+        btn_open.clicked.connect(lambda: webbrowser.open(_url))
+
+        btn_close = QPushButton("Đóng")
+        btn_close.setFixedHeight(34)
+        btn_close.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+            "border-radius:8px;padding:0 20px;font-size:13px;color:#1d1d1f;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+            "QPushButton:pressed{background:#d2d2d7;}"
+        )
+        btn_close.clicked.connect(dlg.accept)
+        btn_open.setDefault(True)
+
+        flay.addWidget(btn_open, 1)
+        flay.addWidget(btn_close)
+        root.addWidget(ftr)
+
+        dlg.exec()
+
     # ── Tạo từng trang ────────────────────────────────────────────
     def _page_api(self) -> QWidget:
         page = QWidget()
@@ -2464,14 +2677,13 @@ class SettingsDialog(QDialog):
         v.setContentsMargins(20, 16, 20, 20)
         v.setSpacing(0)
 
-        # ── Helper: section header có nút link lấy API key ──────────
-        def _api_link_btn(label: str, url: str, is_ref: bool = False) -> QPushButton:
+        # ── Helper: section header có nút hướng dẫn lấy API key ─────
+        def _api_guide_btn(label: str, is_ref: bool = False) -> QPushButton:
             btn = QPushButton(label)
             btn.setFixedHeight(24)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             accent = "#0071e3"
             if is_ref:
-                # Ref link ElevenLabs — nổi bật hơn chút
                 btn.setStyleSheet(
                     f"QPushButton{{font-size:11px;font-weight:600;color:{accent};"
                     "background:#e8f0fd;border:1px solid #c5d9f8;border-radius:6px;"
@@ -2486,7 +2698,6 @@ class SettingsDialog(QDialog):
                     "QPushButton:hover{text-decoration:underline;}"
                     f"QPushButton:pressed{{color:#005bb5;}}"
                 )
-            btn.clicked.connect(lambda: webbrowser.open(url))
             return btn
 
         def _svc_header(title: str, btn: QPushButton) -> QWidget:
@@ -2501,12 +2712,9 @@ class SettingsDialog(QDialog):
             return w
 
         # ── Group: ElevenLabs ────────────────────────────────────────
-        el_btn = _api_link_btn(
-            "🔑  Đăng ký & lấy API key  →",
-            "https://try.elevenlabs.io/rinor1xaj4ze",
-            is_ref=True,
-        )
-        el_btn.setToolTip("Đăng ký ElevenLabs qua link này — hỗ trợ Hedra Studio 🙏")
+        el_btn = _api_guide_btn("📖  Hướng dẫn lấy API key  →", is_ref=True)
+        el_btn.setToolTip("Xem hướng dẫn từng bước đăng ký & lấy API key ElevenLabs")
+        el_btn.clicked.connect(lambda: self._show_api_guide("elevenlabs"))
         v.addWidget(_svc_header("ElevenLabs", el_btn))
         grp, glay = self._group()
         self.el_keys = QTextEdit()
@@ -2522,10 +2730,8 @@ class SettingsDialog(QDialog):
         v.addWidget(grp)
 
         # ── Group: DeepSeek ──────────────────────────────────────────
-        ds_btn = _api_link_btn(
-            "Lấy API key  →",
-            "https://platform.deepseek.com/api_keys",
-        )
+        ds_btn = _api_guide_btn("📖  Hướng dẫn lấy API key  →")
+        ds_btn.clicked.connect(lambda: self._show_api_guide("deepseek"))
         v.addWidget(_svc_header("DeepSeek", ds_btn))
         grp2, glay2 = self._group()
         self.ds_key = QLineEdit(self.settings.get("ds_api_key", ""))
@@ -2538,10 +2744,8 @@ class SettingsDialog(QDialog):
         v.addWidget(grp2)
 
         # ── Group: Gemini ────────────────────────────────────────────
-        gm_btn = _api_link_btn(
-            "Lấy API key  →",
-            "https://aistudio.google.com/app/apikey",
-        )
+        gm_btn = _api_guide_btn("📖  Hướng dẫn lấy API key  →")
+        gm_btn.clicked.connect(lambda: self._show_api_guide("gemini"))
         v.addWidget(_svc_header("Gemini", gm_btn))
         grp3, glay3 = self._group()
         self.gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
