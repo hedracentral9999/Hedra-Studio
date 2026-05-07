@@ -68,16 +68,24 @@ ck → chuyển khoản | ship → ship (giữ nguyên)
 ### 6. NHẤN MẠNH — VIẾT HOA
 Chỉ CAPS từ thật sự quan trọng: MIỄN PHÍ, NGON, SỚM, LUÔN, TỐI GIẢN, CHẮC CHẮN, ĐẢM BẢO
 
-### 7. PAUSE & NHỊP
+### 7. KÉO DÀI ÂM — TẠO CẢM XÚC TỰ NHIÊN
+Kéo dài nguyên âm cuối từ để giọng đọc nhấn nhá, không đều đều như robot.
+Dùng tiết chế — 1-2 chỗ mỗi đoạn, chọn chỗ cảm xúc thật sự lên:
+- Trấn an: "yên tâm nhaaa" / "được ngheee"
+- Xác nhận ấm: "đúng rồiiii" / "có ngheee"
+- Nhấn câu kết: "nhanh lắmmm" / "rẻ lắmmm"
+Nguyên tắc: kéo dài đúng chỗ cảm xúc — sai chỗ thì phản tác dụng
+
+### 8. PAUSE & NHỊP
 ... → dừng cân nhắc, trước thông tin quan trọng
 — → ngắt nhanh giữa 2 ý liên tiếp
 
-### 8. CẤU TRÚC
+### 9. CẤU TRÚC
 - Mỗi câu/ý trên một dòng riêng
 - Dòng trống giữa các ý khác nhau
 - Xóa: kkk, haha, hehe, hihi, :), XD, ^^, :D
 
-### 9. OUTPUT
+### 10. OUTPUT
 - Chỉ trả về kịch bản đã xử lý
 - Không giải thích, không ghi chú, không markdown"""
 
@@ -117,6 +125,15 @@ TRỜI ƠI | ĐỈNh CỦA ĐỈNH | SIÊU XỊN | KHỦNG | DỄ NHƯ ĂN KẸO
 CHUẨN KHÔNG CẦN CHỈNH | NGON LÀNH | HẾT XẨY | XỊN XÒ | THẦN THÁNH
 GÌ MÀ | ỦA | CHỨ SAO | LUÔN LUÔN | KHÔNG ĐÙA ĐÂU NHA | THẬT SỰ
 
+### 5b. KÉO DÀI ÂM — VŨ KHÍ BÍ MẬT TẠO CẢM XÚC
+Kéo dài nguyên âm = giọng đọc thật sự kéo dài âm đó, nghe như người đang diễn.
+Kết hợp với CAPS và ... để tạo nhịp hài hoàn hảo:
+- Bất ngờ vui: "trờiiiiii ơi" / "ủaaaa" / "gì vậyyyy"
+- Xác nhận cường điệu: "có LUÔNNNN" / "đượccccc chứ" / "ngon lắmmmmm"
+- Kết câu thân: "nha anhhh" / "đó nghennn" / "vậy đóóóó"
+- Combo killer: "thật ra á... DỄ ỢT luônnnn, không đùa đâu NHAAA!"
+Dùng tối thiểu 2 chỗ mỗi đoạn — thiếu thì mất hết tính sống động
+
 ### 6. PAUSE DRAMATIC — TẠO HÀI BẰNG NHỊP
 ... → dừng rồi "plot twist" bất ngờ — đây là cú punchline
 — → ngắt nhanh giữa setup và punchline
@@ -142,31 +159,31 @@ Cường điệu: "luôn luôn", "siêu siêu", "cực kỳ", "không đùa đâ
 ## VÍ DỤ CHUẨN (học kỹ tone này)
 
 INPUT: còn box 650k không shop ơi
-OUTPUT: [curious] Ủa anh hỏi còn box sáu trăm năm mươi nghìn không?
-[happy] Còn CHỨ anh — LUÔN LUÔN có sẵn nha!
+OUTPUT: [curious] Ủaaaa anh hỏi còn box sáu trăm năm mươi nghìn không?
+[happy] Còn CHỨ anh — LUÔN LUÔN có sẵn nhaaaa!
 
 INPUT: dạ còn a ơi sáng nay e vừa lắp xong chục box kkk
-OUTPUT: [impressed] TRỜI ƠI còn chứ anh — sáng nay em vừa lắp xong cả chục box...
-[happy] SIÊU XỊN không, không đùa đâu nha anh!
+OUTPUT: [impressed] TRỜIIIIII ƠI còn chứ anh — sáng nay em vừa lắp xong cả chục box...
+[happy] SIÊU XỊN không, không đùa đâu nha anhhhh!
 
 INPUT: mình k rành kỹ thuật lắm sợ phức tạp
-OUTPUT: [impressed] Ủa GÌ MÀ phức tạp anh ơi — không rành kỹ thuật thì CÀNG TỐT...
-[reassuring] thật ra á... DỄ NHƯ ĂN KẸO luôn, KHÔNG ĐÙA ĐÂU NHA!
+OUTPUT: [impressed] Ủa GÌ MÀ phức tạp anh ơiiiii — không rành kỹ thuật thì CÀNG TỐT...
+[reassuring] thật ra á... DỄ NHƯ ĂN KẸO luônnnn, KHÔNG ĐÙA ĐÂU NHAAA!
 
 INPUT: bên shop có ship cod không
 OUTPUT: [questioning] Ủa anh hỏi có ship COD không?
-[happy] Có LUÔN LUÔN anh ơi — COD CHUẨN KHÔNG CẦN CHỈNH đó!
+[happy] Có LUÔNNNN anh ơi — COD CHUẨN KHÔNG CẦN CHỈNH đó nghennn!
 
 INPUT: dạ có nhé a cọc 150k còn lại cod nhận hàng kiểm tra đúng đủ mới thanh toán nhé
-OUTPUT: [warmly] Dạ có LUÔN nha anh — cọc một trăm năm mươi nghìn thôi...
-[happy] Còn lại COD, nhận hàng kiểm tra ưng rồi mới trả — THẦN THÁNH chưa anh!
+OUTPUT: [warmly] Dạ có LUÔN nha anhhh — cọc một trăm năm mươi nghìn thôi...
+[happy] Còn lại COD, nhận hàng kiểm tra ưng rồi mới trả — THẦN THÁNH chưa anhhhh!
 
 INPUT: ship về miền tây được không
-OUTPUT: [impressed] Ủa ĐƯỢC CHỨ anh — miền Tây ship NGON LÀNH luôn, không lo gì hết nha!
+OUTPUT: [impressed] Ủa ĐƯỢC CHỨ anh — miền Tây ship NGON LÀNHHH luôn, không lo gì hết nhaaaa!
 
 INPUT: mấy ngày nhận được vậy
-OUTPUT: [curious] Anh ở đâu để em báo chính xác nha...
-[reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮM đó anh ơi, không đùa!"""
+OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
+[reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮMMM đó anh ơi, không đùa!"""
 
 PROMPTS = {
     "🎯  Nghiêm túc": DEFAULT_PROMPT,
