@@ -2719,6 +2719,11 @@ class SettingsDialog(QDialog):
 
         self._ep_style_tabs: dict[str, QPushButton] = {}
         ep_prompts_map = dict(PROMPTS)
+        # Temperature per built-in style (phải khớp với _all_styles())
+        ep_temp_map = {
+            "🎯  Nghiêm túc": 0.3,
+            "😄  Hài hước":   0.7,
+        }
 
         def _ep_tab_style(active: bool) -> str:
             if active:
@@ -2742,6 +2747,13 @@ class SettingsDialog(QDialog):
             for n, b in self._ep_style_tabs.items():
                 b.setStyleSheet(_ep_tab_style(n == name))
             self.prompt.setPlainText(ep_prompts_map[name])
+            # Sync temperature slider với style vừa chọn
+            if hasattr(self, "_settings_temp_slider") and name in ep_temp_map:
+                t = ep_temp_map[name]
+                self._settings_temp_slider.setValue(int(t * 100))
+                if hasattr(self, "_settings_temp_val_lbl"):
+                    self._settings_temp_val_lbl.setText(f"{t:.2f}")
+                self.settings["enhance_style_temperature"] = t
 
         for name, prompt_text in ep_prompts_map.items():
             tb = QPushButton(name)
@@ -2876,7 +2888,9 @@ class SettingsDialog(QDialog):
         temp_row.addWidget(lbl_calm)
         self._settings_temp_slider = QSlider(Qt.Orientation.Horizontal)
         self._settings_temp_slider.setRange(0, 100)
-        _cur_temp = self.settings.get("enhance_style_temperature", 0.3)
+        # Init từ style đang active (không phải global saved value)
+        _cur_temp = ep_temp_map.get(_active_ep,
+                    self.settings.get("enhance_style_temperature", 0.3))
         self._settings_temp_slider.setValue(int(_cur_temp * 100))
         self._settings_temp_slider.setFixedHeight(20)
         self._settings_temp_slider.setStyleSheet(
@@ -4169,13 +4183,14 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        btn_add_style = QPushButton("+")
-        btn_add_style.setFixedSize(30, 30)
+        btn_add_style = QPushButton("+ Thêm")
+        btn_add_style.setFixedHeight(28)
         btn_add_style.setToolTip("Thêm phong cách tùy chỉnh")
         btn_add_style.setStyleSheet(
-            f"QPushButton{{background:{SEG_BG};border:none;border-radius:9px;"
-            f"color:{TEXT};font-size:16px;font-weight:600;}}"
-            "QPushButton:hover{background:#d8d8de;}"
+            f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
+            f"border-radius:8px;color:{TEXT};font-size:12px;font-weight:500;"
+            f"padding:0 10px;}}"
+            "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;}"
         )
         btn_add_style.clicked.connect(self._quick_add_style)
 
