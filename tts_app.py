@@ -3361,14 +3361,19 @@ class SettingsDialog(QDialog):
                 item.widget().deleteLater()
         self._lang_chips.clear()
 
-        # Language display names
+        # Language display names — full 32 ElevenLabs languages
         LANG_NAMES = {
-            "en": "🇺🇸 EN", "vi": "🇻🇳 VI", "zh": "🇨🇳 ZH",
-            "ja": "🇯🇵 JA", "ko": "🇰🇷 KO", "es": "🇪🇸 ES",
-            "fr": "🇫🇷 FR", "de": "🇩🇪 DE", "pt": "🇧🇷 PT",
-            "it": "🇮🇹 IT", "ru": "🇷🇺 RU", "ar": "🇸🇦 AR",
-            "hi": "🇮🇳 HI", "nl": "🇳🇱 NL", "pl": "🇵🇱 PL",
-            "sv": "🇸🇪 SV", "tr": "🇹🇷 TR", "id": "🇮🇩 ID",
+            "en":  "🇺🇸 EN",  "vi":  "🇻🇳 VI",  "zh":  "🇨🇳 ZH",
+            "ja":  "🇯🇵 JA",  "ko":  "🇰🇷 KO",  "ar":  "🇸🇦 AR",
+            "bg":  "🇧🇬 BG",  "hr":  "🇭🇷 HR",  "cs":  "🇨🇿 CS",
+            "da":  "🇩🇰 DA",  "nl":  "🇳🇱 NL",  "fil": "🇵🇭 FIL",
+            "fi":  "🇫🇮 FI",  "fr":  "🇫🇷 FR",  "de":  "🇩🇪 DE",
+            "el":  "🇬🇷 EL",  "hi":  "🇮🇳 HI",  "hu":  "🇭🇺 HU",
+            "id":  "🇮🇩 ID",  "it":  "🇮🇹 IT",  "ms":  "🇲🇾 MS",
+            "no":  "🇳🇴 NO",  "pl":  "🇵🇱 PL",  "pt":  "🇧🇷 PT",
+            "ro":  "🇷🇴 RO",  "ru":  "🇷🇺 RU",  "sk":  "🇸🇰 SK",
+            "es":  "🇪🇸 ES",  "sv":  "🇸🇪 SV",  "ta":  "🇮🇳 TA",
+            "tr":  "🇹🇷 TR",  "uk":  "🇺🇦 UK",
         }
 
         all_langs = [("all", "Tất cả")] + [(l, LANG_NAMES.get(l, l.upper())) for l in langs]
@@ -3384,17 +3389,18 @@ class SettingsDialog(QDialog):
         self._lang_filter_row.addStretch()
 
     def _lang_chip_style(self, active: bool) -> str:
+        # height=28px → radius=14px (= height/2) để pill đúng, khớp với language dropdown
         if active:
             return ("QPushButton{background:#e8f0fd;color:#0071e3;"
-                    "border:1.5px solid #0071e3;border-radius:12px;"
+                    "border:1.5px solid #0071e3;border-radius:14px;"
                     "padding:0 12px;font-size:12px;font-weight:600;}"
                     "QPushButton:hover{background:#dce9fd;}"
                     "QPushButton:pressed{background:#c8defa;}")
-        return ("QPushButton{background:#f5f5f7;color:#1d1d1f;"
-                "border:1.5px solid #d2d2d7;border-radius:12px;"
-                "padding:0 12px;font-size:12px;}"
-                "QPushButton:hover{background:#e5e5ea;}"
-                "QPushButton:pressed{background:#d2d2d7;}")
+        return ("QPushButton{background:#ebebf0;color:#3c3c43;"
+                "border:none;border-radius:14px;"
+                "padding:0 12px;font-size:12px;font-weight:500;}"
+                "QPushButton:hover{background:#e0e0e6;}"
+                "QPushButton:pressed{background:#d4d4da;}")
 
     def _set_lang_filter(self, lang: str):
         self._active_lang_filter = lang
@@ -3448,10 +3454,25 @@ class SettingsDialog(QDialog):
         rh.addWidget(name_lbl)
 
         if lang:
-            lang_lbl = QLabel(lang)
+            # Dùng cùng LANG_NAMES dict — hiển thị flag + code thay vì chỉ text
+            _ROW_LANG_NAMES = {
+                "en":  "🇺🇸 EN",  "vi":  "🇻🇳 VI",  "zh":  "🇨🇳 ZH",
+                "ja":  "🇯🇵 JA",  "ko":  "🇰🇷 KO",  "ar":  "🇸🇦 AR",
+                "bg":  "🇧🇬 BG",  "hr":  "🇭🇷 HR",  "cs":  "🇨🇿 CS",
+                "da":  "🇩🇰 DA",  "nl":  "🇳🇱 NL",  "fil": "🇵🇭 FIL",
+                "fi":  "🇫🇮 FI",  "fr":  "🇫🇷 FR",  "de":  "🇩🇪 DE",
+                "el":  "🇬🇷 EL",  "hi":  "🇮🇳 HI",  "hu":  "🇭🇺 HU",
+                "id":  "🇮🇩 ID",  "it":  "🇮🇹 IT",  "ms":  "🇲🇾 MS",
+                "no":  "🇳🇴 NO",  "pl":  "🇵🇱 PL",  "pt":  "🇧🇷 PT",
+                "ro":  "🇷🇴 RO",  "ru":  "🇷🇺 RU",  "sk":  "🇸🇰 SK",
+                "es":  "🇪🇸 ES",  "sv":  "🇸🇪 SV",  "ta":  "🇮🇳 TA",
+                "tr":  "🇹🇷 TR",  "uk":  "🇺🇦 UK",
+            }
+            lang_lbl = QLabel(_ROW_LANG_NAMES.get(lang, lang.upper()))
             lang_lbl.setStyleSheet(
-                "QLabel{font-size:11px;color:#6e6e73;background:#f0f0f5;"
-                "border:none;border-radius:4px;padding:2px 6px;}"
+                "QLabel{font-size:11px;font-weight:500;color:#3c3c43;"
+                "background:#ebebf0;border:none;border-radius:10px;"
+                "padding:2px 8px;}"
             )
             rh.addWidget(lang_lbl)
 
