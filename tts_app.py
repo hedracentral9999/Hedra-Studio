@@ -4248,31 +4248,7 @@ class MainWindow(QWidget):
         sw.addStretch()
         self._card_row(c1, "Phong cách", style_w)
 
-        # — Row: Giọng đọc
-        voice_w = QWidget()
-        voice_w.setStyleSheet("background:transparent;border:none;")
-        vw = QHBoxLayout(voice_w)
-        vw.setContentsMargins(0, 0, 0, 0)
-        vw.setSpacing(8)
-        self._voice_name_lbl = QLabel(self.settings.get("selected_voice_name", "Adam"))
-        self._voice_name_lbl.setStyleSheet(
-            f"color:{TEXT};font-size:13px;background:transparent;border:none;"
-        )
-        btn_change_voice = QPushButton("Đổi giọng →")
-        btn_change_voice.setFixedHeight(28)
-        btn_change_voice.setStyleSheet(
-            f"QPushButton{{font-size:12px;color:{ACCENT};background:transparent;"
-            "border:none;padding:0 4px;}"
-            "QPushButton:hover{text-decoration:underline;}"
-            "QPushButton:pressed{color:#005bb5;}"
-        )
-        btn_change_voice.clicked.connect(self._open_voices_settings)
-        vw.addWidget(self._voice_name_lbl)
-        vw.addWidget(btn_change_voice)
-        vw.addStretch()
-        self._card_row(c1, "Giọng đọc", voice_w)
-
-        # — Row: Ngôn ngữ (chips — HIG: > 5 options → QScrollArea horizontal)
+        # — Row: Giọng đọc + Ngôn ngữ (gộp chung — chọn giọng rồi chọn ngôn ngữ)
         _lang_options = [
             ("🌐  Tự động",       ""),
             ("🇻🇳  Tiếng Việt",   "vi"),
@@ -4288,7 +4264,6 @@ class MainWindow(QWidget):
         self._lang_code = _saved_lang
         self._lang_btns: dict[str, QPushButton] = {}
 
-        # Chip styles — đúng chuẩn HIG: radius 20px, padding 5px 14px, border 1.5px
         def _chip_sel_lang() -> str:
             return (
                 f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
@@ -4312,13 +4287,43 @@ class MainWindow(QWidget):
             for c, b in self._lang_btns.items():
                 b.setStyleSheet(_chip_sel_lang() if c == code else _chip_unsel_lang())
 
-        # Inner widget chứa chips
+        # Outer wrapper: QVBoxLayout — voice line trên, language chips dưới
+        voice_w = QWidget()
+        voice_w.setStyleSheet("background:transparent;border:none;")
+        voice_vlay = QVBoxLayout(voice_w)
+        voice_vlay.setContentsMargins(0, 4, 0, 4)
+        voice_vlay.setSpacing(10)
+
+        # Dòng 1: voice name + đổi giọng
+        voice_top = QWidget()
+        voice_top.setStyleSheet("background:transparent;border:none;")
+        vw = QHBoxLayout(voice_top)
+        vw.setContentsMargins(0, 0, 0, 0)
+        vw.setSpacing(8)
+        self._voice_name_lbl = QLabel(self.settings.get("selected_voice_name", "Adam"))
+        self._voice_name_lbl.setStyleSheet(
+            f"color:{TEXT};font-size:13px;background:transparent;border:none;"
+        )
+        btn_change_voice = QPushButton("Đổi giọng →")
+        btn_change_voice.setFixedHeight(28)
+        btn_change_voice.setStyleSheet(
+            f"QPushButton{{font-size:12px;color:{ACCENT};background:transparent;"
+            "border:none;padding:0 4px;}"
+            "QPushButton:hover{text-decoration:underline;}"
+            "QPushButton:pressed{color:#005bb5;}"
+        )
+        btn_change_voice.clicked.connect(self._open_voices_settings)
+        vw.addWidget(self._voice_name_lbl)
+        vw.addWidget(btn_change_voice)
+        vw.addStretch()
+        voice_vlay.addWidget(voice_top)
+
+        # Dòng 2: language chips (HIG: > 5 → QScrollArea horizontal)
         chips_inner = QWidget()
         chips_inner.setStyleSheet("background:transparent;border:none;")
         chips_lay = QHBoxLayout(chips_inner)
-        chips_lay.setContentsMargins(0, 2, 8, 2)
+        chips_lay.setContentsMargins(0, 0, 8, 0)
         chips_lay.setSpacing(8)
-
         for label, code in _lang_options:
             btn = QPushButton(label)
             is_sel = (code == _saved_lang)
@@ -4328,7 +4333,6 @@ class MainWindow(QWidget):
             chips_lay.addWidget(btn)
         chips_lay.addStretch()
 
-        # QScrollArea horizontal — ẩn scrollbar, scroll bằng gesture/wheel
         lang_scroll = QScrollArea()
         lang_scroll.setWidget(chips_inner)
         lang_scroll.setWidgetResizable(True)
@@ -4337,8 +4341,9 @@ class MainWindow(QWidget):
         lang_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         lang_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         lang_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        voice_vlay.addWidget(lang_scroll)
 
-        self._card_row(c1, "Ngôn ngữ", lang_scroll, last=True)
+        self._card_row(c1, "Giọng đọc", voice_w, last=True)
 
         layout.addWidget(card1)
 
