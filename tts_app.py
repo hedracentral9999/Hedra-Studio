@@ -2831,7 +2831,7 @@ class SettingsDialog(QDialog):
         ep_foot.addWidget(btn_edit_ep)
         ep_right.addLayout(ep_foot)
         ep_card_h.addLayout(ep_right, 1)
-        vt.addWidget(ep_card)
+        vt.addWidget(ep_card, 1)  # stretch → giãn theo cửa sổ
 
         _ep_snapshot: list[str] = [_saved_ep]
 
@@ -2947,26 +2947,28 @@ class SettingsDialog(QDialog):
         self._settings_temp_slider.valueChanged.connect(_on_settings_temp)
 
         # ── Custom styles ──────────────────────────────────────────
-        custom_hdr = QHBoxLayout()
-        custom_hdr.setContentsMargins(0, 20, 0, 6)
-        custom_hdr.addWidget(self._section_label("Phong cách tuỳ chỉnh"))
-        custom_hdr.addStretch()
-        btn_add_style = QPushButton("+ Thêm")
-        btn_add_style.setFixedHeight(28)
-        btn_add_style.setStyleSheet(
-            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
-            "border:none;padding:0 4px;}"
-            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
-            "QPushButton:pressed{color:#005bb5;}"
-        )
-        btn_add_style.clicked.connect(self._add_custom_style)
-        custom_hdr.addWidget(btn_add_style)
-        vt.addLayout(custom_hdr)
+        vt.addSpacing(20)
+        vt.addWidget(self._section_label("Phong cách tuỳ chỉnh"))
+        vt.addSpacing(6)
 
         self._custom_styles_grp, self._custom_styles_glay = self._group()
         vt.addWidget(self._custom_styles_grp)
         self._refresh_custom_styles()
-        vt.addStretch()
+
+        # "+ Thêm" nằm dưới danh sách — dễ thấy và hợp lý hơn
+        btn_add_style = QPushButton("＋  Thêm phong cách")
+        btn_add_style.setFixedHeight(30)
+        btn_add_style.setStyleSheet(
+            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
+            "border:1px solid #d2d2d7;border-radius:8px;padding:0 14px;"
+            "text-align:left;}"
+            "QPushButton:hover{background:#f0f6ff;border-color:#0071e3;}"
+            "QPushButton:pressed{background:#e0edff;}"
+        )
+        btn_add_style.clicked.connect(self._add_custom_style)
+        vt.addSpacing(8)
+        vt.addWidget(btn_add_style)
+        vt.addSpacing(16)
 
         # ── Wire stacked widget ────────────────────────────────────
         self._prompts_stacked.addWidget(page_chat)   # index 0
