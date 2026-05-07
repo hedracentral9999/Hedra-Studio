@@ -345,8 +345,8 @@ class AddStyleDialog(QDialog):
                 height: 4px; background: #e5e5ea; border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                width: 16px; height: 16px; margin: -6px 0;
-                background: #0071e3; border-radius: 8px;
+                width: 18px; height: 18px; margin: -7px 0;
+                background: #0071e3; border-radius: 9px; border: none;
             }
             QSlider::sub-page:horizontal {
                 background: #0071e3; border-radius: 2px;
@@ -1257,18 +1257,22 @@ class Worker(QThread):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
             self.status.emit(f"Đang generate audio [{label}]...")
             voice_id = self.s.get("selected_voice_id", VOICE_ID)
+            tts_body: dict = {
+                "text":     text,
+                "model_id": MODEL,
+                "voice_settings": {
+                    "stability":        0.5,
+                    "similarity_boost": 0.75,
+                    "speed":            self.speed,
+                },
+            }
+            _lang = self.s.get("tts_language_code", "")
+            if _lang:
+                tts_body["language_code"] = _lang
             res = requests.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
                 headers={"xi-api-key": key, "Content-Type": "application/json"},
-                json={
-                    "text":     text,
-                    "model_id": MODEL,
-                    "voice_settings": {
-                        "stability":        0.5,
-                        "similarity_boost": 0.75,
-                        "speed":            self.speed,
-                    },
-                },
+                json=tts_body,
                 timeout=60,
             )
             if res.status_code == 200:
@@ -2598,7 +2602,7 @@ class SettingsDialog(QDialog):
         self.gemini_prompt = QTextEdit()
         self.gemini_prompt.setPlainText(_gp_init)
         self.gemini_prompt.setReadOnly(True)
-        self.gemini_prompt.setMinimumHeight(160)
+        self.gemini_prompt.setMinimumHeight(280)
         self.gemini_prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
             "background:transparent;border:none;padding:14px 16px;}"
@@ -2792,7 +2796,7 @@ class SettingsDialog(QDialog):
         self.prompt = QTextEdit()
         self.prompt.setPlainText(_saved_ep)
         self.prompt.setReadOnly(True)
-        self.prompt.setMinimumHeight(130)
+        self.prompt.setMinimumHeight(230)
         self.prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
             "background:transparent;border:none;padding:14px 14px;}"
@@ -2919,8 +2923,8 @@ class SettingsDialog(QDialog):
         self._settings_temp_slider.setFixedHeight(20)
         self._settings_temp_slider.setStyleSheet(
             "QSlider::groove:horizontal{height:4px;background:#e5e5ea;border-radius:2px;}"
-            "QSlider::handle:horizontal{width:16px;height:16px;margin:-6px 0;"
-            "background:#0071e3;border-radius:8px;}"
+            "QSlider::handle:horizontal{width:18px;height:18px;margin:-7px 0;"
+            "background:#0071e3;border-radius:9px;border:none;}"
             "QSlider::sub-page:horizontal{background:#0071e3;border-radius:2px;}"
         )
         temp_row.addWidget(self._settings_temp_slider, 1)
@@ -3852,6 +3856,8 @@ class SettingsDialog(QDialog):
         # Voice selection
         self.settings["selected_voice_id"]   = self._sel_voice_id
         self.settings["selected_voice_name"] = self._sel_voice_name
+        # Language
+        self.settings["tts_language_code"] = self._lang_combo.currentData()
         self.accept()
 
     def get_settings(self) -> dict:
@@ -3926,12 +3932,12 @@ QPushButton:hover   {{ background: #ebebf0; }}
 QPushButton:pressed {{ background: {SEG_BG}; }}
 QPushButton:disabled {{ background: {BG}; color: {TEXT_MUTE}; border-color: {BORDER}; }}
 QSlider::groove:horizontal {{
-    height: 3px; background: {BORDER}; border-radius: 2px;
+    height: 4px; background: {BORDER}; border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    background: {SURFACE}; width: 18px; height: 18px;
-    margin: -8px 0; border-radius: 9px;
-    border: 2px solid {ACCENT};
+    background: {ACCENT}; width: 18px; height: 18px;
+    margin: -7px 0; border-radius: 9px;
+    border: none;
 }}
 QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
 QFrame[frameShape="4"] {{ background: {BORDER}; max-height: 1px; border: none; }}
@@ -4262,7 +4268,47 @@ class MainWindow(QWidget):
         vw.addWidget(self._voice_name_lbl)
         vw.addWidget(btn_change_voice)
         vw.addStretch()
-        self._card_row(c1, "Giọng đọc", voice_w, last=True)
+        self._card_row(c1, "Giọng đọc", voice_w)
+
+        # — Row: Ngôn ngữ
+        lang_w = QWidget()
+        lang_w.setStyleSheet("background:transparent;border:none;")
+        lw = QHBoxLayout(lang_w)
+        lw.setContentsMargins(0, 0, 0, 0)
+        lw.setSpacing(8)
+        self._lang_combo = QComboBox()
+        self._lang_combo.setFixedHeight(28)
+        self._lang_combo.setStyleSheet(
+            f"QComboBox{{background:{BG};border:1px solid {BORDER};"
+            "border-radius:6px;padding:0 8px;font-size:13px;color:#1d1d1f;}"
+            f"QComboBox:focus{{border-color:{ACCENT};}}"
+            "QComboBox::drop-down{border:none;width:20px;}"
+        )
+        _lang_options = [
+            ("Tự động",          ""),
+            ("Tiếng Việt",       "vi"),
+            ("English",          "en"),
+            ("Tiếng Trung",      "zh"),
+            ("日本語",            "ja"),
+            ("한국어",             "ko"),
+            ("Español",          "es"),
+            ("Français",         "fr"),
+            ("Deutsch",          "de"),
+            ("Português",        "pt"),
+            ("हिन्दी",            "hi"),
+            ("العربية",           "ar"),
+        ]
+        for label, code in _lang_options:
+            self._lang_combo.addItem(label, code)
+        # Restore saved value
+        _saved_lang = self.settings.get("tts_language_code", "")
+        for i in range(self._lang_combo.count()):
+            if self._lang_combo.itemData(i) == _saved_lang:
+                self._lang_combo.setCurrentIndex(i)
+                break
+        lw.addWidget(self._lang_combo)
+        lw.addStretch()
+        self._card_row(c1, "Ngôn ngữ", lang_w, last=True)
 
         layout.addWidget(card1)
 
