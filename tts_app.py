@@ -1306,7 +1306,7 @@ class PromptWizardDialog(QDialog):
         idx = texts.index(chip)
         btn = btns[idx]
         if multi:
-            btn.setChecked(not btn.isChecked())
+            # Qt đã tự toggle checked state khi click → chỉ cần cập nhật style
             btn.setStyleSheet(self._chip_style(btn.isChecked()))
         else:
             for b in btns:
@@ -2409,6 +2409,33 @@ class SettingsDialog(QDialog):
         return self.settings
 
 
+# ── Credits checker (background thread — không block UI) ──────────
+class _CreditsChecker(QThread):
+    done = pyqtSignal(str)
+
+    def __init__(self, keys: list):
+        super().__init__()
+        self.keys = [k.strip() for k in keys if k.strip()]
+
+    def run(self):
+        try:
+            total = 0
+            for key in self.keys:
+                r = requests.get(
+                    "https://api.elevenlabs.io/v1/user/subscription",
+                    headers={"xi-api-key": key}, timeout=5,
+                )
+                if r.status_code == 200:
+                    d = r.json()
+                    total += d.get("character_limit", 0) - d.get("character_count", 0)
+            label = f"Credits: {total:,} còn lại"
+            if len(self.keys) > 1:
+                label += f"  ({len(self.keys)} keys)"
+            self.done.emit(label)
+        except Exception:
+            self.done.emit("Không check được credits")
+
+
 # ── Apple HIG palette ──────────────────────────────────────────────
 BG        = "#f5f5f7"
 SURFACE   = "#ffffff"
@@ -2507,12 +2534,69 @@ class MainWindow(QWidget):
         self.image_paths   = []
         self._parent_ref   = self          # self-ref cho _open_voices_settings
         self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
-        self.setMinimumWidth(460)
-        self.setMinimumHeight(580)
+        self.setMinimumSize(540, 640)
+        self.resize(580, 740)
         self.setStyleSheet(STYLE)
         self._build()
         self._refresh_credits()
         self._check_update()
+
+    # ── Apple HIG helpers ─────────────────────────────────────────
+    def _section_lbl(self, text: str) -> QLabel:
+        """Section label — small caps, muted, Apple System Settings style."""
+        lbl = QLabel(text.upper())
+        lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; font-weight:600;"
+            "letter-spacing:0.5px; padding:16px 0 6px 0;"
+            "background:transparent; border:none;"
+        )
+        return lbl
+
+    def _card(self) -> tuple:
+        """White card với border và 10px radius — Apple grouped section."""
+        outer = QWidget()
+        outer.setStyleSheet(
+            f"QWidget{{background:{SURFACE};"
+            f"border:1px solid {BORDER};"
+            "border-radius:10px;}"
+        )
+        vbox = QVBoxLayout(outer)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+        return outer, vbox
+
+    def _card_row(self, container_vbox, label: str, widget: QWidget,
+                  note: str = "", last: bool = False):
+        """Form row trong card: label trái (120px cố định) + widget phải."""
+        row_w = QWidget()
+        row_w.setStyleSheet(
+            "QWidget{background:transparent;border:none;"
+            + ("" if last else f"border-bottom:1px solid {BORDER};")
+            + "}"
+        )
+        h = QHBoxLayout(row_w)
+        h.setContentsMargins(16, 11, 16, 11)
+        h.setSpacing(12)
+        lbl = QLabel(label)
+        lbl.setFixedWidth(116)
+        lbl.setStyleSheet(
+            f"QLabel{{font-size:13px;color:{TEXT};"
+            "background:transparent;border:none;}"
+        )
+        h.addWidget(lbl)
+        right = QVBoxLayout()
+        right.setSpacing(3)
+        right.addWidget(widget)
+        if note:
+            n = QLabel(note)
+            n.setStyleSheet(
+                f"QLabel{{font-size:11px;color:{TEXT_MUTE};"
+                "background:transparent;border:none;}"
+            )
+            n.setWordWrap(True)
+            right.addWidget(n)
+        h.addLayout(right)
+        container_vbox.addWidget(row_w)
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -2616,19 +2700,46 @@ class MainWindow(QWidget):
 
     # ── Tab 1: TTS ─────────────────────────────────────────────────
     def _build_tts_tab(self) -> QWidget:
+        # Scroll wrapper — nội dung không bao giờ bị cắt
+        outer = QWidget()
+        outer_lay = QVBoxLayout(outer)
+        outer_lay.setContentsMargins(0, 0, 0, 0)
+        outer_lay.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG};border:none;}}"
+            "QScrollBar:vertical{width:6px;background:transparent;}"
+            "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+        )
+
         w = QWidget()
+        w.setStyleSheet(f"background:{BG};")
         layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 24)
         layout.setSpacing(0)
-        layout.setContentsMargins(0, 12, 0, 0)
 
-        # Phong cách
-        style_row = QHBoxLayout()
-        style_row.setSpacing(10)
-        pc_lbl = QLabel("Phong cách")
-        pc_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
-        style_row.addWidget(pc_lbl)
-        style_row.addStretch()
+        # ══ Section 1: Kịch bản (content chính — không cần card, nổi bật) ═══
+        layout.addWidget(self._section_lbl("KỊCH BẢN"))
+        self.text_input = QTextEdit()
+        self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
+        self.text_input.setMinimumHeight(210)
+        self.text_input.setStyleSheet(
+            f"QTextEdit{{border:1px solid {BORDER};border-radius:10px;"
+            f"background:{SURFACE};color:{TEXT};padding:12px 14px;"
+            f"font-size:14px;}}"
+            f"QTextEdit:focus{{border-color:{ACCENT};}}"
+        )
+        layout.addWidget(self.text_input)
 
+        # ══ Section 2: Phong cách & Giọng — grouped card ═════════════════
+        layout.addWidget(self._section_lbl("PHONG CÁCH & GIỌNG"))
+        card1, c1 = self._card()
+
+        # — Row: Phong cách
         seg_frame = QFrame()
         seg_frame.setFixedHeight(30)
         seg_frame.setStyleSheet(
@@ -2639,219 +2750,291 @@ class MainWindow(QWidget):
         seg_layout.setSpacing(2)
 
         self._prompt_btns: dict[str, QPushButton] = {}
-        self._seg_layout = seg_layout      # giữ ref để rebuild sau
+        self._seg_layout = seg_layout
         self._seg_frame  = seg_frame
 
         current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        # Nút "+" thêm style mới — bên ngoài seg_frame
         btn_add_style = QPushButton("+")
         btn_add_style.setFixedSize(30, 30)
-        btn_add_style.setToolTip("Thêm phong cách")
+        btn_add_style.setToolTip("Thêm phong cách tùy chỉnh")
         btn_add_style.setStyleSheet(
             f"QPushButton{{background:{SEG_BG};border:none;border-radius:9px;"
             f"color:{TEXT};font-size:16px;font-weight:600;}}"
-            f"QPushButton:hover{{background:#d8d8de;}}"
+            "QPushButton:hover{background:#d8d8de;}"
         )
         btn_add_style.clicked.connect(self._quick_add_style)
 
-        style_row.addWidget(seg_frame)
-        style_row.addSpacing(6)
-        style_row.addWidget(btn_add_style)
-        layout.addLayout(style_row)
-        layout.addSpacing(12)
+        style_w = QWidget()
+        style_w.setStyleSheet("background:transparent;border:none;")
+        sw = QHBoxLayout(style_w)
+        sw.setContentsMargins(0, 0, 0, 0)
+        sw.setSpacing(6)
+        sw.addWidget(seg_frame)
+        sw.addWidget(btn_add_style)
+        sw.addStretch()
+        self._card_row(c1, "Phong cách", style_w)
 
-        # ── Giọng đọc row ──────────────────────────────────────────
-        voice_row = QHBoxLayout()
-        voice_lbl = QLabel("Giọng đọc")
-        voice_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
-        voice_row.addWidget(voice_lbl)
-        voice_row.addStretch()
-        self._voice_name_lbl = QLabel(
-            self.settings.get("selected_voice_name", "Adam")
-        )
+        # — Row: Giọng đọc
+        voice_w = QWidget()
+        voice_w.setStyleSheet("background:transparent;border:none;")
+        vw = QHBoxLayout(voice_w)
+        vw.setContentsMargins(0, 0, 0, 0)
+        vw.setSpacing(8)
+        self._voice_name_lbl = QLabel(self.settings.get("selected_voice_name", "Adam"))
         self._voice_name_lbl.setStyleSheet(
-            f"color:{TEXT_MUTE};font-size:13px;background:transparent;"
+            f"color:{TEXT};font-size:13px;background:transparent;border:none;"
         )
         btn_change_voice = QPushButton("Đổi giọng →")
         btn_change_voice.setFixedHeight(26)
         btn_change_voice.setStyleSheet(
             f"QPushButton{{font-size:12px;color:{ACCENT};background:transparent;"
-            f"border:none;padding:0 4px;}}"
-            f"QPushButton:hover{{text-decoration:underline;}}"
+            "border:none;padding:0 4px;}"
+            "QPushButton:hover{text-decoration:underline;}"
         )
         btn_change_voice.clicked.connect(self._open_voices_settings)
-        voice_row.addWidget(self._voice_name_lbl)
-        voice_row.addSpacing(6)
-        voice_row.addWidget(btn_change_voice)
-        layout.addLayout(voice_row)
-        layout.addSpacing(12)
+        vw.addWidget(self._voice_name_lbl)
+        vw.addWidget(btn_change_voice)
+        vw.addStretch()
+        self._card_row(c1, "Giọng đọc", voice_w, last=True)
 
-        # Kịch bản
-        self.text_input = QTextEdit()
-        self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
-        self.text_input.setMinimumHeight(190)
-        layout.addWidget(self.text_input)
-        layout.addSpacing(12)
+        layout.addWidget(card1)
 
-        # Tốc độ
-        spd_header = QHBoxLayout()
-        spd_lbl = QLabel("Tốc độ đọc")
-        spd_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
-        self.speed_val = QLabel("1.0×")
-        self.speed_val.setStyleSheet(
-            f"color:{ACCENT}; font-weight:600; font-size:13px; background:transparent;"
-        )
-        spd_header.addWidget(spd_lbl)
-        spd_header.addStretch()
-        spd_header.addWidget(self.speed_val)
-        layout.addLayout(spd_header)
-        layout.addSpacing(6)
+        # ══ Section 3: Cài đặt — grouped card ════════════════════════════
+        layout.addWidget(self._section_lbl("CÀI ĐẶT"))
+        card2, c2 = self._card()
+
+        # — Row: Tốc độ
+        spd_w = QWidget()
+        spd_w.setStyleSheet("background:transparent;border:none;")
+        spd_lay = QHBoxLayout(spd_w)
+        spd_lay.setContentsMargins(0, 0, 0, 0)
+        spd_lay.setSpacing(10)
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(7); self.slider.setMaximum(12)
         default_speed = self.settings.get("default_speed", 1.0)
         self.slider.setValue(int(default_speed * 10))
-        self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}×"))
-        layout.addWidget(self.slider)
-        layout.addSpacing(12)
 
-        # Tên file
-        fn_lbl = QLabel("Tên file")
-        fn_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
-        layout.addWidget(fn_lbl)
-        layout.addSpacing(4)
+        self.speed_val = QLabel("1.0×")
+        self.speed_val.setFixedWidth(36)
+        self.speed_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.speed_val.setStyleSheet(
+            f"color:{ACCENT}; font-weight:600; font-size:13px; background:transparent;"
+        )
+        self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}×"))
+
+        spd_lay.addWidget(self.slider, 1)
+        spd_lay.addWidget(self.speed_val)
+        self._card_row(c2, "Tốc độ đọc", spd_w)
+
+        # — Row: Tên file
         self.filename_input = QLineEdit()
         self.filename_input.setPlaceholderText("box_650k_quang_cao")
-        layout.addWidget(self.filename_input)
-        layout.addSpacing(16)
+        self.filename_input.setStyleSheet(
+            f"QLineEdit{{background:{BG};border:1px solid {BORDER};"
+            "border-radius:6px;padding:5px 9px;font-size:13px;}"
+            f"QLineEdit:focus{{border-color:{ACCENT};background:{SURFACE};}}"
+        )
+        self._card_row(c2, "Tên file", self.filename_input, last=True)
 
-        # Generate
-        self.btn_gen = QPushButton("🎙   Generate")
+        layout.addWidget(card2)
+
+        # ══ Generate button — primary CTA ════════════════════════════════
+        layout.addSpacing(20)
+        self.btn_gen = QPushButton("🎙   Generate Audio")
         self.btn_gen.setMinimumHeight(50)
         self.btn_gen.setFont(QFont("", 15, QFont.Weight.Bold))
         self.btn_gen.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;"
-            f"border-radius:12px;border:none;letter-spacing:0.3px;}}"
+            "border-radius:12px;border:none;letter-spacing:0.3px;}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
-            f"QPushButton:pressed{{background:#005bb5;}}"
-            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
+            "QPushButton:pressed{background:#005bb5;}"
+            "QPushButton:disabled{background:#a8d0fb;color:white;}"
         )
         self.btn_gen.clicked.connect(self._generate)
         layout.addWidget(self.btn_gen)
         layout.addSpacing(8)
 
-        # Status
+        # Status row
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
         self.tts_status_lbl = QLabel("Sẵn sàng")
         self.tts_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
         )
         self.tts_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.tts_status_lbl)
+        status_row.addWidget(self.tts_status_lbl, 1)
 
-        return w
+        self._btn_open_folder = QPushButton("📂")
+        self._btn_open_folder.setFixedSize(28, 28)
+        self._btn_open_folder.setToolTip("Mở thư mục chứa file")
+        self._btn_open_folder.setVisible(False)
+        self._btn_open_folder.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
+            f"background:{SURFACE};font-size:14px;}}"
+            "QPushButton:hover{background:#ebebf0;}"
+        )
+        status_row.addWidget(self._btn_open_folder)
+        layout.addLayout(status_row)
+        self._last_audio_path = ""
+
+        layout.addStretch()
+        scroll.setWidget(w)
+        outer_lay.addWidget(scroll)
+        return outer
 
     # ── Tab 2: Chat → Kịch Bản ────────────────────────────────────
     def _build_chat_tab(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        layout.setSpacing(0)
-        layout.setContentsMargins(0, 12, 0, 0)
+        # Scroll wrapper
+        outer = QWidget()
+        outer_lay = QVBoxLayout(outer)
+        outer_lay.setContentsMargins(0, 0, 0, 0)
+        outer_lay.setSpacing(0)
 
-        # Drop zone
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG};border:none;}}"
+            "QScrollBar:vertical{width:6px;background:transparent;}"
+            "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+        )
+
+        w = QWidget()
+        w.setStyleSheet(f"background:{BG};")
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 24)
+        layout.setSpacing(0)
+
+        # ══ Section 1: Ảnh chat — card với drop zone bên trong ═══════════
+        layout.addWidget(self._section_lbl("ẢNH CHAT"))
+        img_card, img_c = self._card()
+
+        img_inner = QWidget()
+        img_inner.setStyleSheet("background:transparent;border:none;")
+        img_in_lay = QVBoxLayout(img_inner)
+        img_in_lay.setContentsMargins(12, 12, 12, 12)
+        img_in_lay.setSpacing(8)
+
+        # Drop zone — bên trong card
         self.drop_zone = DropZone()
         self.drop_zone.files_added.connect(self._add_images)
-        layout.addWidget(self.drop_zone)
-        layout.addSpacing(8)
+        # Override style để hoà vào card
+        self.drop_zone.setStyleSheet(
+            "QFrame{border:2px dashed #d2d2d7;border-radius:8px;"
+            "background:#fafafa;}"
+            "QFrame:hover{border-color:#0071e3;background:#f0f7ff;}"
+        )
+        img_in_lay.addWidget(self.drop_zone)
 
-        # Image list + clear button
-        list_header = QHBoxLayout()
+        # Counter row
+        count_row = QHBoxLayout()
+        count_row.setSpacing(0)
         self.img_count_lbl = QLabel("0 ảnh đã chọn")
-        self.img_count_lbl.setStyleSheet(f"color:{TEXT_MUTE}; font-size:12px;")
+        self.img_count_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
+        )
         btn_clear_imgs = QPushButton("Xóa tất cả")
         btn_clear_imgs.setFixedHeight(24)
-        btn_clear_imgs.setFixedWidth(80)
         btn_clear_imgs.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:5px;"
-            f"padding:2px 8px;background:{SURFACE};color:{TEXT_MUTE};font-size:11px;}}"
-            f"QPushButton:hover{{background:#ebebf0;}}"
+            f"padding:2px 10px;background:{SURFACE};color:{TEXT_MUTE};"
+            "font-size:11px;}"
+            "QPushButton:hover{background:#ebebf0;}"
         )
         btn_clear_imgs.clicked.connect(self._clear_images)
-        list_header.addWidget(self.img_count_lbl)
-        list_header.addStretch()
-        list_header.addWidget(btn_clear_imgs)
-        layout.addLayout(list_header)
-        layout.addSpacing(4)
+        count_row.addWidget(self.img_count_lbl)
+        count_row.addStretch()
+        count_row.addWidget(btn_clear_imgs)
+        img_in_lay.addLayout(count_row)
 
+        # Image list
         self.img_list = QListWidget()
-        self.img_list.setFixedHeight(80)
-        layout.addWidget(self.img_list)
-        layout.addSpacing(12)
+        self.img_list.setFixedHeight(68)
+        self.img_list.setStyleSheet(
+            f"QListWidget{{border:none;background:{BG};border-radius:6px;padding:2px;}}"
+            f"QListWidget::item{{padding:3px 6px;border-radius:4px;font-size:12px;"
+            f"color:{TEXT};}}"
+            f"QListWidget::item:selected{{background:#e8f0fe;color:{TEXT};}}"
+        )
+        img_in_lay.addWidget(self.img_list)
 
-        # Tạo Kịch Bản button
+        img_c.addWidget(img_inner)
+        layout.addWidget(img_card)
+
+        # ══ Generate button — primary CTA ════════════════════════════════
+        layout.addSpacing(16)
         self.btn_gen_script = QPushButton("✨   Tạo Kịch Bản")
         self.btn_gen_script.setMinimumHeight(50)
         self.btn_gen_script.setFont(QFont("", 15, QFont.Weight.Bold))
         self.btn_gen_script.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;"
-            f"border-radius:12px;border:none;letter-spacing:0.3px;}}"
+            "border-radius:12px;border:none;letter-spacing:0.3px;}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
-            f"QPushButton:pressed{{background:#005bb5;}}"
-            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
+            "QPushButton:pressed{background:#005bb5;}"
+            "QPushButton:disabled{background:#a8d0fb;color:white;}"
         )
         self.btn_gen_script.clicked.connect(self._generate_script)
         layout.addWidget(self.btn_gen_script)
-        layout.addSpacing(12)
 
-        # Separator
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(sep)
-        layout.addSpacing(10)
+        # ══ Section 2: Kịch bản output — card ════════════════════════════
+        layout.addWidget(self._section_lbl("KỊCH BẢN"))
+        out_card, out_c = self._card()
 
-        # Output
-        out_lbl = QLabel("Kịch bản")
-        out_lbl.setStyleSheet(f"color:{TEXT}; font-size:13px;")
-        layout.addWidget(out_lbl)
-        layout.addSpacing(4)
+        out_inner = QWidget()
+        out_inner.setStyleSheet("background:transparent;border:none;")
+        out_in_lay = QVBoxLayout(out_inner)
+        out_in_lay.setContentsMargins(12, 12, 12, 12)
+        out_in_lay.setSpacing(10)
 
         self.script_output = QTextEdit()
-        self.script_output.setPlaceholderText("Kịch bản sẽ hiện ra ở đây sau khi Gemini xử lý...")
-        self.script_output.setMinimumHeight(150)
-        layout.addWidget(self.script_output)
-        layout.addSpacing(8)
+        self.script_output.setPlaceholderText(
+            "Kịch bản sẽ hiện ra ở đây sau khi Gemini xử lý..."
+        )
+        self.script_output.setMinimumHeight(170)
+        self.script_output.setStyleSheet(
+            f"QTextEdit{{border:none;background:transparent;color:{TEXT};"
+            "font-size:14px;padding:0;}"
+        )
+        out_in_lay.addWidget(self.script_output)
 
-        # Action buttons
+        # Actions: Copy + Dùng cho TTS
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
 
         btn_copy = QPushButton("📋  Copy")
-        btn_copy.setFixedHeight(34)
+        btn_copy.setFixedHeight(32)
         btn_copy.clicked.connect(self._copy_script)
         btn_copy.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
-            f"padding:4px 14px;background:{SURFACE};color:{TEXT};font-size:13px;}}"
-            f"QPushButton:hover{{background:#ebebf0;}}"
+            f"padding:0 14px;background:{SURFACE};color:{TEXT};font-size:13px;}}"
+            "QPushButton:hover{background:#ebebf0;}"
         )
 
         btn_use_tts = QPushButton("→  Dùng cho TTS")
-        btn_use_tts.setFixedHeight(34)
+        btn_use_tts.setFixedHeight(32)
         btn_use_tts.clicked.connect(self._use_for_tts)
         btn_use_tts.setStyleSheet(
             f"QPushButton{{border:1px solid {ACCENT};border-radius:8px;"
-            f"padding:4px 14px;background:#f0f7ff;color:{ACCENT};"
-            f"font-size:13px;font-weight:600;}}"
-            f"QPushButton:hover{{background:#dbeafe;}}"
+            f"padding:0 14px;background:#f0f7ff;color:{ACCENT};"
+            "font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#dbeafe;}"
         )
 
         action_row.addWidget(btn_copy)
         action_row.addWidget(btn_use_tts)
         action_row.addStretch()
-        layout.addLayout(action_row)
-        layout.addSpacing(8)
+        out_in_lay.addLayout(action_row)
+
+        out_c.addWidget(out_inner)
+        layout.addWidget(out_card)
 
         # Status
+        layout.addSpacing(8)
         self.chat_status_lbl = QLabel("Sẵn sàng")
         self.chat_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
@@ -2859,7 +3042,10 @@ class MainWindow(QWidget):
         self.chat_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.chat_status_lbl)
 
-        return w
+        layout.addStretch()
+        scroll.setWidget(w)
+        outer_lay.addWidget(scroll)
+        return outer
 
     # ── Chat tab handlers ──────────────────────────────────────────
     def _add_images(self, paths: list):
@@ -2907,7 +3093,6 @@ class MainWindow(QWidget):
         self.chat_status_lbl.setStyleSheet(
             "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
         )
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(4000, self._reset_chat_status)
 
     def _on_script_error(self, msg: str):
@@ -2932,14 +3117,13 @@ class MainWindow(QWidget):
             self.chat_status_lbl.setStyleSheet(
                 "color:#15803d; font-size:11px; background:transparent;"
             )
-            from PyQt6.QtCore import QTimer
             QTimer.singleShot(2000, self._reset_chat_status)
 
     def _use_for_tts(self):
         text = self.script_output.toPlainText().strip()
         if text:
             self.text_input.setPlainText(text)
-            self.tabs.setCurrentIndex(0)
+            self.tabs.setCurrentIndex(1)   # index 1 = TTS tab
 
     # ── TTS tab handlers ───────────────────────────────────────────
     def _all_styles(self) -> list[dict]:
@@ -3174,24 +3358,10 @@ echo "$(date): Done ✅" >> "$LOG"
         if not keys:
             self.credits_lbl.setText("⚠️  Chưa có ElevenLabs API key — vào Settings")
             return
-        try:
-            total_remaining = 0
-            for key in keys:
-                r = requests.get(
-                    "https://api.elevenlabs.io/v1/user/subscription",
-                    headers={"xi-api-key": key}, timeout=5
-                )
-                if r.status_code == 200:
-                    d = r.json()
-                    used  = d.get("character_count", 0)
-                    limit = d.get("character_limit", 0)
-                    total_remaining += limit - used
-            label = f"Credits: {total_remaining:,} còn lại" + (
-                f"  ({len(keys)} keys)" if len(keys) > 1 else ""
-            )
-            self.credits_lbl.setText(label)
-        except Exception:
-            self.credits_lbl.setText("Không check được credits")
+        self.credits_lbl.setText("Credits: đang tải...")
+        self._credits_worker = _CreditsChecker(keys)
+        self._credits_worker.done.connect(self.credits_lbl.setText)
+        self._credits_worker.start()
 
     def _generate(self):
         text = self.text_input.toPlainText().strip()
@@ -3226,9 +3396,13 @@ echo "$(date): Done ✅" >> "$LOG"
         self.tts_status_lbl.setStyleSheet(
             "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
         )
-        reveal_file(path)
+        # Lưu path và hiện nút 📂 — user chủ động mở thư mục nếu muốn
+        self._last_audio_path = path
+        self._btn_open_folder.setVisible(True)
+        self._btn_open_folder.clicked.disconnect() if self._btn_open_folder.receivers(
+            self._btn_open_folder.clicked) > 0 else None
+        self._btn_open_folder.clicked.connect(lambda: reveal_file(self._last_audio_path))
         self._refresh_credits()
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(4000, self._reset_tts_status)
 
     def _reset_tts_status(self):
