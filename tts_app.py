@@ -2566,35 +2566,17 @@ class MainWindow(QWidget):
         vbox.setSpacing(0)
         return outer, vbox
 
-    def _icon_badge(self, color: str, symbol: str, size: int = 28) -> QLabel:
-        """Colored rounded-square icon — macOS System Settings / iOS app icon style."""
-        lbl = QLabel(symbol)
-        lbl.setFixedSize(size, size)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        radius = int(size * 0.24)   # ~iOS icon corner ratio
-        lbl.setStyleSheet(
-            f"QLabel{{background:{color};border-radius:{radius}px;"
-            f"font-size:{int(size * 0.54)}px;border:none;}}"
-        )
-        return lbl
-
     def _card_row(self, container_vbox, label: str, widget: QWidget,
-                  note: str = "", last: bool = False,
-                  icon_color: str = "", icon_sym: str = ""):
-        """Form row trong card — 48px height, inset separator, optional icon badge."""
+                  note: str = "", last: bool = False):
+        """Form row trong card — 48px height, inset separator."""
         row_w = QWidget()
         row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         h = QHBoxLayout(row_w)
-        h.setContentsMargins(14, 11, 16, 11)
-        h.setSpacing(10)
-
-        # Icon badge (optional) — macOS System Settings style
-        if icon_color and icon_sym:
-            h.addWidget(self._icon_badge(icon_color, icon_sym, 28))
+        h.setContentsMargins(16, 13, 16, 13)
+        h.setSpacing(12)
 
         lbl = QLabel(label)
-        # Label width: ít hơn khi có icon
-        lbl.setFixedWidth(92 if (icon_color and icon_sym) else 116)
+        lbl.setFixedWidth(116)
         lbl.setStyleSheet(
             f"QLabel{{font-size:13px;color:{TEXT};"
             "background:transparent;border:none;}"
@@ -2615,14 +2597,13 @@ class MainWindow(QWidget):
         h.addLayout(right)
         container_vbox.addWidget(row_w)
 
-        # Inset separator — thụt vào từ icon, như iOS/macOS standard
+        # Inset separator
         if not last:
-            indent = 52 if (icon_color and icon_sym) else 16
             sep_wrap = QWidget()
             sep_wrap.setFixedHeight(1)
             sep_wrap.setStyleSheet("background:transparent;border:none;")
             sep_h = QHBoxLayout(sep_wrap)
-            sep_h.setContentsMargins(indent, 0, 0, 0)
+            sep_h.setContentsMargins(16, 0, 0, 0)
             sep_h.setSpacing(0)
             sep_line = QWidget()
             sep_line.setFixedHeight(1)
@@ -2807,8 +2788,7 @@ class MainWindow(QWidget):
         sw.addWidget(seg_frame)
         sw.addWidget(btn_add_style)
         sw.addStretch()
-        self._card_row(c1, "Phong cách", style_w,
-                      icon_color="#ff9500", icon_sym="🎨")
+        self._card_row(c1, "Phong cách", style_w)
 
         # — Row: Giọng đọc
         voice_w = QWidget()
@@ -2831,8 +2811,7 @@ class MainWindow(QWidget):
         vw.addWidget(self._voice_name_lbl)
         vw.addWidget(btn_change_voice)
         vw.addStretch()
-        self._card_row(c1, "Giọng đọc", voice_w, last=True,
-                      icon_color="#0a7aff", icon_sym="🎤")
+        self._card_row(c1, "Giọng đọc", voice_w, last=True)
 
         layout.addWidget(card1)
 
@@ -2862,8 +2841,7 @@ class MainWindow(QWidget):
 
         spd_lay.addWidget(self.slider, 1)
         spd_lay.addWidget(self.speed_val)
-        self._card_row(c2, "Tốc độ đọc", spd_w,
-                      icon_color="#34c759", icon_sym="⚡")
+        self._card_row(c2, "Tốc độ đọc", spd_w)
 
         # — Row: Tên file
         self.filename_input = QLineEdit()
@@ -2873,8 +2851,7 @@ class MainWindow(QWidget):
             "border-radius:6px;padding:5px 9px;font-size:13px;}"
             f"QLineEdit:focus{{border-color:{ACCENT};background:{SURFACE};}}"
         )
-        self._card_row(c2, "Tên file", self.filename_input, last=True,
-                      icon_color="#ff9f0a", icon_sym="📄")
+        self._card_row(c2, "Tên file", self.filename_input, last=True)
 
         layout.addWidget(card2)
 
