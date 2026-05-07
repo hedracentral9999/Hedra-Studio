@@ -4301,43 +4301,74 @@ class MainWindow(QWidget):
         self._card_row(c1, "Phong cách", style_w)
 
         # — Row: Giọng đọc (voice name + language pill-dropdown + đổi giọng — 1 hàng)
-        _lang_options = [
-            ("🌐  Tự động",      ""),
-            ("🇻🇳  Tiếng Việt",  "vi"),
-            ("🇺🇸  Tiếng Anh",   "en"),
-            ("🇨🇳  Tiếng Trung", "zh"),
-            ("🇯🇵  Tiếng Nhật",  "ja"),
-            ("🇰🇷  Tiếng Hàn",   "ko"),
-            ("🇪🇸  Tây Ban Nha", "es"),
-            ("🇫🇷  Tiếng Pháp",  "fr"),
-            ("🇩🇪  Tiếng Đức",   "de"),
+        # Full ElevenLabs language list — top picks + separator + alphabetical
+        _lang_top = [
+            ("🌐  Tự động",       ""),
+            ("🇻🇳  Tiếng Việt",   "vi"),
+            ("🇺🇸  Tiếng Anh",    "en"),
+            ("🇨🇳  Tiếng Trung",  "zh"),
+            ("🇯🇵  Tiếng Nhật",   "ja"),
+            ("🇰🇷  Tiếng Hàn",    "ko"),
         ]
+        _lang_rest = [
+            ("🇸🇦  Tiếng Ả Rập",      "ar"),
+            ("🇧🇬  Tiếng Bungari",     "bg"),
+            ("🇭🇷  Tiếng Croatia",     "hr"),
+            ("🇨🇿  Tiếng Séc",         "cs"),
+            ("🇩🇰  Tiếng Đan Mạch",    "da"),
+            ("🇳🇱  Tiếng Hà Lan",      "nl"),
+            ("🇵🇭  Tiếng Philippines", "fil"),
+            ("🇫🇮  Tiếng Phần Lan",    "fi"),
+            ("🇫🇷  Tiếng Pháp",        "fr"),
+            ("🇩🇪  Tiếng Đức",         "de"),
+            ("🇬🇷  Tiếng Hy Lạp",      "el"),
+            ("🇮🇳  Tiếng Hindi",       "hi"),
+            ("🇭🇺  Tiếng Hungary",     "hu"),
+            ("🇮🇩  Tiếng Indonesia",   "id"),
+            ("🇮🇹  Tiếng Ý",           "it"),
+            ("🇲🇾  Tiếng Mã Lai",      "ms"),
+            ("🇳🇴  Tiếng Na Uy",       "no"),
+            ("🇵🇱  Tiếng Ba Lan",      "pl"),
+            ("🇧🇷  Tiếng Bồ Đào Nha", "pt"),
+            ("🇷🇴  Tiếng Romania",     "ro"),
+            ("🇷🇺  Tiếng Nga",         "ru"),
+            ("🇸🇰  Tiếng Slovak",      "sk"),
+            ("🇪🇸  Tiếng Tây Ban Nha", "es"),
+            ("🇸🇪  Tiếng Thụy Điển",   "sv"),
+            ("🇮🇳  Tiếng Tamil",       "ta"),
+            ("🇹🇷  Tiếng Thổ Nhĩ Kỳ", "tr"),
+            ("🇺🇦  Tiếng Ukraine",     "uk"),
+        ]
+        _lang_options = _lang_top + _lang_rest
+
         _saved_lang = self.settings.get("tts_language_code", "")
         self._lang_code = _saved_lang
-        # Map code → label (để update button text)
         _lang_map = {code: lbl for lbl, code in _lang_options}
 
         def _lang_btn_style(active: bool) -> str:
+            # height = 28px → border-radius = 14px (= height/2) để pill đúng
             if active:
                 return (
                     f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
-                    f"border:1.5px solid {ACCENT};border-radius:20px;"
-                    "padding:4px 12px 4px 14px;font-size:13px;font-weight:600;}}"
+                    f"border:1.5px solid {ACCENT};border-radius:14px;"
+                    "min-height:28px;padding:0 10px 0 12px;"
+                    "font-size:12px;font-weight:600;}}"
                     "QPushButton:hover{background:#dce9fd;}"
                     "QPushButton:pressed{background:#cfe0fc;}"
                 )
             return (
-                "QPushButton{background:#f5f5f7;color:#1d1d1f;"
-                "border:1.5px solid #d2d2d7;border-radius:20px;"
-                "padding:4px 12px 4px 14px;font-size:13px;font-weight:400;}"
-                "QPushButton:hover{background:#e5e5ea;border-color:#aeaeb2;}"
-                "QPushButton:pressed{background:#d2d2d7;}"
+                "QPushButton{background:#ebebf0;color:#3c3c43;"
+                "border:none;border-radius:14px;"
+                "min-height:28px;padding:0 10px 0 12px;"
+                "font-size:12px;font-weight:500;}"
+                "QPushButton:hover{background:#e0e0e6;}"
+                "QPushButton:pressed{background:#d4d4da;}"
             )
 
         # Pill dropdown button — hiển thị lựa chọn hiện tại + chevron
         _init_label = _lang_map.get(_saved_lang, "🌐  Tự động") + "  ▾"
         self._lang_btn = QPushButton(_init_label)
-        self._lang_btn.setFixedHeight(32)
+        self._lang_btn.setFixedHeight(28)
         self._lang_btn.setStyleSheet(_lang_btn_style(_saved_lang != ""))
         self._lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -4346,12 +4377,13 @@ class MainWindow(QWidget):
             menu.setStyleSheet(
                 "QMenu{background:#ffffff;border:1px solid #d2d2d7;"
                 "border-radius:10px;padding:4px 0;}"
-                "QMenu::item{padding:8px 20px;font-size:13px;color:#1d1d1f;}"
+                "QMenu::item{padding:7px 20px;font-size:13px;color:#1d1d1f;}"
                 "QMenu::item:selected{background:#e8f0fd;color:#0071e3;}"
                 "QMenu::item:checked{font-weight:600;color:#0071e3;}"
-                "QMenu::separator{height:1px;background:#e5e5ea;margin:4px 0;}"
+                "QMenu::separator{height:1px;background:#e5e5ea;margin:3px 0;}"
             )
-            for lbl, code in _lang_options:
+            # Top picks
+            for lbl, code in _lang_top:
                 action = QAction(lbl, menu)
                 action.setCheckable(True)
                 action.setChecked(self._lang_code == code)
@@ -4361,7 +4393,19 @@ class MainWindow(QWidget):
                     self._lang_btn.setStyleSheet(_lang_btn_style(c != ""))
                 action.triggered.connect(_pick)
                 menu.addAction(action)
-            # Separator + reset nhanh
+            # Separator → phần còn lại
+            menu.addSeparator()
+            for lbl, code in _lang_rest:
+                action = QAction(lbl, menu)
+                action.setCheckable(True)
+                action.setChecked(self._lang_code == code)
+                def _pick(checked, c=code, l=lbl):
+                    self._lang_code = c
+                    self._lang_btn.setText(l + "  ▾")
+                    self._lang_btn.setStyleSheet(_lang_btn_style(c != ""))
+                action.triggered.connect(_pick)
+                menu.addAction(action)
+            # Separator + reset
             menu.addSeparator()
             reset = QAction("↺  Về Tự động", menu)
             def _reset():
@@ -4370,7 +4414,6 @@ class MainWindow(QWidget):
                 self._lang_btn.setStyleSheet(_lang_btn_style(False))
             reset.triggered.connect(_reset)
             menu.addAction(reset)
-            # Hiện menu ngay bên dưới button
             menu.exec(self._lang_btn.mapToGlobal(
                 self._lang_btn.rect().bottomLeft()
             ))
