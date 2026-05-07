@@ -1906,6 +1906,9 @@ class VoiceLibraryDialog(QDialog):
         self._workers.append(w)
 
     def _clear_list(self):
+        # Stop audio trước khi xóa widgets — tránh dangling pointer
+        self._player.stop()
+        self._playing_btn = None
         while self._list_lay.count():
             item = self._list_lay.takeAt(0)
             if item.widget():
@@ -2034,21 +2037,34 @@ class VoiceLibraryDialog(QDialog):
                 "border-radius:6px;font-size:12px;color:#1d1d1f;}"
                 "QPushButton:hover{background:#e5e5ea;}")
 
+    def _safe_btn(self, btn: QPushButton | None) -> QPushButton | None:
+        """Trả về btn nếu widget còn sống, None nếu đã bị delete."""
+        if btn is None:
+            return None
+        try:
+            btn.objectName()   # raises RuntimeError nếu C++ object đã delete
+            return btn
+        except RuntimeError:
+            return None
+
     def _toggle_preview(self, url: str, btn: QPushButton):
         """Play / Stop toggle cho preview button."""
-        # Nếu đang phát cùng 1 bài → stop
+        # Nếu đang phát cùng 1 bài → stop (defer stop để tránh re-entrancy)
         if self._playing_btn is btn:
-            self._stop_preview()
+            QTimer.singleShot(0, self._stop_preview)
             return
 
-        # Stop bài cũ nếu có
+        # Stop bài cũ rồi download bài mới
         self._stop_preview()
 
-        # Download rồi play
         self._playing_btn = btn
-        btn.setText("⏳")
-        btn.setEnabled(False)
-        btn.setStyleSheet(self._prev_btn_style(True))
+        try:
+            btn.setText("⏳")
+            btn.setEnabled(False)
+            btn.setStyleSheet(self._prev_btn_style(True))
+        except RuntimeError:
+            self._playing_btn = None
+            return
 
         self._dl_worker = AudioPreviewDownloader(url)
         self._dl_worker.done.connect(self._play_file)
@@ -2056,37 +2072,61 @@ class VoiceLibraryDialog(QDialog):
         self._dl_worker.start()
 
     def _play_file(self, path: str):
-        if not self._playing_btn:
+        btn = self._safe_btn(self._playing_btn)
+        if not btn:
+            self._playing_btn = None
             return
         self._player.setSource(QUrl.fromLocalFile(path))
         self._player.play()
-        self._playing_btn.setText("■")
-        self._playing_btn.setEnabled(True)
-        self._playing_btn.setStyleSheet(self._prev_btn_style(True))
+        try:
+            btn.setText("■")
+            btn.setEnabled(True)
+            btn.setStyleSheet(self._prev_btn_style(True))
+        except RuntimeError:
+            pass
 
     def _stop_preview(self):
+        # Dùng blockSignals để tránh _on_playback_state re-enter khi stop() gọi synchronous
+        self._player.blockSignals(True)
         self._player.stop()
-        if self._playing_btn:
-            self._playing_btn.setText("▶")
-            self._playing_btn.setEnabled(True)
-            self._playing_btn.setStyleSheet(self._prev_btn_style(False))
-            self._playing_btn = None
+        self._player.blockSignals(False)
+        btn = self._safe_btn(self._playing_btn)
+        self._playing_btn = None
+        if btn:
+            try:
+                btn.setText("▶")
+                btn.setEnabled(True)
+                btn.setStyleSheet(self._prev_btn_style(False))
+            except RuntimeError:
+                pass
 
     def _on_playback_state(self, state):
-        """Tự reset button khi audio kết thúc."""
+        """Tự reset button khi audio kết thúc (natural end, không phải manual stop)."""
         if state == QMediaPlayer.PlaybackState.StoppedState:
-            if self._playing_btn:
-                self._playing_btn.setText("▶")
-                self._playing_btn.setEnabled(True)
-                self._playing_btn.setStyleSheet(self._prev_btn_style(False))
-                self._playing_btn = None
+            # Defer để tránh re-entrancy trong signal handler
+            QTimer.singleShot(0, self._reset_after_stop)
+
+    def _reset_after_stop(self):
+        btn = self._safe_btn(self._playing_btn)
+        self._playing_btn = None
+        if btn:
+            try:
+                btn.setText("▶")
+                btn.setEnabled(True)
+                btn.setStyleSheet(self._prev_btn_style(False))
+            except RuntimeError:
+                pass
 
     def _on_preview_error(self, err: str):
-        if self._playing_btn:
-            self._playing_btn.setText("▶")
-            self._playing_btn.setEnabled(True)
-            self._playing_btn.setStyleSheet(self._prev_btn_style(False))
-            self._playing_btn = None
+        btn = self._safe_btn(self._playing_btn)
+        self._playing_btn = None
+        if btn:
+            try:
+                btn.setText("▶")
+                btn.setEnabled(True)
+                btn.setStyleSheet(self._prev_btn_style(False))
+            except RuntimeError:
+                pass
 
 
 # Layout: sidebar trái (nav items) + content phải (scroll area)
@@ -2846,6 +2886,16 @@ class SettingsDialog(QDialog):
 
     # ── In-app voice preview (SettingsDialog) ────────────────────
 
+    def _safe_voice_btn(self, btn: "QPushButton | None") -> "QPushButton | None":
+        """Return btn nếu C++ object còn sống, None nếu đã bị deleteLater."""
+        if btn is None:
+            return None
+        try:
+            btn.objectName()   # raises RuntimeError nếu C++ object đã bị xóa
+            return btn
+        except RuntimeError:
+            return None
+
     def _toggle_voice_preview(self, url: str, btn: QPushButton):
         """Play / Stop preview button trong Voices list."""
         # Lazy-init player
@@ -2858,17 +2908,21 @@ class SettingsDialog(QDialog):
             self._v_playing_btn: QPushButton | None = None
             self._v_dl_worker = None
 
-        # Toggle
+        # Toggle — defer stop ra ngoài signal handler để tránh re-entrancy
         if getattr(self, "_v_playing_btn", None) is btn:
-            self._v_player.stop()
+            QTimer.singleShot(0, self._stop_voice_preview)
             return
 
-        # Stop bài cũ
-        self._v_player.stop()
+        # Stop bài cũ trước khi play mới
+        self._stop_voice_preview()
 
         self._v_playing_btn = btn
-        btn.setText("⏳")
-        btn.setEnabled(False)
+        try:
+            btn.setText("⏳")
+            btn.setEnabled(False)
+        except RuntimeError:
+            self._v_playing_btn = None
+            return
 
         w = AudioPreviewDownloader(url)
         w.done.connect(lambda path, b=btn: self._play_voice_preview(path, b))
@@ -2876,31 +2930,81 @@ class SettingsDialog(QDialog):
         w.start()
         self._v_dl_worker = w
 
+    def _stop_voice_preview(self):
+        """Stop player an toàn, tránh re-entrancy với blockSignals."""
+        if not hasattr(self, "_v_player"):
+            return
+        self._v_player.blockSignals(True)
+        self._v_player.stop()
+        self._v_player.blockSignals(False)
+        btn = self._safe_voice_btn(getattr(self, "_v_playing_btn", None))
+        self._v_playing_btn = None
+        if btn:
+            try:
+                btn.setText("▶")
+                btn.setEnabled(True)
+                btn.setStyleSheet(
+                    "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+                    "border-radius:6px;font-size:12px;}"
+                    "QPushButton:hover{background:#e5e5ea;}"
+                )
+            except RuntimeError:
+                pass
+
     def _play_voice_preview(self, path: str, btn: QPushButton):
+        if not hasattr(self, "_v_player"):
+            return
+        safe = self._safe_voice_btn(btn)
+        if safe is None:
+            return
         self._v_player.setSource(QUrl.fromLocalFile(path))
         self._v_player.play()
-        btn.setText("■")
-        btn.setEnabled(True)
-        btn.setStyleSheet(
-            "QPushButton{background:#e8f0fd;border:1.5px solid #0071e3;"
-            "border-radius:6px;font-size:13px;color:#0071e3;}"
-        )
+        try:
+            safe.setText("■")
+            safe.setEnabled(True)
+            safe.setStyleSheet(
+                "QPushButton{background:#e8f0fd;border:1.5px solid #0071e3;"
+                "border-radius:6px;font-size:13px;color:#0071e3;}"
+            )
+        except RuntimeError:
+            pass
 
     def _reset_voice_btn(self, btn: QPushButton):
-        btn.setText("▶")
-        btn.setEnabled(True)
-        btn.setStyleSheet(
-            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
-            "border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:#e5e5ea;}"
-        )
+        safe = self._safe_voice_btn(btn)
+        if safe:
+            try:
+                safe.setText("▶")
+                safe.setEnabled(True)
+                safe.setStyleSheet(
+                    "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+                    "border-radius:6px;font-size:12px;}"
+                    "QPushButton:hover{background:#e5e5ea;}"
+                )
+            except RuntimeError:
+                pass
         if getattr(self, "_v_playing_btn", None) is btn:
             self._v_playing_btn = None
 
+    def _reset_voice_after_stop(self):
+        """Callback defer từ _on_voice_playback_state để tránh re-entrancy."""
+        btn = self._safe_voice_btn(getattr(self, "_v_playing_btn", None))
+        self._v_playing_btn = None
+        if btn:
+            try:
+                btn.setText("▶")
+                btn.setEnabled(True)
+                btn.setStyleSheet(
+                    "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+                    "border-radius:6px;font-size:12px;}"
+                    "QPushButton:hover{background:#e5e5ea;}"
+                )
+            except RuntimeError:
+                pass
+
     def _on_voice_playback_state(self, state):
         if state == QMediaPlayer.PlaybackState.StoppedState:
-            if getattr(self, "_v_playing_btn", None):
-                self._reset_voice_btn(self._v_playing_btn)
+            # Defer để tránh crash do gọi stop() từ trong signal handler
+            QTimer.singleShot(0, self._reset_voice_after_stop)
 
     def _refresh_custom_voices(self):
         while self._custom_voices_glay.count():
