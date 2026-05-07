@@ -14,8 +14,9 @@ from PyQt6.QtWidgets import (
     QScrollArea, QStackedWidget, QGridLayout, QComboBox,
     QSizePolicy, QSpacerItem,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtGui import QIcon, QFont, QAction, QPixmap, QColor, QPainter
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from version import VERSION, GITHUB_REPO
 
@@ -543,6 +544,32 @@ class SharedVoiceFetcher(QThread):
             if r.status_code == 200:
                 voices = r.json().get("voices", [])
                 self.done.emit(voices)
+            else:
+                self.error.emit(f"HTTP {r.status_code}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class AudioPreviewDownloader(QThread):
+    """Download preview audio về temp file để play in-app."""
+    done  = pyqtSignal(str)   # local file path
+    error = pyqtSignal(str)
+
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+
+    def run(self):
+        import tempfile
+        try:
+            r = requests.get(self.url, timeout=15, stream=True)
+            if r.status_code == 200:
+                suffix = ".mp3" if "mp3" in self.url.lower() else ".mp3"
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                for chunk in r.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+                tmp.close()
+                self.done.emit(tmp.name)
             else:
                 self.error.emit(f"HTTP {r.status_code}")
         except Exception as e:
@@ -1717,7 +1744,16 @@ class VoiceLibraryDialog(QDialog):
         super().__init__(parent)
         self.api_key    = api_key
         self._workers: list = []
-        self._preview_proc = None
+        self._playing_btn: QPushButton | None = None   # nút đang phát
+        self._dl_worker: AudioPreviewDownloader | None = None
+
+        # Shared audio player — 1 giọng tại một thời điểm
+        self._audio_out = QAudioOutput()
+        self._audio_out.setVolume(1.0)
+        self._player = QMediaPlayer()
+        self._player.setAudioOutput(self._audio_out)
+        self._player.playbackStateChanged.connect(self._on_playback_state)
+
         self.setWindowTitle("🌐  Thư viện giọng ElevenLabs")
         self.setMinimumSize(680, 560)
         self.setStyleSheet("QDialog{background:#f5f5f7;}")
@@ -1936,17 +1972,16 @@ class VoiceLibraryDialog(QDialog):
             info.addWidget(meta_lbl)
         h.addLayout(info, 1)
 
-        # Preview button
+        # Preview button — in-app playback
         if preview:
             btn_prev = QPushButton("▶")
             btn_prev.setFixedSize(30, 30)
-            btn_prev.setToolTip("Nghe thử")
-            btn_prev.setStyleSheet(
-                "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
-                "border-radius:6px;font-size:12px;color:#1d1d1f;}"
-                "QPushButton:hover{background:#e5e5ea;}"
+            btn_prev.setToolTip("Nghe thử trong app")
+            btn_prev.setProperty("preview_url", preview)
+            btn_prev.setStyleSheet(self._prev_btn_style(False))
+            btn_prev.clicked.connect(
+                lambda _, u=preview, b=btn_prev: self._toggle_preview(u, b)
             )
-            btn_prev.clicked.connect(lambda _, u=preview: webbrowser.open(u))
             h.addWidget(btn_prev)
 
         # Add button
@@ -1987,6 +2022,71 @@ class VoiceLibraryDialog(QDialog):
         btn.setEnabled(True)
         btn.setText("＋ Thêm")
         QMessageBox.warning(self, "Lỗi", f"Không thêm được giọng:\n{error}")
+
+    # ── In-app audio preview ──────────────────────────────────────
+
+    def _prev_btn_style(self, playing: bool) -> str:
+        if playing:
+            return ("QPushButton{background:#e8f0fd;border:1.5px solid #0071e3;"
+                    "border-radius:6px;font-size:13px;color:#0071e3;}"
+                    "QPushButton:hover{background:#dce9fd;}")
+        return ("QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+                "border-radius:6px;font-size:12px;color:#1d1d1f;}"
+                "QPushButton:hover{background:#e5e5ea;}")
+
+    def _toggle_preview(self, url: str, btn: QPushButton):
+        """Play / Stop toggle cho preview button."""
+        # Nếu đang phát cùng 1 bài → stop
+        if self._playing_btn is btn:
+            self._stop_preview()
+            return
+
+        # Stop bài cũ nếu có
+        self._stop_preview()
+
+        # Download rồi play
+        self._playing_btn = btn
+        btn.setText("⏳")
+        btn.setEnabled(False)
+        btn.setStyleSheet(self._prev_btn_style(True))
+
+        self._dl_worker = AudioPreviewDownloader(url)
+        self._dl_worker.done.connect(self._play_file)
+        self._dl_worker.error.connect(self._on_preview_error)
+        self._dl_worker.start()
+
+    def _play_file(self, path: str):
+        if not self._playing_btn:
+            return
+        self._player.setSource(QUrl.fromLocalFile(path))
+        self._player.play()
+        self._playing_btn.setText("■")
+        self._playing_btn.setEnabled(True)
+        self._playing_btn.setStyleSheet(self._prev_btn_style(True))
+
+    def _stop_preview(self):
+        self._player.stop()
+        if self._playing_btn:
+            self._playing_btn.setText("▶")
+            self._playing_btn.setEnabled(True)
+            self._playing_btn.setStyleSheet(self._prev_btn_style(False))
+            self._playing_btn = None
+
+    def _on_playback_state(self, state):
+        """Tự reset button khi audio kết thúc."""
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            if self._playing_btn:
+                self._playing_btn.setText("▶")
+                self._playing_btn.setEnabled(True)
+                self._playing_btn.setStyleSheet(self._prev_btn_style(False))
+                self._playing_btn = None
+
+    def _on_preview_error(self, err: str):
+        if self._playing_btn:
+            self._playing_btn.setText("▶")
+            self._playing_btn.setEnabled(True)
+            self._playing_btn.setStyleSheet(self._prev_btn_style(False))
+            self._playing_btn = None
 
 
 # Layout: sidebar trái (nav items) + content phải (scroll area)
@@ -2684,17 +2784,19 @@ class SettingsDialog(QDialog):
 
         rh.addStretch()
 
-        # Preview button
+        # Preview button — in-app playback
         if preview_url:
             btn_prev = QPushButton("▶")
             btn_prev.setFixedSize(28, 28)
-            btn_prev.setToolTip("Nghe thử")
+            btn_prev.setToolTip("Nghe thử trong app")
             btn_prev.setStyleSheet(
                 "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
                 "border-radius:6px;font-size:12px;}"
                 "QPushButton:hover{background:#e5e5ea;}"
             )
-            btn_prev.clicked.connect(lambda _, u=preview_url: webbrowser.open(u))
+            btn_prev.clicked.connect(
+                lambda _, u=preview_url, b=btn_prev: self._toggle_voice_preview(u, b)
+            )
             rh.addWidget(btn_prev)
 
         # Delete button (custom only)
@@ -2738,10 +2840,67 @@ class SettingsDialog(QDialog):
         # Custom voices
         for cv in self.settings.get("custom_voices", []):
             vid = cv.get("id", "")
-            # Find button in custom voices group
             btn = self._custom_voices_grp.findChild(QPushButton, f"vc_{vid}")
             if btn:
                 btn.setStyleSheet(self._voice_check_style(vid == self._sel_voice_id))
+
+    # ── In-app voice preview (SettingsDialog) ────────────────────
+
+    def _toggle_voice_preview(self, url: str, btn: QPushButton):
+        """Play / Stop preview button trong Voices list."""
+        # Lazy-init player
+        if not hasattr(self, "_v_player"):
+            self._v_audio_out = QAudioOutput()
+            self._v_audio_out.setVolume(1.0)
+            self._v_player = QMediaPlayer()
+            self._v_player.setAudioOutput(self._v_audio_out)
+            self._v_player.playbackStateChanged.connect(self._on_voice_playback_state)
+            self._v_playing_btn: QPushButton | None = None
+            self._v_dl_worker = None
+
+        # Toggle
+        if getattr(self, "_v_playing_btn", None) is btn:
+            self._v_player.stop()
+            return
+
+        # Stop bài cũ
+        self._v_player.stop()
+
+        self._v_playing_btn = btn
+        btn.setText("⏳")
+        btn.setEnabled(False)
+
+        w = AudioPreviewDownloader(url)
+        w.done.connect(lambda path, b=btn: self._play_voice_preview(path, b))
+        w.error.connect(lambda _e, b=btn: self._reset_voice_btn(b))
+        w.start()
+        self._v_dl_worker = w
+
+    def _play_voice_preview(self, path: str, btn: QPushButton):
+        self._v_player.setSource(QUrl.fromLocalFile(path))
+        self._v_player.play()
+        btn.setText("■")
+        btn.setEnabled(True)
+        btn.setStyleSheet(
+            "QPushButton{background:#e8f0fd;border:1.5px solid #0071e3;"
+            "border-radius:6px;font-size:13px;color:#0071e3;}"
+        )
+
+    def _reset_voice_btn(self, btn: QPushButton):
+        btn.setText("▶")
+        btn.setEnabled(True)
+        btn.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+            "border-radius:6px;font-size:12px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        if getattr(self, "_v_playing_btn", None) is btn:
+            self._v_playing_btn = None
+
+    def _on_voice_playback_state(self, state):
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            if getattr(self, "_v_playing_btn", None):
+                self._reset_voice_btn(self._v_playing_btn)
 
     def _refresh_custom_voices(self):
         while self._custom_voices_glay.count():
