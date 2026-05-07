@@ -212,30 +212,30 @@ EMOJI_LIST = [
 
 
 class EmojiPickerDialog(QDialog):
-    """Bảng chọn emoji — 6 cột, button đủ lớn."""
+    """Bảng chọn emoji — 6 cột, button đủ lớn, full visible không cần scroll."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Chọn icon")
-        self.setMinimumSize(400, 360)
-        self.resize(420, 400)
         self.chosen = ""
         self._build()
+        # Center on screen (tránh bị che bởi macOS menu bar)
+        from PyQt6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.adjustSize()
+        x = screen.center().x() - self.width() // 2
+        y = screen.center().y() - self.height() // 2
+        self.move(max(x, screen.left() + 20), max(y, screen.top() + 20))
 
     def _build(self):
         v = QVBoxLayout(self)
-        v.setContentsMargins(0, 0, 0, 0)
+        v.setContentsMargins(16, 16, 16, 16)
         v.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea{background:#f5f5f7;border:none;}")
-
         inner = QWidget()
-        inner.setStyleSheet("QWidget{background:#f5f5f7;}")
+        inner.setStyleSheet("QWidget{background:#f5f5f7;border:none;}")
         grid = QGridLayout(inner)
         grid.setSpacing(8)
-        grid.setContentsMargins(16, 16, 16, 16)
+        grid.setContentsMargins(0, 0, 0, 0)
 
         cols = 6
         for i, em in enumerate(EMOJI_LIST):
@@ -250,8 +250,7 @@ class EmojiPickerDialog(QDialog):
             btn.clicked.connect(lambda _, e=em: self._pick(e))
             grid.addWidget(btn, i // cols, i % cols)
 
-        scroll.setWidget(inner)
-        v.addWidget(scroll)
+        v.addWidget(inner)
 
     def _pick(self, em: str):
         self.chosen = em
