@@ -515,6 +515,71 @@ class VoiceFetcher(QThread):
             self.error.emit(str(e))
 
 
+class SharedVoiceFetcher(QThread):
+    """Fetch voices từ ElevenLabs Shared Voice Library."""
+    done  = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, api_key: str, language: str = "", search: str = "", page_size: int = 30):
+        super().__init__()
+        self.api_key   = api_key
+        self.language  = language
+        self.search    = search
+        self.page_size = page_size
+
+    def run(self):
+        try:
+            params = {"page_size": self.page_size, "sort": "trending"}
+            if self.language:
+                params["language"] = self.language
+            if self.search:
+                params["search"] = self.search
+            r = requests.get(
+                "https://api.elevenlabs.io/v1/shared-voices",
+                headers={"xi-api-key": self.api_key},
+                params=params,
+                timeout=12,
+            )
+            if r.status_code == 200:
+                voices = r.json().get("voices", [])
+                self.done.emit(voices)
+            else:
+                self.error.emit(f"HTTP {r.status_code}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class AddSharedVoiceWorker(QThread):
+    """Add a shared voice vào account ElevenLabs."""
+    done  = pyqtSignal(str, str)   # (voice_id, voice_name)
+    error = pyqtSignal(str)
+
+    def __init__(self, api_key: str, voice_id: str, public_user_id: str, name: str):
+        super().__init__()
+        self.api_key        = api_key
+        self.voice_id       = voice_id
+        self.public_user_id = public_user_id
+        self.name           = name
+
+    def run(self):
+        try:
+            r = requests.post(
+                "https://api.elevenlabs.io/v1/voices/add",
+                headers={"xi-api-key": self.api_key, "Content-Type": "application/json"},
+                json={"public_user_id": self.public_user_id,
+                      "voice_id": self.voice_id,
+                      "new_name": self.name},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                new_id = r.json().get("voice_id", self.voice_id)
+                self.done.emit(new_id, self.name)
+            else:
+                self.error.emit(f"HTTP {r.status_code}: {r.text[:120]}")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class PromptGeneratorWorker(QThread):
     """Dùng DeepSeek để tạo system prompt từ mô tả ngắn của user."""
     done  = pyqtSignal(str)
@@ -1620,6 +1685,310 @@ class FeedbackDialog(QDialog):
 
 # ── Settings dialog — Apple HIG style ─────────────────────────────
 #
+# ─────────────────────────────────────────────────────────────────────────────
+class VoiceLibraryDialog(QDialog):
+    """Browse ElevenLabs Shared Voice Library — filter by language, add to account."""
+
+    LANG_OPTIONS = [
+        ("", "Tất cả"),
+        ("en", "🇺🇸 English"),
+        ("vi", "🇻🇳 Tiếng Việt"),
+        ("zh", "🇨🇳 Tiếng Trung"),
+        ("ja", "🇯🇵 Tiếng Nhật"),
+        ("ko", "🇰🇷 Tiếng Hàn"),
+        ("es", "🇪🇸 Tiếng Tây Ban Nha"),
+        ("fr", "🇫🇷 Tiếng Pháp"),
+        ("de", "🇩🇪 Tiếng Đức"),
+        ("pt", "🇧🇷 Tiếng Bồ Đào Nha"),
+        ("it", "🇮🇹 Tiếng Ý"),
+        ("ru", "🇷🇺 Tiếng Nga"),
+        ("ar", "🇸🇦 Tiếng Ả Rập"),
+        ("hi", "🇮🇳 Tiếng Hindi"),
+        ("id", "🇮🇩 Tiếng Indonesia"),
+        ("tr", "🇹🇷 Tiếng Thổ Nhĩ Kỳ"),
+        ("nl", "🇳🇱 Tiếng Hà Lan"),
+        ("pl", "🇵🇱 Tiếng Ba Lan"),
+        ("sv", "🇸🇪 Tiếng Thụy Điển"),
+    ]
+
+    voice_added = pyqtSignal(str, str)  # (voice_id, voice_name) — sau khi add thành công
+
+    def __init__(self, parent, api_key: str):
+        super().__init__(parent)
+        self.api_key    = api_key
+        self._workers: list = []
+        self._preview_proc = None
+        self.setWindowTitle("🌐  Thư viện giọng ElevenLabs")
+        self.setMinimumSize(680, 560)
+        self.setStyleSheet("QDialog{background:#f5f5f7;}")
+        self._build()
+        # Auto-search trending
+        QTimer.singleShot(100, self._do_search)
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 18, 20, 16)
+        root.setSpacing(12)
+
+        # ── Title + subtitle
+        title = QLabel("Thư viện giọng đọc")
+        title.setStyleSheet(
+            "QLabel{font-size:17px;font-weight:700;color:#1d1d1f;"
+            "background:transparent;border:none;}"
+        )
+        sub = QLabel("Tìm và thêm giọng đọc vào account của bạn")
+        sub.setStyleSheet(
+            "QLabel{font-size:12px;color:#6e6e73;background:transparent;border:none;}"
+        )
+        root.addWidget(title)
+        root.addWidget(sub)
+
+        # ── Search row
+        sr = QHBoxLayout()
+        sr.setSpacing(8)
+        self._search_box = QLineEdit()
+        self._search_box.setPlaceholderText("🔍  Tìm theo tên giọng...")
+        self._search_box.setFixedHeight(34)
+        self._search_box.setStyleSheet(
+            "QLineEdit{background:white;border:1.5px solid #d2d2d7;"
+            "border-radius:8px;padding:0 10px;font-size:13px;}"
+            "QLineEdit:focus{border-color:#0071e3;}"
+        )
+        self._search_box.returnPressed.connect(self._do_search)
+        sr.addWidget(self._search_box, 1)
+
+        btn_search = QPushButton("Tìm")
+        btn_search.setFixedSize(60, 34)
+        btn_search.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:8px;font-size:13px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#006edb;}"
+        )
+        btn_search.clicked.connect(self._do_search)
+        sr.addWidget(btn_search)
+        root.addLayout(sr)
+
+        # ── Language filter chips
+        chips_w = QWidget()
+        chips_w.setStyleSheet("background:transparent;border:none;")
+        chips_lay = QHBoxLayout(chips_w)
+        chips_lay.setContentsMargins(0, 0, 0, 0)
+        chips_lay.setSpacing(6)
+        self._lang_btns: dict = {}
+        self._sel_lang = ""
+        for code, label in self.LANG_OPTIONS:
+            b = QPushButton(label)
+            b.setFixedHeight(28)
+            b.setStyleSheet(self._chip_style(code == self._sel_lang))
+            b.clicked.connect(lambda _, c=code: self._set_lang(c))
+            chips_lay.addWidget(b)
+            self._lang_btns[code] = b
+        chips_lay.addStretch()
+
+        chip_scroll = QScrollArea()
+        chip_scroll.setWidget(chips_w)
+        chip_scroll.setWidgetResizable(True)
+        chip_scroll.setFixedHeight(44)
+        chip_scroll.setStyleSheet(
+            "QScrollArea{border:none;background:transparent;}"
+            "QScrollBar:horizontal{height:4px;background:transparent;}"
+            "QScrollBar::handle:horizontal{background:#c7c7cc;border-radius:2px;}"
+            "QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{width:0;}"
+        )
+        chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        root.addWidget(chip_scroll)
+
+        # ── Status label
+        self._status = QLabel("Đang tải...")
+        self._status.setStyleSheet(
+            "QLabel{font-size:12px;color:#6e6e73;background:transparent;border:none;}"
+        )
+        root.addWidget(self._status)
+
+        # ── Voice list
+        self._list_w = QWidget()
+        self._list_w.setStyleSheet("background:transparent;border:none;")
+        self._list_lay = QVBoxLayout(self._list_w)
+        self._list_lay.setContentsMargins(0, 0, 0, 0)
+        self._list_lay.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidget(self._list_w)
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet(
+            "QScrollArea{border:1.5px solid #d2d2d7;border-radius:10px;background:white;}"
+            "QScrollBar:vertical{width:8px;background:transparent;border-radius:4px;}"
+            "QScrollBar::handle:vertical{background:rgba(0,0,0,0.2);border-radius:4px;min-height:20px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+        )
+        root.addWidget(scroll, 1)
+
+        # ── Close button
+        btns = QHBoxLayout()
+        btns.addStretch()
+        btn_close = QPushButton("Đóng")
+        btn_close.setFixedHeight(32)
+        btn_close.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1.5px solid #d2d2d7;"
+            "border-radius:8px;padding:0 20px;font-size:13px;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_close.clicked.connect(self.accept)
+        btns.addWidget(btn_close)
+        root.addLayout(btns)
+
+    def _chip_style(self, active: bool) -> str:
+        if active:
+            return ("QPushButton{background:#e8f0fd;color:#0071e3;"
+                    "border:1.5px solid #0071e3;border-radius:14px;"
+                    "padding:0 12px;font-size:12px;font-weight:600;}"
+                    "QPushButton:hover{background:#dce9fd;}")
+        return ("QPushButton{background:#f5f5f7;color:#1d1d1f;"
+                "border:1.5px solid #d2d2d7;border-radius:14px;"
+                "padding:0 12px;font-size:12px;}"
+                "QPushButton:hover{background:#e5e5ea;}")
+
+    def _set_lang(self, lang: str):
+        self._sel_lang = lang
+        for code, btn in self._lang_btns.items():
+            btn.setStyleSheet(self._chip_style(code == lang))
+        self._do_search()
+
+    def _do_search(self):
+        self._status.setText("⏳  Đang tìm kiếm...")
+        self._clear_list()
+        w = SharedVoiceFetcher(
+            self.api_key,
+            language=self._sel_lang,
+            search=self._search_box.text().strip(),
+            page_size=40,
+        )
+        w.done.connect(self._on_results)
+        w.error.connect(lambda e: self._status.setText(f"⚠️  {e}"))
+        w.start()
+        self._workers.append(w)
+
+    def _clear_list(self):
+        while self._list_lay.count():
+            item = self._list_lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _on_results(self, voices: list):
+        self._clear_list()
+        if not voices:
+            lbl = QLabel("Không tìm thấy giọng nào — thử ngôn ngữ khác hoặc từ khoá khác")
+            lbl.setStyleSheet(
+                "QLabel{font-size:13px;color:#6e6e73;padding:24px 16px;"
+                "background:transparent;border:none;}"
+            )
+            self._list_lay.addWidget(lbl)
+            self._status.setText("0 kết quả")
+            return
+
+        self._status.setText(f"✅  {len(voices)} giọng — nhấn ▶ để nghe thử, + để thêm vào account")
+        for i, v in enumerate(voices):
+            self._list_lay.addWidget(self._make_row(v, is_last=(i == len(voices)-1)))
+        self._list_lay.addStretch()
+
+    def _make_row(self, v: dict, is_last: bool) -> QWidget:
+        vid        = v.get("voice_id", "")
+        name       = v.get("name", "")
+        lang       = v.get("language", "") or v.get("labels", {}).get("language", "")
+        desc       = v.get("description", "") or v.get("labels", {}).get("description", "")
+        preview    = v.get("preview_url", "")
+        owner_id   = v.get("public_owner_id", "")
+        category   = v.get("category", "")
+
+        row = QWidget()
+        row.setStyleSheet(
+            "QWidget{background:white;border:none;"
+            + ("" if is_last else "border-bottom:1px solid #f0f0f2;")
+            + "}"
+        )
+        h = QHBoxLayout(row)
+        h.setContentsMargins(14, 10, 12, 10)
+        h.setSpacing(10)
+
+        # Name + meta
+        info = QVBoxLayout()
+        info.setSpacing(2)
+        name_lbl = QLabel(name)
+        name_lbl.setStyleSheet(
+            "QLabel{font-size:13px;font-weight:600;color:#1d1d1f;"
+            "background:transparent;border:none;}"
+        )
+        info.addWidget(name_lbl)
+
+        meta_parts = []
+        if lang:
+            meta_parts.append(lang.upper())
+        if category:
+            meta_parts.append(category)
+        if desc:
+            meta_parts.append(desc[:60] + ("…" if len(desc) > 60 else ""))
+        if meta_parts:
+            meta_lbl = QLabel("  ·  ".join(meta_parts))
+            meta_lbl.setStyleSheet(
+                "QLabel{font-size:11px;color:#6e6e73;background:transparent;border:none;}"
+            )
+            info.addWidget(meta_lbl)
+        h.addLayout(info, 1)
+
+        # Preview button
+        if preview:
+            btn_prev = QPushButton("▶")
+            btn_prev.setFixedSize(30, 30)
+            btn_prev.setToolTip("Nghe thử")
+            btn_prev.setStyleSheet(
+                "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
+                "border-radius:6px;font-size:12px;color:#1d1d1f;}"
+                "QPushButton:hover{background:#e5e5ea;}"
+            )
+            btn_prev.clicked.connect(lambda _, u=preview: webbrowser.open(u))
+            h.addWidget(btn_prev)
+
+        # Add button
+        btn_add = QPushButton("＋ Thêm")
+        btn_add.setFixedHeight(30)
+        btn_add.setStyleSheet(
+            "QPushButton{background:#0071e3;color:white;border:none;"
+            "border-radius:6px;padding:0 12px;font-size:12px;font-weight:600;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#006edb;}"
+            "QPushButton:disabled{background:#a8d0fb;color:white;}"
+        )
+        btn_add.clicked.connect(
+            lambda _, v_id=vid, o_id=owner_id, n=name, b=btn_add:
+                self._add_voice(v_id, o_id, n, b)
+        )
+        h.addWidget(btn_add)
+        return row
+
+    def _add_voice(self, voice_id: str, owner_id: str, name: str, btn: QPushButton):
+        btn.setEnabled(False)
+        btn.setText("Đang thêm...")
+        w = AddSharedVoiceWorker(self.api_key, voice_id, owner_id, name)
+        w.done.connect(lambda vid, vn, b=btn: self._on_added(vid, vn, b))
+        w.error.connect(lambda e, b=btn: self._on_add_error(e, b))
+        w.start()
+        self._workers.append(w)
+
+    def _on_added(self, voice_id: str, voice_name: str, btn: QPushButton):
+        btn.setText("✅ Đã thêm")
+        btn.setStyleSheet(
+            "QPushButton{background:#d1fae5;color:#15803d;border:1px solid #86efac;"
+            "border-radius:6px;padding:0 12px;font-size:12px;font-weight:600;}"
+        )
+        self.voice_added.emit(voice_id, voice_name)
+
+    def _on_add_error(self, error: str, btn: QPushButton):
+        btn.setEnabled(True)
+        btn.setText("＋ Thêm")
+        QMessageBox.warning(self, "Lỗi", f"Không thêm được giọng:\n{error}")
+
+
 # Layout: sidebar trái (nav items) + content phải (scroll area)
 # Mỗi section là một "page" — không dump tất cả vào 1 cột
 # Fixed window size, content scroll bên trong — không tràn màn hình
@@ -2062,7 +2431,20 @@ class SettingsDialog(QDialog):
         v.setSpacing(0)
 
         # ── Library section (từ API) ───────────────────────────────
-        v.addWidget(self._section_label("Thư viện ElevenLabs"))
+        lib_hdr = QHBoxLayout()
+        lib_hdr.setContentsMargins(0, 0, 0, 0)
+        lib_hdr.addWidget(self._section_label("Thư viện ElevenLabs"))
+        lib_hdr.addStretch()
+        btn_browse = QPushButton("🌐  Thêm từ thư viện")
+        btn_browse.setFixedHeight(24)
+        btn_browse.setStyleSheet(
+            "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
+            "border:none;padding:0 4px;}"
+            "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
+        )
+        btn_browse.clicked.connect(self._open_voice_library)
+        lib_hdr.addWidget(btn_browse)
+        v.addLayout(lib_hdr)
 
         # Search bar
         self._voice_search = QLineEdit()
@@ -2133,6 +2515,31 @@ class SettingsDialog(QDialog):
             self._voice_status.setText("⚠️ Chưa có ElevenLabs API key — vào API Keys để thêm.")
 
         return page
+
+    def _open_voice_library(self):
+        """Mở dialog browse ElevenLabs Shared Voice Library."""
+        keys = self.settings.get("el_api_keys", [])
+        key  = next((k.strip() for k in keys if k.strip()), "")
+        if not key:
+            QMessageBox.warning(self, "Thiếu API Key",
+                                "Cần ElevenLabs API key để duyệt thư viện.\nVào API Keys để thêm.")
+            return
+        dlg = VoiceLibraryDialog(self, api_key=key)
+        dlg.voice_added.connect(self._on_library_voice_added)
+        dlg.exec()
+
+    def _on_library_voice_added(self, voice_id: str, voice_name: str):
+        """Sau khi add voice từ library — refresh danh sách account voices."""
+        self._voice_status.setVisible(True)
+        self._voice_status.setText("⏳  Đang tải lại danh sách giọng...")
+        self._api_voices_grp.setVisible(False)
+        keys = self.settings.get("el_api_keys", [])
+        key  = next((k.strip() for k in keys if k.strip()), "")
+        if key:
+            self._fetcher = VoiceFetcher(key)
+            self._fetcher.done.connect(self._on_voices_fetched)
+            self._fetcher.error.connect(lambda e: self._voice_status.setText(f"⚠️ {e}"))
+            self._fetcher.start()
 
     def _on_voices_fetched(self, voices: list):
         """Render danh sách voices sau khi fetch xong."""
