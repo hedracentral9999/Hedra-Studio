@@ -212,36 +212,46 @@ EMOJI_LIST = [
 
 
 class EmojiPickerDialog(QDialog):
-    """Bảng chọn emoji — 8 cột."""
+    """Bảng chọn emoji — 6 cột, button đủ lớn."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Chọn icon")
-        self.setFixedSize(340, 240)
+        self.setMinimumSize(400, 360)
+        self.resize(420, 400)
         self.chosen = ""
         self._build()
 
     def _build(self):
-        scroll = QScrollArea(self)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setGeometry(0, 0, 340, 240)
+        scroll.setStyleSheet("QScrollArea{background:#f5f5f7;border:none;}")
 
         inner = QWidget()
+        inner.setStyleSheet("QWidget{background:#f5f5f7;}")
         grid = QGridLayout(inner)
-        grid.setSpacing(4)
-        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(8)
+        grid.setContentsMargins(16, 16, 16, 16)
 
+        cols = 6
         for i, em in enumerate(EMOJI_LIST):
             btn = QPushButton(em)
-            btn.setFixedSize(36, 36)
+            btn.setFixedSize(52, 52)
             btn.setStyleSheet(
-                "QPushButton{font-size:20px;border:1px solid #e5e5ea;"
-                "border-radius:6px;background:#fff;}"
-                "QPushButton:hover{background:#f0f0f5;}"
+                "QPushButton{font-size:26px;border:1.5px solid #e5e5ea;"
+                "border-radius:10px;background:#ffffff;}"
+                "QPushButton:hover{background:#e8f0fd;border-color:#0071e3;}"
+                "QPushButton:pressed{background:#dce9fd;}"
             )
             btn.clicked.connect(lambda _, e=em: self._pick(e))
-            grid.addWidget(btn, i // 8, i % 8)
+            grid.addWidget(btn, i // cols, i % cols)
+
         scroll.setWidget(inner)
+        v.addWidget(scroll)
 
     def _pick(self, em: str):
         self.chosen = em
@@ -2535,39 +2545,95 @@ class SettingsDialog(QDialog):
             lambda: self._expand_prompt_dialog("Gemini — Chat → Kịch bản", self.gemini_prompt)
         )
 
-        # ── Card: Enhance Prompt (TTS) ────────────────────────────
+        # ── Card: Enhance Prompt (TTS) — split left tabs / right content ──
         v.addSpacing(16)
+        v.addWidget(self._section_label("Enhance Prompt (TTS)"))
+        v.addSpacing(6)
 
-        ep_hdr = QHBoxLayout()
-        ep_hdr.setContentsMargins(0, 0, 0, 6)
-        ep_hdr.addWidget(self._section_label("Enhance Prompt (TTS)"))
-        ep_hdr.addStretch()
-        # Style switcher chips
-        for name, prompt_text in PROMPTS.items():
-            b = QPushButton(name)
-            b.setFixedHeight(22)
-            b.setStyleSheet(
-                "QPushButton{font-size:11px;color:#0071e3;background:transparent;"
-                "border:none;padding:0 6px;}"
-                "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
-            )
-            b.clicked.connect(lambda checked, t=prompt_text: self.prompt.setPlainText(t))
-            ep_hdr.addWidget(b)
-        v.addLayout(ep_hdr)
+        # Outer card
+        ep_card = QFrame()
+        ep_card.setStyleSheet(
+            "QFrame{background:#ffffff;border:1px solid #d2d2d7;"
+            "border-radius:10px;}"
+        )
+        ep_card_h = QHBoxLayout(ep_card)
+        ep_card_h.setContentsMargins(0, 0, 0, 0)
+        ep_card_h.setSpacing(0)
 
-        grp2, glay2 = self._group()
+        # ── Left: vertical style tabs ──────────────────────────────
+        ep_tab_col = QFrame()
+        ep_tab_col.setFixedWidth(128)
+        ep_tab_col.setStyleSheet(
+            "QFrame{background:#f5f5f7;border:none;"
+            "border-right:1px solid #e5e5ea;border-radius:0px;}"
+        )
+        ep_tab_v = QVBoxLayout(ep_tab_col)
+        ep_tab_v.setContentsMargins(6, 10, 6, 10)
+        ep_tab_v.setSpacing(4)
+
+        self._ep_style_tabs: dict[str, QPushButton] = {}
+        ep_prompts_map = dict(PROMPTS)   # name → prompt_text
+
+        def _ep_tab_style(active: bool) -> str:
+            if active:
+                return ("QPushButton{background:#ffffff;color:#0071e3;"
+                        "border:1px solid #d2d2d7;border-radius:7px;"
+                        "font-size:12px;font-weight:600;padding:6px 8px;"
+                        "text-align:left;}")
+            return ("QPushButton{background:transparent;color:#1d1d1f;"
+                    "border:none;border-radius:7px;"
+                    "font-size:12px;padding:6px 8px;text-align:left;}"
+                    "QPushButton:hover{background:#ebebf0;}")
+
+        # Determine which tab should be active (match saved prompt)
+        _saved_ep = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        _first_tab = list(ep_prompts_map.keys())[0]
+        _active_ep_tab = _first_tab
+        for _n, _t in ep_prompts_map.items():
+            if _t.strip() == _saved_ep.strip():
+                _active_ep_tab = _n
+                break
+
+        def _switch_ep_tab(name: str):
+            for n, b in self._ep_style_tabs.items():
+                b.setStyleSheet(_ep_tab_style(n == name))
+            self.prompt.setPlainText(ep_prompts_map[name])
+
+        for name, prompt_text in ep_prompts_map.items():
+            tb = QPushButton(name)
+            tb.setMinimumHeight(32)
+            active = (name == _active_ep_tab)
+            tb.setStyleSheet(_ep_tab_style(active))
+            tb.clicked.connect(lambda _, n=name: _switch_ep_tab(n))
+            ep_tab_v.addWidget(tb)
+            self._ep_style_tabs[name] = tb
+        ep_tab_v.addStretch()
+
+        ep_card_h.addWidget(ep_tab_col)
+
+        # ── Right: prompt text + footer ────────────────────────────
+        ep_right = QVBoxLayout()
+        ep_right.setContentsMargins(0, 0, 0, 0)
+        ep_right.setSpacing(0)
+
         self.prompt = QTextEdit()
-        self.prompt.setPlainText(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
+        self.prompt.setPlainText(_saved_ep)
         self.prompt.setReadOnly(True)
-        self.prompt.setFixedHeight(90)
+        self.prompt.setMinimumHeight(100)
         self.prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
-            "background:transparent;border:none;padding:10px 14px;}"
+            "background:transparent;border:none;padding:12px 14px;}"
         )
-        glay2.addWidget(self.prompt)
+        ep_right.addWidget(self.prompt, 1)
+
+        # Divider
+        ep_div = QFrame()
+        ep_div.setFrameShape(QFrame.Shape.HLine)
+        ep_div.setStyleSheet("QFrame{color:#e5e5ea;background:transparent;border:none;border-top:1px solid #e5e5ea;margin:0;}")
+        ep_right.addWidget(ep_div)
 
         ep_foot = QHBoxLayout()
-        ep_foot.setContentsMargins(14, 0, 14, 10)
+        ep_foot.setContentsMargins(12, 8, 12, 10)
         ep_foot.setSpacing(8)
         btn_reset_ep = QPushButton("↺ Về mặc định")
         btn_reset_ep.setFixedHeight(28)
@@ -2586,8 +2652,10 @@ class SettingsDialog(QDialog):
             "QPushButton:hover{background:#0077ed;}"
         )
         ep_foot.addWidget(btn_edit_ep)
-        glay2.addLayout(ep_foot)
-        v.addWidget(grp2)
+        ep_right.addLayout(ep_foot)
+
+        ep_card_h.addLayout(ep_right, 1)
+        v.addWidget(ep_card)
 
         btn_reset_ep.clicked.connect(
             lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
@@ -2595,6 +2663,50 @@ class SettingsDialog(QDialog):
         btn_edit_ep.clicked.connect(
             lambda: self._expand_prompt_dialog("Enhance Prompt (TTS)", self.prompt)
         )
+
+        # ── Temperature (mức độ sáng tạo) ─────────────────────────
+        v.addSpacing(12)
+        temp_row = QHBoxLayout()
+        temp_row.setContentsMargins(0, 0, 0, 0)
+        temp_row.setSpacing(10)
+        temp_title = QLabel("Mức độ sáng tạo")
+        temp_title.setStyleSheet(
+            "QLabel{font-size:13px;font-weight:500;color:#1d1d1f;"
+            "background:transparent;border:none;}"
+        )
+        temp_row.addWidget(temp_title)
+        lbl_calm = QLabel("🎯 Chính xác")
+        lbl_calm.setStyleSheet("QLabel{font-size:11px;color:#6e6e73;background:transparent;border:none;}")
+        temp_row.addWidget(lbl_calm)
+        self._settings_temp_slider = QSlider(Qt.Orientation.Horizontal)
+        self._settings_temp_slider.setRange(0, 100)
+        _cur_temp = self.settings.get("enhance_style_temperature", 0.3)
+        self._settings_temp_slider.setValue(int(_cur_temp * 100))
+        self._settings_temp_slider.setFixedHeight(20)
+        self._settings_temp_slider.setStyleSheet(
+            "QSlider::groove:horizontal{height:4px;background:#e5e5ea;border-radius:2px;}"
+            "QSlider::handle:horizontal{width:16px;height:16px;margin:-6px 0;"
+            "background:#0071e3;border-radius:8px;}"
+            "QSlider::sub-page:horizontal{background:#0071e3;border-radius:2px;}"
+        )
+        temp_row.addWidget(self._settings_temp_slider, 1)
+        lbl_creative = QLabel("🎨 Sáng tạo")
+        lbl_creative.setStyleSheet("QLabel{font-size:11px;color:#6e6e73;background:transparent;border:none;}")
+        temp_row.addWidget(lbl_creative)
+        self._settings_temp_val_lbl = QLabel(f"{_cur_temp:.2f}")
+        self._settings_temp_val_lbl.setFixedWidth(32)
+        self._settings_temp_val_lbl.setStyleSheet(
+            "QLabel{font-size:12px;font-weight:600;color:#0071e3;"
+            "background:transparent;border:none;}"
+        )
+        temp_row.addWidget(self._settings_temp_val_lbl)
+        v.addLayout(temp_row)
+
+        def _on_settings_temp(val: int):
+            t = val / 100.0
+            self._settings_temp_val_lbl.setText(f"{t:.2f}")
+            self.settings["enhance_style_temperature"] = t
+        self._settings_temp_slider.valueChanged.connect(_on_settings_temp)
 
         # ── Custom styles section ──────────────────────────────────
         custom_hdr = QHBoxLayout()
@@ -3046,13 +3158,14 @@ class SettingsDialog(QDialog):
 
         # Preview button — in-app playback
         if preview_url:
-            btn_prev = QPushButton("▶")
-            btn_prev.setFixedSize(28, 28)
-            btn_prev.setToolTip("Nghe thử trong app")
+            btn_prev = QPushButton("▶  Nghe")
+            btn_prev.setFixedHeight(28)
+            btn_prev.setFixedWidth(72)
+            btn_prev.setToolTip("Nghe thử giọng này")
             btn_prev.setStyleSheet(
                 "QPushButton{background:#f5f5f7;border:1px solid #d2d2d7;"
-                "border-radius:6px;font-size:12px;}"
-                "QPushButton:hover{background:#e5e5ea;}"
+                "border-radius:6px;font-size:12px;color:#1d1d1f;padding:0 8px;}"
+                "QPushButton:hover{background:#e8f0fd;border-color:#0071e3;color:#0071e3;}"
             )
             btn_prev.clicked.connect(
                 lambda _, u=preview_url, b=btn_prev: self._toggle_voice_preview(u, b)
