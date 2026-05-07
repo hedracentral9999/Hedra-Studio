@@ -3,8 +3,8 @@ import json
 import os
 from datetime import datetime
 
-API_KEY = "sk_e23d418ebeed8a338d0882a714385a8f2f244bdb94c5901e"
-VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Adam
+API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB").strip()  # Adam
 
 # --- Test script với audio tags v3 ---
 TEST_TEXT = """[professional] Xin chào. Đây là bài test giọng Adam với ElevenLabs v3.
@@ -59,6 +59,10 @@ def generate_tts(text, model="eleven_v3", stability=0.5, similarity=0.75):
 
 
 if __name__ == "__main__":
+    if not API_KEY:
+        raise SystemExit(
+            "Thiếu ELEVENLABS_API_KEY. Hãy export key trước khi chạy test."
+        )
     print("=== ElevenLabs Adam v3 Test ===\n")
 
     # Check credits trước

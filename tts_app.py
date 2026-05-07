@@ -22,9 +22,8 @@ from version import VERSION, GITHUB_REPO
 
 VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Adam
 MODEL    = "eleven_v3"
-
-TELEGRAM_BOT_TOKEN = "8637057705:AAGM2Pe7H0Dg5Dd8Y_Dn79U1v6LuZIyhmxQ"
-TELEGRAM_CHAT_ID   = "6085801664"
+# Ưu tiên tương thích phát trên macOS/Windows + chất lượng tốt cho giọng nói.
+EL_OUTPUT_FORMAT = "mp3_44100_128"
 
 DEFAULT_PROMPT = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam.
 
@@ -782,7 +781,13 @@ class AudioPreviewDownloader(QThread):
         try:
             r = requests.get(self.url, timeout=15, stream=True)
             if r.status_code == 200:
-                suffix = ".mp3" if "mp3" in self.url.lower() else ".mp3"
+                url_no_query = self.url.split("?", 1)[0].lower()
+                if url_no_query.endswith(".wav"):
+                    suffix = ".wav"
+                elif url_no_query.endswith(".ogg"):
+                    suffix = ".ogg"
+                else:
+                    suffix = ".mp3"
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
                 for chunk in r.iter_content(chunk_size=8192):
                     tmp.write(chunk)
@@ -1096,12 +1101,18 @@ def load_settings() -> dict:
             s["gemini_api_key"] = ""
         if "gemini_chat_prompt" not in s:
             s["gemini_chat_prompt"] = ""
+        if "telegram_bot_token" not in s:
+            s["telegram_bot_token"] = ""
+        if "telegram_chat_id" not in s:
+            s["telegram_chat_id"] = ""
         return s
     return {
         "el_api_keys":       [],
         "ds_api_key":        "",
         "gemini_api_key":    "",
         "gemini_chat_prompt": "",
+        "telegram_bot_token": "",
+        "telegram_chat_id":   "",
         "output_dir":        DEFAULT_OUT,
         "enhance_prompt":    DEFAULT_PROMPT,
         "default_speed":     1.0,
@@ -1135,17 +1146,22 @@ class UpdateChecker(QThread):
             if res.status_code != 200:
                 return
             data = res.json()
-            latest = data["tag_name"].lstrip("v")
+            tag_name = data.get("tag_name")
+            if not tag_name:
+                return
+            latest = str(tag_name).lstrip("v")
             if not self._is_newer(latest, VERSION):
                 return
-            html_url = data["html_url"]
+            html_url = data.get("html_url")
+            if not html_url:
+                return
             download_url = None
             for asset in data.get("assets", []):
-                name = asset["name"].lower()
+                name = str(asset.get("name", "")).lower()
                 if sys.platform == "darwin" and name.endswith(".dmg"):
-                    download_url = asset["browser_download_url"]; break
+                    download_url = asset.get("browser_download_url"); break
                 elif sys.platform == "win32" and name.endswith(".exe"):
-                    download_url = asset["browser_download_url"]; break
+                    download_url = asset.get("browser_download_url"); break
             # Emit: download_url nếu có file trực tiếp, ngược lại emit html_url để mở browser
             self.update_found.emit(latest, download_url or html_url)
         except Exception:
@@ -1258,6 +1274,7 @@ class Worker(QThread):
             tts_body: dict = {
                 "text":     text,
                 "model_id": MODEL,
+                "output_format": EL_OUTPUT_FORMAT,
                 "voice_settings": {
                     "stability":        0.5,
                     "similarity_boost": 0.75,
@@ -1757,16 +1774,21 @@ class FeedbackSender(QThread):
     done  = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, bot_token: str, chat_id: str):
         super().__init__()
         self.text = text
+        self.bot_token = bot_token.strip()
+        self.chat_id = chat_id.strip()
 
     def run(self):
         try:
+            if not self.bot_token or not self.chat_id:
+                self.error.emit("Chưa cấu hình Telegram token/chat id trong Settings.")
+                return
             res = requests.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                f"https://api.telegram.org/bot{self.bot_token}/sendMessage",
                 json={
-                    "chat_id":    TELEGRAM_CHAT_ID,
+                    "chat_id":    self.chat_id,
                     "text":       self.text,
                     "parse_mode": "Markdown",
                 },
@@ -1786,11 +1808,12 @@ class FeedbackDialog(QDialog):
 
     _CATS = ["🐛  Báo lỗi", "💡  Tính năng mới", "💬  Góp ý chung"]
 
-    def __init__(self, parent=None, version: str = ""):
+    def __init__(self, parent=None, version: str = "", telegram_cfg: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Phản hồi")
         self.setFixedSize(460, 390)
         self._version = version
+        self._telegram_cfg = telegram_cfg or {}
         self._sender  = None
         self._sel_cat = self._CATS[2]
         self._build()
@@ -1919,7 +1942,11 @@ class FeedbackDialog(QDialog):
         self._btn_send.setEnabled(False)
         self._btn_send.setText("Đang gửi...")
         self._status_lbl.setText("")
-        self._sender = FeedbackSender(msg)
+        self._sender = FeedbackSender(
+            msg,
+            self._telegram_cfg.get("bot_token", ""),
+            self._telegram_cfg.get("chat_id", ""),
+        )
         self._sender.done.connect(self._on_sent)
         self._sender.error.connect(self._on_send_error)
         self._sender.start()
@@ -1972,6 +1999,7 @@ class VoiceLibraryDialog(QDialog):
         self._workers: list = []
         self._playing_btn: QPushButton | None = None   # nút đang phát
         self._dl_worker: AudioPreviewDownloader | None = None
+        self._preview_req_id = 0
 
         # Shared audio player — 1 giọng tại một thời điểm
         self._audio_out = QAudioOutput()
@@ -2285,6 +2313,8 @@ class VoiceLibraryDialog(QDialog):
 
         # Stop bài cũ rồi download bài mới
         self._stop_preview()
+        self._preview_req_id += 1
+        req_id = self._preview_req_id
 
         self._playing_btn = btn
         try:
@@ -2296,11 +2326,13 @@ class VoiceLibraryDialog(QDialog):
             return
 
         self._dl_worker = AudioPreviewDownloader(url)
-        self._dl_worker.done.connect(self._play_file)
-        self._dl_worker.error.connect(self._on_preview_error)
+        self._dl_worker.done.connect(lambda path, rid=req_id: self._play_file(path, rid))
+        self._dl_worker.error.connect(lambda err, rid=req_id: self._on_preview_error(err, rid))
         self._dl_worker.start()
 
-    def _play_file(self, path: str):
+    def _play_file(self, path: str, req_id: int):
+        if req_id != self._preview_req_id:
+            return
         btn = self._safe_btn(self._playing_btn)
         if not btn:
             self._playing_btn = None
@@ -2346,7 +2378,9 @@ class VoiceLibraryDialog(QDialog):
             except RuntimeError:
                 pass
 
-    def _on_preview_error(self, err: str):
+    def _on_preview_error(self, err: str, req_id: int):
+        if req_id != self._preview_req_id:
+            return
         btn = self._safe_btn(self._playing_btn)
         self._playing_btn = None
         if btn:
@@ -2754,6 +2788,26 @@ class SettingsDialog(QDialog):
         )
         self._row(glay3, "API Key", self.gemini_key, last=True)
         v.addWidget(grp3)
+
+        # ── Group: Telegram Feedback (optional) ─────────────────────
+        v.addWidget(self._section_label("Telegram Feedback (tuỳ chọn)"))
+        grp4, glay4 = self._group()
+        self.telegram_bot_token = QLineEdit(self.settings.get("telegram_bot_token", ""))
+        self.telegram_bot_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.telegram_bot_token.setPlaceholderText("Bot token...")
+        self.telegram_bot_token.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
+        )
+        self._row(glay4, "Bot Token", self.telegram_bot_token)
+
+        self.telegram_chat_id = QLineEdit(self.settings.get("telegram_chat_id", ""))
+        self.telegram_chat_id.setPlaceholderText("Chat ID nhận phản hồi")
+        self.telegram_chat_id.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
+        )
+        self._row(glay4, "Chat ID", self.telegram_chat_id,
+                  "Bỏ trống nếu không dùng nút Gửi phản hồi", last=True)
+        v.addWidget(grp4)
 
         v.addStretch()
         return page
@@ -3767,6 +3821,7 @@ class SettingsDialog(QDialog):
             self._v_player.playbackStateChanged.connect(self._on_voice_playback_state)
             self._v_playing_btn: QPushButton | None = None
             self._v_dl_worker = None
+            self._v_preview_req_id = 0
 
         # Toggle — defer stop ra ngoài signal handler để tránh re-entrancy
         if getattr(self, "_v_playing_btn", None) is btn:
@@ -3775,6 +3830,8 @@ class SettingsDialog(QDialog):
 
         # Stop bài cũ trước khi play mới
         self._stop_voice_preview()
+        self._v_preview_req_id += 1
+        req_id = self._v_preview_req_id
 
         self._v_playing_btn = btn
         try:
@@ -3785,8 +3842,8 @@ class SettingsDialog(QDialog):
             return
 
         w = AudioPreviewDownloader(url)
-        w.done.connect(lambda path, b=btn: self._play_voice_preview(path, b))
-        w.error.connect(lambda _e, b=btn: self._reset_voice_btn(b))
+        w.done.connect(lambda path, b=btn, rid=req_id: self._play_voice_preview(path, b, rid))
+        w.error.connect(lambda _e, b=btn, rid=req_id: self._reset_voice_btn(b, rid))
         w.start()
         self._v_dl_worker = w
 
@@ -3811,7 +3868,9 @@ class SettingsDialog(QDialog):
             except RuntimeError:
                 pass
 
-    def _play_voice_preview(self, path: str, btn: QPushButton):
+    def _play_voice_preview(self, path: str, btn: QPushButton, req_id: int):
+        if req_id != getattr(self, "_v_preview_req_id", 0):
+            return
         if not hasattr(self, "_v_player"):
             return
         safe = self._safe_voice_btn(btn)
@@ -3829,7 +3888,9 @@ class SettingsDialog(QDialog):
         except RuntimeError:
             pass
 
-    def _reset_voice_btn(self, btn: QPushButton):
+    def _reset_voice_btn(self, btn: QPushButton, req_id: int | None = None):
+        if req_id is not None and req_id != getattr(self, "_v_preview_req_id", 0):
+            return
         safe = self._safe_voice_btn(btn)
         if safe:
             try:
@@ -4124,6 +4185,8 @@ class SettingsDialog(QDialog):
         self.settings["el_api_keys"]        = [k.strip() for k in raw_keys if k.strip()]
         self.settings["ds_api_key"]         = self.ds_key.text().strip()
         self.settings["gemini_api_key"]     = self.gemini_key.text().strip()
+        self.settings["telegram_bot_token"] = self.telegram_bot_token.text().strip()
+        self.settings["telegram_chat_id"]   = self.telegram_chat_id.text().strip()
         self.settings["output_dir"]         = self.out_dir.text()
         self.settings["enhance_prompt"]     = self.prompt.toPlainText()
         gp = self.gemini_prompt.toPlainText().strip()
@@ -5321,7 +5384,14 @@ rm -f "$DMG" 2>/dev/null
         QMessageBox.critical(self, "Lỗi", msg)
 
     def _open_feedback(self):
-        dlg = FeedbackDialog(self, version=VERSION)
+        dlg = FeedbackDialog(
+            self,
+            version=VERSION,
+            telegram_cfg={
+                "bot_token": self.settings.get("telegram_bot_token", "").strip(),
+                "chat_id": self.settings.get("telegram_chat_id", "").strip(),
+            },
+        )
         dlg.exec()
 
     def open_settings(self):

@@ -3,8 +3,8 @@ import os
 import sys
 
 # ── Config ────────────────────────────────────────
-EL_API_KEY  = "sk_e23d418ebeed8a338d0882a714385a8f2f244bdb94c5901e"
-DS_API_KEY  = "sk-aeacc314de4d4e1da1a6b85e746a30e3"
+EL_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+DS_API_KEY  = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 VOICE_ID    = "pNInz6obpgDQGcFmaJgB"   # Adam
 MODEL       = "eleven_v3"
 OUTPUT_DIR  = os.path.join(os.path.dirname(__file__), "output")
@@ -86,6 +86,9 @@ def generate_tts(text: str, speed: float) -> bytes:
 
 
 def main():
+    if not EL_API_KEY or not DS_API_KEY:
+        print("Thiếu API key. Hãy export ELEVENLABS_API_KEY và DEEPSEEK_API_KEY trước khi chạy.")
+        sys.exit(1)
     print("=" * 52)
     print("  ElevenLabs TTS — Adam v3  +  DeepSeek Enhance")
     print("=" * 52)
