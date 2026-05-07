@@ -1643,7 +1643,10 @@ class SettingsDialog(QDialog):
         # Voice selection state (edited in dialog, saved on accept)
         self._sel_voice_id   = self.settings.get("selected_voice_id",   VOICE_ID)
         self._sel_voice_name = self.settings.get("selected_voice_name",  "Adam")
-        self._voice_rows: list[tuple] = []   # (widget, voice_id) for API voices
+        self._voice_rows: list[tuple] = []        # (widget, voice_id) for API voices
+        self._voice_rows_lang: list[tuple] = []   # (widget, voice_id, lang, name)
+        self._lang_chips: dict = {}
+        self._active_lang_filter = "all"
         self._build()
 
     # ── Helper: tạo một "grouped section" kiểu macOS ──────────────
@@ -1782,6 +1785,14 @@ class SettingsDialog(QDialog):
             "QPushButton:hover{color:#0077ed;text-decoration:underline;}"
         )
         hdr_row.addWidget(btn_reset_gp)
+        btn_expand_gp = QPushButton("↗ Mở rộng")
+        btn_expand_gp.setFixedHeight(22)
+        btn_expand_gp.setStyleSheet(
+            "QPushButton{font-size:11px;color:#6e6e73;background:#f0f0f5;"
+            "border:none;border-radius:5px;padding:0 8px;}"
+            "QPushButton:hover{background:#e5e5ea;color:#1d1d1f;}"
+        )
+        hdr_row.addWidget(btn_expand_gp)
         hdr_row.setContentsMargins(0, 16, 0, 6)
         v.addLayout(hdr_row)
 
@@ -1798,6 +1809,9 @@ class SettingsDialog(QDialog):
         v.addWidget(grp)
         btn_reset_gp.clicked.connect(
             lambda: self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
+        )
+        btn_expand_gp.clicked.connect(
+            lambda: self._expand_prompt_dialog("Gemini — Chat → Kịch bản", self.gemini_prompt)
         )
 
         # Group: Enhance Prompt
@@ -1828,6 +1842,14 @@ class SettingsDialog(QDialog):
             lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
         )
         hdr_ep.addWidget(btn_reset_ep)
+        btn_expand_ep = QPushButton("↗ Mở rộng")
+        btn_expand_ep.setFixedHeight(22)
+        btn_expand_ep.setStyleSheet(
+            "QPushButton{font-size:11px;color:#6e6e73;background:#f0f0f5;"
+            "border:none;border-radius:5px;padding:0 8px;}"
+            "QPushButton:hover{background:#e5e5ea;color:#1d1d1f;}"
+        )
+        hdr_ep.addWidget(btn_expand_ep)
         hdr_ep.setContentsMargins(0, 8, 0, 6)
         v.addLayout(hdr_ep)
 
@@ -1841,6 +1863,9 @@ class SettingsDialog(QDialog):
         )
         glay2.addWidget(self.prompt)
         v.addWidget(grp2)
+        btn_expand_ep.clicked.connect(
+            lambda: self._expand_prompt_dialog("Enhance Prompt (TTS)", self.prompt)
+        )
 
         # ── Custom styles section ──────────────────────────────────
         custom_hdr = QHBoxLayout()
@@ -1936,6 +1961,74 @@ class SettingsDialog(QDialog):
             rh.addWidget(btn_del)
             self._custom_styles_glay.addWidget(row_w)
 
+    def _expand_prompt_dialog(self, title: str, text_edit: QTextEdit):
+        """Mở dialog editor lớn để chỉnh sửa prompt thoải mái."""
+        from PyQt6.QtWidgets import QPlainTextEdit, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"✏️  {title}")
+        dlg.setMinimumSize(700, 540)
+        dlg.setStyleSheet("QDialog{background:#f5f5f7;}")
+
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(20, 20, 20, 16)
+        v.setSpacing(12)
+
+        # Hint bar
+        hint = QLabel("💡  Chỉnh sửa xong nhấn Lưu — thay đổi sẽ cập nhật vào Settings")
+        hint.setStyleSheet(
+            "QLabel{font-size:11px;color:#6e6e73;background:#ebebf0;"
+            "border-radius:6px;padding:6px 10px;border:none;}"
+        )
+        v.addWidget(hint)
+
+        editor = QPlainTextEdit()
+        editor.setPlainText(text_edit.toPlainText())
+        editor.setStyleSheet(
+            "QPlainTextEdit{font-family:'SF Mono',Menlo,monospace;font-size:12px;"
+            "background:white;border:1.5px solid #d2d2d7;border-radius:8px;"
+            "padding:12px;color:#1d1d1f;line-height:1.6;}"
+            "QPlainTextEdit:focus{border-color:#0071e3;}"
+        )
+        v.addWidget(editor, 1)
+
+        # Char count
+        char_lbl = QLabel(f"{len(text_edit.toPlainText())} ký tự")
+        char_lbl.setStyleSheet("QLabel{font-size:11px;color:#aeaeb2;background:transparent;border:none;}")
+        char_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+        editor.textChanged.connect(
+            lambda: char_lbl.setText(f"{len(editor.toPlainText())} ký tự")
+        )
+        v.addWidget(char_lbl)
+
+        # Buttons
+        btns = QHBoxLayout()
+        btns.setSpacing(8)
+        btns.addStretch()
+        btn_cancel = QPushButton("Hủy")
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.setStyleSheet(
+            "QPushButton{background:#f5f5f7;border:1.5px solid #d2d2d7;border-radius:8px;"
+            "padding:0 16px;font-size:13px;color:#1d1d1f;}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_save = QPushButton("Lưu")
+        btn_save.setFixedHeight(32)
+        btn_save.setDefault(True)
+        btn_save.setStyleSheet(
+            "QPushButton{background:#0071e3;border:none;border-radius:8px;"
+            "padding:0 20px;font-size:13px;font-weight:600;color:white;}"
+            "QPushButton:hover{background:#0077ed;}"
+            "QPushButton:pressed{background:#006edb;}"
+        )
+        btn_save.clicked.connect(dlg.accept)
+        btns.addWidget(btn_cancel)
+        btns.addWidget(btn_save)
+        v.addLayout(btns)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            text_edit.setPlainText(editor.toPlainText())
+
     def _add_custom_style(self):
         dlg = AddStyleDialog(self, ds_api_key=self.settings.get("ds_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -1970,6 +2063,30 @@ class SettingsDialog(QDialog):
 
         # ── Library section (từ API) ───────────────────────────────
         v.addWidget(self._section_label("Thư viện ElevenLabs"))
+
+        # Search bar
+        self._voice_search = QLineEdit()
+        self._voice_search.setPlaceholderText("🔍  Tìm giọng đọc...")
+        self._voice_search.setFixedHeight(34)
+        self._voice_search.setStyleSheet(
+            "QLineEdit{background:white;border:1.5px solid #d2d2d7;border-radius:8px;"
+            "padding:0 10px;font-size:13px;color:#1d1d1f;}"
+            "QLineEdit:focus{border-color:#0071e3;}"
+        )
+        self._voice_search.textChanged.connect(self._apply_voice_filter)
+        v.addSpacing(8)
+        v.addWidget(self._voice_search)
+        v.addSpacing(8)
+
+        # Language filter chips row
+        self._lang_filter_row = QHBoxLayout()
+        self._lang_filter_row.setSpacing(6)
+        self._lang_filter_row.setContentsMargins(0, 0, 0, 0)
+        self._lang_filter_scroll_w = QWidget()
+        self._lang_filter_scroll_w.setLayout(self._lang_filter_row)
+        self._lang_filter_scroll_w.setStyleSheet("background:transparent;border:none;")
+        v.addWidget(self._lang_filter_scroll_w)
+        v.addSpacing(10)
 
         self._voice_status = QLabel("Đang tải danh sách giọng...")
         self._voice_status.setStyleSheet(
@@ -2026,6 +2143,19 @@ class SettingsDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
         self._voice_rows.clear()
+        self._voice_rows_lang.clear()
+
+        # Collect unique language codes
+        lang_set = []
+        for v in voices:
+            lng = (v.get("labels") or {}).get("language", "") or \
+                  (v.get("labels") or {}).get("accent", "")
+            if lng and lng not in lang_set:
+                lang_set.append(lng)
+        lang_set.sort()
+
+        # Build language filter chips
+        self._build_lang_chips(lang_set)
 
         for i, v in enumerate(voices):
             vid   = v.get("voice_id", "")
@@ -2033,15 +2163,81 @@ class SettingsDialog(QDialog):
             lang  = (v.get("labels") or {}).get("language", "") or \
                     (v.get("labels") or {}).get("accent", "")
             preview_url = v.get("preview_url", "")
-            is_last = (i == len(voices) - 1)
             row_w = self._make_voice_row(
-                vid, vname, lang, preview_url, is_last, custom=False
+                vid, vname, lang, preview_url, is_last=False, custom=False
             )
             self._api_voices_glay.addWidget(row_w)
             self._voice_rows.append((row_w, vid))
+            self._voice_rows_lang.append((row_w, vid, lang, vname))
 
         self._api_voices_grp.setVisible(True)
         self._update_voice_checkmarks()
+        self._apply_voice_filter()
+
+    def _build_lang_chips(self, langs: list):
+        """Tạo language filter chips — Tất cả + mỗi language code."""
+        # Clear existing chips
+        while self._lang_filter_row.count():
+            item = self._lang_filter_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._lang_chips.clear()
+
+        # Language display names
+        LANG_NAMES = {
+            "en": "🇺🇸 EN", "vi": "🇻🇳 VI", "zh": "🇨🇳 ZH",
+            "ja": "🇯🇵 JA", "ko": "🇰🇷 KO", "es": "🇪🇸 ES",
+            "fr": "🇫🇷 FR", "de": "🇩🇪 DE", "pt": "🇧🇷 PT",
+            "it": "🇮🇹 IT", "ru": "🇷🇺 RU", "ar": "🇸🇦 AR",
+            "hi": "🇮🇳 HI", "nl": "🇳🇱 NL", "pl": "🇵🇱 PL",
+            "sv": "🇸🇪 SV", "tr": "🇹🇷 TR", "id": "🇮🇩 ID",
+        }
+
+        all_langs = [("all", "Tất cả")] + [(l, LANG_NAMES.get(l, l.upper())) for l in langs]
+        for code, label in all_langs:
+            btn = QPushButton(label)
+            btn.setFixedHeight(26)
+            btn.setCheckable(True)
+            btn.setChecked(code == self._active_lang_filter)
+            btn.setStyleSheet(self._lang_chip_style(code == self._active_lang_filter))
+            btn.clicked.connect(lambda checked, c=code: self._set_lang_filter(c))
+            self._lang_filter_row.addWidget(btn)
+            self._lang_chips[code] = btn
+        self._lang_filter_row.addStretch()
+
+    def _lang_chip_style(self, active: bool) -> str:
+        if active:
+            return ("QPushButton{background:#e8f0fd;color:#0071e3;"
+                    "border:1.5px solid #0071e3;border-radius:13px;"
+                    "padding:0 12px;font-size:12px;font-weight:600;}"
+                    "QPushButton:hover{background:#dce9fd;}")
+        return ("QPushButton{background:#f5f5f7;color:#1d1d1f;"
+                "border:1.5px solid #d2d2d7;border-radius:13px;"
+                "padding:0 12px;font-size:12px;}"
+                "QPushButton:hover{background:#e5e5ea;}")
+
+    def _set_lang_filter(self, lang: str):
+        self._active_lang_filter = lang
+        for code, btn in self._lang_chips.items():
+            btn.setStyleSheet(self._lang_chip_style(code == lang))
+        self._apply_voice_filter()
+
+    def _apply_voice_filter(self):
+        """Hiển thị/ẩn voice rows dựa theo lang filter + search text."""
+        search = self._voice_search.text().strip().lower() if hasattr(self, "_voice_search") else ""
+        lang   = self._active_lang_filter
+
+        visible_count = 0
+        for row_w, vid, row_lang, vname in self._voice_rows_lang:
+            lang_match   = (lang == "all") or (row_lang == lang)
+            search_match = (not search) or (search in vname.lower())
+            show = lang_match and search_match
+            row_w.setVisible(show)
+            if show:
+                visible_count += 1
+
+        # Update separator visibility (last visible row has no separator)
+        # Simple approach: hide sep on last visible row — skip for now, separators are inline
 
     def _make_voice_row(self, vid: str, vname: str, lang: str,
                         preview_url: str, is_last: bool, custom: bool) -> QWidget:
