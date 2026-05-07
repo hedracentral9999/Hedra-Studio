@@ -292,20 +292,57 @@ class AddStyleDialog(QDialog):
         top.addLayout(name_col, 1)
         v.addLayout(top)
 
-        # ── Creative level ────────────────────────────────────────
-        cr_row = QHBoxLayout()
+        # ── Temperature slider ────────────────────────────────────
+        cr_header = QHBoxLayout()
         cr_lbl = QLabel("Mức sáng tạo")
         cr_lbl.setStyleSheet(
             "font-size:13px;color:#1d1d1f;background:transparent;border:none;"
         )
-        cr_row.addWidget(cr_lbl)
-        cr_row.addStretch()
-        self._creative = QComboBox()
-        self._creative.addItems(["🎯  Nghiêm túc (0.3)", "🎨  Sáng tạo (0.7)"])
-        self._creative.setCurrentIndex(1 if data.get("creative", False) else 0)
-        self._creative.setFixedWidth(180)
-        cr_row.addWidget(self._creative)
-        v.addLayout(cr_row)
+        # Đọc giá trị cũ: ưu tiên temperature float, fallback từ creative bool
+        _init_temp = data.get("temperature",
+                              0.7 if data.get("creative", False) else 0.3)
+        self._temp_val = round(_init_temp, 2)
+
+        self._temp_lbl = QLabel(f"{self._temp_val:.2f}")
+        self._temp_lbl.setFixedWidth(36)
+        self._temp_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._temp_lbl.setStyleSheet(
+            "font-size:13px;font-weight:600;color:#0071e3;"
+            "background:transparent;border:none;"
+        )
+        cr_header.addWidget(cr_lbl)
+        cr_header.addStretch()
+        cr_header.addWidget(self._temp_lbl)
+        v.addLayout(cr_header)
+
+        slider_row = QHBoxLayout()
+        lbl_l = QLabel("🎯 Nghiêm túc")
+        lbl_r = QLabel("🎨 Sáng tạo")
+        for l in (lbl_l, lbl_r):
+            l.setStyleSheet(
+                "font-size:11px;color:#aeaeb2;background:transparent;border:none;"
+            )
+        self._temp_slider = QSlider(Qt.Orientation.Horizontal)
+        self._temp_slider.setRange(0, 100)          # 0–100 = 0.00–1.00
+        self._temp_slider.setValue(int(self._temp_val * 100))
+        self._temp_slider.setTickInterval(10)
+        self._temp_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 4px; background: #e5e5ea; border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                width: 16px; height: 16px; margin: -6px 0;
+                background: #0071e3; border-radius: 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0071e3; border-radius: 2px;
+            }
+        """)
+        self._temp_slider.valueChanged.connect(self._on_temp_changed)
+        slider_row.addWidget(lbl_l)
+        slider_row.addWidget(self._temp_slider, 1)
+        slider_row.addWidget(lbl_r)
+        v.addLayout(slider_row)
 
         # ── AI Prompt Generator section ───────────────────────────
         sep = QFrame()
@@ -484,6 +521,10 @@ class AddStyleDialog(QDialog):
             self._icon = dlg.chosen
             self._icon_btn.setText(self._icon)
 
+    def _on_temp_changed(self, value: int):
+        self._temp_val = value / 100.0
+        self._temp_lbl.setText(f"{self._temp_val:.2f}")
+
     def _save(self):
         name   = self._name_edit.text().strip()
         prompt = self._prompt.toPlainText().strip()
@@ -498,7 +539,8 @@ class AddStyleDialog(QDialog):
             "icon":        self._icon,
             "name":        name,
             "prompt":      prompt,
-            "creative":    self._creative.currentIndex() == 1,
+            "temperature": self._temp_val,
+            "creative":    self._temp_val >= 0.5,   # backward compat
             "description": self._desc_edit.text().strip(),
         }
         self.accept()
@@ -1030,8 +1072,11 @@ class Worker(QThread):
                     {"role": "system", "content": self.s.get("enhance_prompt", DEFAULT_PROMPT)},
                     {"role": "user",   "content": self.text},
                 ],
-                # Creative mode (funny hoặc custom style có creative=True) → temperature cao hơn
-                "temperature": 0.7 if self.s.get("enhance_style_creative", False) else 0.3,
+                # Dùng temperature từ style (slider), fallback về creative bool nếu chưa có
+                "temperature": self.s.get(
+                    "enhance_style_temperature",
+                    0.7 if self.s.get("enhance_style_creative", False) else 0.3
+                ),
                 "max_tokens":  2000,
             },
             timeout=30,
@@ -4025,8 +4070,8 @@ class MainWindow(QWidget):
     def _all_styles(self) -> list[dict]:
         """Trả về toàn bộ styles: built-in + custom."""
         built = [
-            {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False},
-            {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True},
+            {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
+            {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
         ]
         custom = [
             {"name": f"{s['icon']}  {s['name']}", "prompt": s["prompt"], "creative": s.get("creative", False)}
@@ -4064,9 +4109,12 @@ class MainWindow(QWidget):
     def _set_prompt_style(self, name: str):
         for s in self._all_styles():
             if s["name"] == name:
-                self.settings["enhance_prompt"]      = s["prompt"]
-                self.settings["enhance_style_name"]  = name
-                self.settings["enhance_style_creative"] = s["creative"]
+                self.settings["enhance_prompt"]           = s["prompt"]
+                self.settings["enhance_style_name"]       = name
+                self.settings["enhance_style_temperature"] = s.get(
+                    "temperature", 0.7 if s.get("creative", False) else 0.3
+                )
+                self.settings["enhance_style_creative"]   = s.get("creative", False)  # backward compat
                 save_settings(self.settings)
                 self._apply_prompt_btn_styles(name)
                 return
