@@ -2553,12 +2553,13 @@ class MainWindow(QWidget):
         return lbl
 
     def _card(self) -> tuple:
-        """White card với border và 10px radius — Apple grouped section."""
+        """White card — Apple System Settings style.
+        Không có border — dùng contrast trắng-trên-xám để tạo ranh giới."""
         outer = QWidget()
         outer.setStyleSheet(
             f"QWidget{{background:{SURFACE};"
-            f"border:1px solid {BORDER};"
-            "border-radius:10px;}"
+            "border:none;"
+            "border-radius:10px;}}"
         )
         vbox = QVBoxLayout(outer)
         vbox.setContentsMargins(0, 0, 0, 0)
@@ -2567,15 +2568,11 @@ class MainWindow(QWidget):
 
     def _card_row(self, container_vbox, label: str, widget: QWidget,
                   note: str = "", last: bool = False):
-        """Form row trong card: label trái (120px cố định) + widget phải."""
+        """Form row trong card — 48px height, inset separator như macOS System Settings."""
         row_w = QWidget()
-        row_w.setStyleSheet(
-            "QWidget{background:transparent;border:none;"
-            + ("" if last else f"border-bottom:1px solid {BORDER};")
-            + "}"
-        )
+        row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         h = QHBoxLayout(row_w)
-        h.setContentsMargins(16, 11, 16, 11)
+        h.setContentsMargins(16, 13, 16, 13)
         h.setSpacing(12)
         lbl = QLabel(label)
         lbl.setFixedWidth(116)
@@ -2597,6 +2594,20 @@ class MainWindow(QWidget):
             right.addWidget(n)
         h.addLayout(right)
         container_vbox.addWidget(row_w)
+
+        # Inset separator — thụt vào 16px từ trái, như iOS/macOS standard
+        if not last:
+            sep_wrap = QWidget()
+            sep_wrap.setFixedHeight(1)
+            sep_wrap.setStyleSheet("background:transparent;border:none;")
+            sep_h = QHBoxLayout(sep_wrap)
+            sep_h.setContentsMargins(16, 0, 0, 0)
+            sep_h.setSpacing(0)
+            sep_line = QWidget()
+            sep_line.setFixedHeight(1)
+            sep_line.setStyleSheet("background:#e5e5ea;border:none;")
+            sep_h.addWidget(sep_line)
+            container_vbox.addWidget(sep_wrap)
 
     def _build(self):
         layout = QVBoxLayout(self)
@@ -2728,10 +2739,10 @@ class MainWindow(QWidget):
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
         self.text_input.setMinimumHeight(210)
         self.text_input.setStyleSheet(
-            f"QTextEdit{{border:1px solid {BORDER};border-radius:10px;"
+            f"QTextEdit{{border:1.5px solid #e5e5ea;border-radius:10px;"
             f"background:{SURFACE};color:{TEXT};padding:12px 14px;"
             f"font-size:14px;}}"
-            f"QTextEdit:focus{{border-color:{ACCENT};}}"
+            f"QTextEdit:focus{{border:1.5px solid {ACCENT};}}"
         )
         layout.addWidget(self.text_input)
 
@@ -2925,8 +2936,8 @@ class MainWindow(QWidget):
         self.drop_zone.files_added.connect(self._add_images)
         # Override style để hoà vào card
         self.drop_zone.setStyleSheet(
-            "QFrame{border:2px dashed #d2d2d7;border-radius:8px;"
-            "background:#fafafa;}"
+            "QFrame{border:1.5px dashed #c7c7cc;border-radius:8px;"
+            "background:#f9f9fb;}"
             "QFrame:hover{border-color:#0071e3;background:#f0f7ff;}"
         )
         img_in_lay.addWidget(self.drop_zone)
@@ -2998,7 +3009,7 @@ class MainWindow(QWidget):
         self.script_output.setMinimumHeight(170)
         self.script_output.setStyleSheet(
             f"QTextEdit{{border:none;background:transparent;color:{TEXT};"
-            "font-size:14px;padding:0;}"
+            "font-size:14px;padding:2px 0;}"
         )
         out_in_lay.addWidget(self.script_output)
 
