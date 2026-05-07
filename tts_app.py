@@ -2493,105 +2493,249 @@ class SettingsDialog(QDialog):
     def _page_prompts(self) -> QWidget:
         page = QWidget()
         page.setStyleSheet("QWidget{background:transparent;border:none;}")
-        v = QVBoxLayout(page)
-        v.setContentsMargins(20, 16, 20, 20)
-        v.setSpacing(0)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(20, 16, 20, 20)
+        outer.setSpacing(0)
 
-        # ── Card: Gemini Chat Prompt ──────────────────────────────
-        v.addSpacing(8)
-        v.addWidget(self._section_label("Gemini — Chat → Kịch bản"))
-        v.addSpacing(6)
+        # ══ Sub-tab switcher ══════════════════════════════════════
+        outer.addSpacing(4)
+        tab_row = QHBoxLayout()
+        tab_row.setSpacing(0)
+        tab_row.setContentsMargins(0, 0, 0, 0)
 
-        grp, glay = self._group()
-        self.gemini_prompt = QTextEdit()
+        self._prompts_stacked = QStackedWidget()
+        self._prompts_stacked.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
+
+        def _subtab_style(active: bool) -> str:
+            if active:
+                return ("QPushButton{background:#ffffff;color:#0071e3;"
+                        "border:1px solid #d2d2d7;font-size:13px;font-weight:600;"
+                        "padding:7px 20px;}"
+                        "QPushButton:hover{background:#f0f6ff;}")
+            return ("QPushButton{background:#f5f5f7;color:#6e6e73;"
+                    "border:1px solid #d2d2d7;font-size:13px;font-weight:400;"
+                    "padding:7px 20px;}"
+                    "QPushButton:hover{background:#ebebf0;color:#1d1d1f;}")
+
+        btn_tab_chat = QPushButton("💬  Chat → Kịch bản")
+        btn_tab_chat.setFixedHeight(36)
+        btn_tab_chat.setStyleSheet(
+            _subtab_style(True) +
+            "QPushButton{border-radius:0;border-top-left-radius:8px;"
+            "border-bottom-left-radius:8px;border-right:none;}"
+        )
+        btn_tab_tts = QPushButton("🎙️  TTS — Enhance")
+        btn_tab_tts.setFixedHeight(36)
+        btn_tab_tts.setStyleSheet(
+            _subtab_style(False) +
+            "QPushButton{border-radius:0;border-top-right-radius:8px;"
+            "border-bottom-right-radius:8px;}"
+        )
+
+        def _switch_subtab(idx: int):
+            self._prompts_stacked.setCurrentIndex(idx)
+            if idx == 0:
+                btn_tab_chat.setStyleSheet(
+                    _subtab_style(True) +
+                    "QPushButton{border-radius:0;border-top-left-radius:8px;"
+                    "border-bottom-left-radius:8px;border-right:none;}")
+                btn_tab_tts.setStyleSheet(
+                    _subtab_style(False) +
+                    "QPushButton{border-radius:0;border-top-right-radius:8px;"
+                    "border-bottom-right-radius:8px;}")
+            else:
+                btn_tab_chat.setStyleSheet(
+                    _subtab_style(False) +
+                    "QPushButton{border-radius:0;border-top-left-radius:8px;"
+                    "border-bottom-left-radius:8px;border-right:none;}")
+                btn_tab_tts.setStyleSheet(
+                    _subtab_style(True) +
+                    "QPushButton{border-radius:0;border-top-right-radius:8px;"
+                    "border-bottom-right-radius:8px;}")
+
+        btn_tab_chat.clicked.connect(lambda: _switch_subtab(0))
+        btn_tab_tts.clicked.connect(lambda: _switch_subtab(1))
+        tab_row.addWidget(btn_tab_chat)
+        tab_row.addWidget(btn_tab_tts)
+        tab_row.addStretch()
+        outer.addLayout(tab_row)
+        outer.addSpacing(12)
+
+        # ──────────────────────────────────────────────────────────
+        # PAGE 0: Chat → Kịch bản
+        # ──────────────────────────────────────────────────────────
+        page_chat = QWidget()
+        page_chat.setStyleSheet("QWidget{background:transparent;border:none;}")
+        vc = QVBoxLayout(page_chat)
+        vc.setContentsMargins(0, 0, 0, 0)
+        vc.setSpacing(0)
+
         saved_gp = self.settings.get("gemini_chat_prompt", "").strip()
-        self.gemini_prompt.setPlainText(saved_gp if saved_gp else GEMINI_CHAT_PROMPT)
+        _gp_init  = saved_gp if saved_gp else GEMINI_CHAT_PROMPT
+
+        gp_card = QFrame()
+        gp_card.setStyleSheet(
+            "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
+        )
+        gp_card_v = QVBoxLayout(gp_card)
+        gp_card_v.setContentsMargins(0, 0, 0, 0)
+        gp_card_v.setSpacing(0)
+
+        self.gemini_prompt = QTextEdit()
+        self.gemini_prompt.setPlainText(_gp_init)
         self.gemini_prompt.setReadOnly(True)
-        self.gemini_prompt.setFixedHeight(90)
+        self.gemini_prompt.setMinimumHeight(160)
         self.gemini_prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
-            "background:transparent;border:none;padding:10px 14px;}"
+            "background:transparent;border:none;padding:14px 16px;}"
         )
-        glay.addWidget(self.gemini_prompt)
+        gp_card_v.addWidget(self.gemini_prompt, 1)
 
-        # Footer hành động trong card
+        gp_div = QFrame(); gp_div.setFrameShape(QFrame.Shape.HLine)
+        gp_div.setStyleSheet("QFrame{background:#e5e5ea;border:none;max-height:1px;margin:0;}")
+        gp_card_v.addWidget(gp_div)
+
         gp_foot = QHBoxLayout()
-        gp_foot.setContentsMargins(14, 0, 14, 10)
+        gp_foot.setContentsMargins(14, 8, 14, 10)
         gp_foot.setSpacing(8)
-        btn_reset_gp = QPushButton("↺ Về mặc định")
-        btn_reset_gp.setFixedHeight(28)
-        btn_reset_gp.setStyleSheet(
+        btn_cancel_gp = QPushButton("↺ Về mặc định")
+        btn_cancel_gp.setFixedHeight(30)
+        btn_cancel_gp.setStyleSheet(
             "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
-            "border:1px solid #d2d2d7;border-radius:6px;padding:0 10px;}"
+            "border:1px solid #d2d2d7;border-radius:7px;padding:0 12px;}"
             "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
         )
-        gp_foot.addWidget(btn_reset_gp)
+        gp_foot.addWidget(btn_cancel_gp)
         gp_foot.addStretch()
-        btn_edit_gp = QPushButton("✏️  Chỉnh sửa prompt")
-        btn_edit_gp.setFixedHeight(28)
+        btn_edit_gp = QPushButton("✏️  Chỉnh sửa")
+        btn_edit_gp.setFixedHeight(30)
         btn_edit_gp.setStyleSheet(
             "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-            "background:#0071e3;border:none;border-radius:6px;padding:0 14px;}"
+            "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
             "QPushButton:hover{background:#0077ed;}"
         )
         gp_foot.addWidget(btn_edit_gp)
-        glay.addLayout(gp_foot)
-        v.addWidget(grp)
+        gp_card_v.addLayout(gp_foot)
+        vc.addWidget(gp_card)
+        vc.addStretch()
 
-        btn_reset_gp.clicked.connect(
-            lambda: self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
-        )
-        btn_edit_gp.clicked.connect(
-            lambda: self._expand_prompt_dialog("Gemini — Chat → Kịch bản", self.gemini_prompt)
-        )
+        _gp_snapshot: list[str] = [_gp_init]   # snapshot trước khi edit
 
-        # ── Card: Enhance Prompt (TTS) — split left tabs / right content ──
-        v.addSpacing(16)
-        v.addWidget(self._section_label("Enhance Prompt (TTS)"))
-        v.addSpacing(6)
+        def _toggle_edit_gp():
+            if self.gemini_prompt.isReadOnly():
+                # → Enter edit mode
+                _gp_snapshot[0] = self.gemini_prompt.toPlainText()
+                self.gemini_prompt.setReadOnly(False)
+                self.gemini_prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:#fff;border:none;padding:14px 16px;"
+                    "selection-background-color:#bdd7ff;}"
+                )
+                gp_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:2px solid #0071e3;border-radius:10px;}"
+                )
+                btn_edit_gp.setText("✅  Lưu")
+                btn_edit_gp.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#15803d;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#16a34a;}"
+                )
+                btn_cancel_gp.setText("✕  Hủy")
+                self.gemini_prompt.setFocus()
+            else:
+                # → Save
+                self.settings["gemini_chat_prompt"] = self.gemini_prompt.toPlainText()
+                self.gemini_prompt.setReadOnly(True)
+                self.gemini_prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:transparent;border:none;padding:14px 16px;}"
+                )
+                gp_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
+                )
+                btn_edit_gp.setText("✏️  Chỉnh sửa")
+                btn_edit_gp.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#0077ed;}"
+                )
+                btn_cancel_gp.setText("↺ Về mặc định")
 
-        # Outer card
+        def _cancel_or_reset_gp():
+            if not self.gemini_prompt.isReadOnly():
+                # Đang edit → Hủy
+                self.gemini_prompt.setPlainText(_gp_snapshot[0])
+                self.gemini_prompt.setReadOnly(True)
+                self.gemini_prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:transparent;border:none;padding:14px 16px;}"
+                )
+                gp_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
+                )
+                btn_edit_gp.setText("✏️  Chỉnh sửa")
+                btn_edit_gp.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#0077ed;}"
+                )
+                btn_cancel_gp.setText("↺ Về mặc định")
+            else:
+                # Không edit → reset default
+                self.gemini_prompt.setPlainText(GEMINI_CHAT_PROMPT)
+
+        btn_edit_gp.clicked.connect(_toggle_edit_gp)
+        btn_cancel_gp.clicked.connect(_cancel_or_reset_gp)
+
+        # ──────────────────────────────────────────────────────────
+        # PAGE 1: TTS — Enhance
+        # ──────────────────────────────────────────────────────────
+        page_tts = QWidget()
+        page_tts.setStyleSheet("QWidget{background:transparent;border:none;}")
+        vt = QVBoxLayout(page_tts)
+        vt.setContentsMargins(0, 0, 0, 0)
+        vt.setSpacing(0)
+
+        # ── Enhance card: left style tabs + right prompt ───────────
         ep_card = QFrame()
         ep_card.setStyleSheet(
-            "QFrame{background:#ffffff;border:1px solid #d2d2d7;"
-            "border-radius:10px;}"
+            "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
         )
         ep_card_h = QHBoxLayout(ep_card)
         ep_card_h.setContentsMargins(0, 0, 0, 0)
         ep_card_h.setSpacing(0)
 
-        # ── Left: vertical style tabs ──────────────────────────────
+        # Left style tabs
         ep_tab_col = QFrame()
-        ep_tab_col.setFixedWidth(128)
+        ep_tab_col.setFixedWidth(130)
         ep_tab_col.setStyleSheet(
             "QFrame{background:#f5f5f7;border:none;"
-            "border-right:1px solid #e5e5ea;border-radius:0px;}"
+            "border-right:1px solid #e5e5ea;border-top-left-radius:10px;"
+            "border-bottom-left-radius:10px;}"
         )
         ep_tab_v = QVBoxLayout(ep_tab_col)
         ep_tab_v.setContentsMargins(6, 10, 6, 10)
         ep_tab_v.setSpacing(4)
 
         self._ep_style_tabs: dict[str, QPushButton] = {}
-        ep_prompts_map = dict(PROMPTS)   # name → prompt_text
+        ep_prompts_map = dict(PROMPTS)
 
         def _ep_tab_style(active: bool) -> str:
             if active:
                 return ("QPushButton{background:#ffffff;color:#0071e3;"
                         "border:1px solid #d2d2d7;border-radius:7px;"
-                        "font-size:12px;font-weight:600;padding:6px 8px;"
+                        "font-size:12px;font-weight:600;padding:7px 8px;"
                         "text-align:left;}")
             return ("QPushButton{background:transparent;color:#1d1d1f;"
                     "border:none;border-radius:7px;"
-                    "font-size:12px;padding:6px 8px;text-align:left;}"
+                    "font-size:12px;padding:7px 8px;text-align:left;}"
                     "QPushButton:hover{background:#ebebf0;}")
 
-        # Determine which tab should be active (match saved prompt)
-        _saved_ep = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
-        _first_tab = list(ep_prompts_map.keys())[0]
-        _active_ep_tab = _first_tab
+        _saved_ep   = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        _active_ep  = list(ep_prompts_map.keys())[0]
         for _n, _t in ep_prompts_map.items():
             if _t.strip() == _saved_ep.strip():
-                _active_ep_tab = _n
+                _active_ep = _n
                 break
 
         def _switch_ep_tab(name: str):
@@ -2601,17 +2745,15 @@ class SettingsDialog(QDialog):
 
         for name, prompt_text in ep_prompts_map.items():
             tb = QPushButton(name)
-            tb.setMinimumHeight(32)
-            active = (name == _active_ep_tab)
-            tb.setStyleSheet(_ep_tab_style(active))
+            tb.setMinimumHeight(34)
+            tb.setStyleSheet(_ep_tab_style(name == _active_ep))
             tb.clicked.connect(lambda _, n=name: _switch_ep_tab(n))
             ep_tab_v.addWidget(tb)
             self._ep_style_tabs[name] = tb
         ep_tab_v.addStretch()
-
         ep_card_h.addWidget(ep_tab_col)
 
-        # ── Right: prompt text + footer ────────────────────────────
+        # Right: prompt + footer
         ep_right = QVBoxLayout()
         ep_right.setContentsMargins(0, 0, 0, 0)
         ep_right.setSpacing(0)
@@ -2619,62 +2761,116 @@ class SettingsDialog(QDialog):
         self.prompt = QTextEdit()
         self.prompt.setPlainText(_saved_ep)
         self.prompt.setReadOnly(True)
-        self.prompt.setMinimumHeight(100)
+        self.prompt.setMinimumHeight(130)
         self.prompt.setStyleSheet(
             "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
-            "background:transparent;border:none;padding:12px 14px;}"
+            "background:transparent;border:none;padding:14px 14px;}"
         )
         ep_right.addWidget(self.prompt, 1)
 
-        # Divider
-        ep_div = QFrame()
-        ep_div.setFrameShape(QFrame.Shape.HLine)
-        ep_div.setStyleSheet("QFrame{color:#e5e5ea;background:transparent;border:none;border-top:1px solid #e5e5ea;margin:0;}")
-        ep_right.addWidget(ep_div)
+        ep_div2 = QFrame(); ep_div2.setFrameShape(QFrame.Shape.HLine)
+        ep_div2.setStyleSheet("QFrame{background:#e5e5ea;border:none;max-height:1px;margin:0;}")
+        ep_right.addWidget(ep_div2)
 
         ep_foot = QHBoxLayout()
-        ep_foot.setContentsMargins(12, 8, 12, 10)
+        ep_foot.setContentsMargins(14, 8, 14, 10)
         ep_foot.setSpacing(8)
-        btn_reset_ep = QPushButton("↺ Về mặc định")
-        btn_reset_ep.setFixedHeight(28)
-        btn_reset_ep.setStyleSheet(
+        btn_cancel_ep = QPushButton("↺ Về mặc định")
+        btn_cancel_ep.setFixedHeight(30)
+        btn_cancel_ep.setStyleSheet(
             "QPushButton{font-size:12px;color:#6e6e73;background:transparent;"
-            "border:1px solid #d2d2d7;border-radius:6px;padding:0 10px;}"
+            "border:1px solid #d2d2d7;border-radius:7px;padding:0 12px;}"
             "QPushButton:hover{background:#f5f5f7;color:#1d1d1f;}"
         )
-        ep_foot.addWidget(btn_reset_ep)
+        ep_foot.addWidget(btn_cancel_ep)
         ep_foot.addStretch()
-        btn_edit_ep = QPushButton("✏️  Chỉnh sửa prompt")
-        btn_edit_ep.setFixedHeight(28)
+        btn_edit_ep = QPushButton("✏️  Chỉnh sửa")
+        btn_edit_ep.setFixedHeight(30)
         btn_edit_ep.setStyleSheet(
             "QPushButton{font-size:12px;font-weight:600;color:#fff;"
-            "background:#0071e3;border:none;border-radius:6px;padding:0 14px;}"
+            "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
             "QPushButton:hover{background:#0077ed;}"
         )
         ep_foot.addWidget(btn_edit_ep)
         ep_right.addLayout(ep_foot)
-
         ep_card_h.addLayout(ep_right, 1)
-        v.addWidget(ep_card)
+        vt.addWidget(ep_card)
 
-        btn_reset_ep.clicked.connect(
-            lambda: self.prompt.setPlainText(DEFAULT_PROMPT)
-        )
-        btn_edit_ep.clicked.connect(
-            lambda: self._expand_prompt_dialog("Enhance Prompt (TTS)", self.prompt)
-        )
+        _ep_snapshot: list[str] = [_saved_ep]
 
-        # ── Temperature (mức độ sáng tạo) ─────────────────────────
-        v.addSpacing(12)
+        def _toggle_edit_ep():
+            if self.prompt.isReadOnly():
+                _ep_snapshot[0] = self.prompt.toPlainText()
+                self.prompt.setReadOnly(False)
+                self.prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:#fff;border:none;padding:14px 14px;"
+                    "selection-background-color:#bdd7ff;}"
+                )
+                ep_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:2px solid #0071e3;border-radius:10px;}"
+                )
+                btn_edit_ep.setText("✅  Lưu")
+                btn_edit_ep.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#15803d;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#16a34a;}"
+                )
+                btn_cancel_ep.setText("✕  Hủy")
+                self.prompt.setFocus()
+            else:
+                self.settings["enhance_prompt"] = self.prompt.toPlainText()
+                self.prompt.setReadOnly(True)
+                self.prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:transparent;border:none;padding:14px 14px;}"
+                )
+                ep_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
+                )
+                btn_edit_ep.setText("✏️  Chỉnh sửa")
+                btn_edit_ep.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#0077ed;}"
+                )
+                btn_cancel_ep.setText("↺ Về mặc định")
+
+        def _cancel_or_reset_ep():
+            if not self.prompt.isReadOnly():
+                self.prompt.setPlainText(_ep_snapshot[0])
+                self.prompt.setReadOnly(True)
+                self.prompt.setStyleSheet(
+                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "background:transparent;border:none;padding:14px 14px;}"
+                )
+                ep_card.setStyleSheet(
+                    "QFrame{background:#ffffff;border:1px solid #d2d2d7;border-radius:10px;}"
+                )
+                btn_edit_ep.setText("✏️  Chỉnh sửa")
+                btn_edit_ep.setStyleSheet(
+                    "QPushButton{font-size:12px;font-weight:600;color:#fff;"
+                    "background:#0071e3;border:none;border-radius:7px;padding:0 16px;}"
+                    "QPushButton:hover{background:#0077ed;}"
+                )
+                btn_cancel_ep.setText("↺ Về mặc định")
+            else:
+                self.prompt.setPlainText(DEFAULT_PROMPT)
+
+        btn_edit_ep.clicked.connect(_toggle_edit_ep)
+        btn_cancel_ep.clicked.connect(_cancel_or_reset_ep)
+
+        # ── Temperature slider ─────────────────────────────────────
+        vt.addSpacing(14)
         temp_row = QHBoxLayout()
         temp_row.setContentsMargins(0, 0, 0, 0)
         temp_row.setSpacing(10)
-        temp_title = QLabel("Mức độ sáng tạo")
-        temp_title.setStyleSheet(
+        temp_lbl = QLabel("Mức độ sáng tạo")
+        temp_lbl.setStyleSheet(
             "QLabel{font-size:13px;font-weight:500;color:#1d1d1f;"
             "background:transparent;border:none;}"
         )
-        temp_row.addWidget(temp_title)
+        temp_row.addWidget(temp_lbl)
         lbl_calm = QLabel("🎯 Chính xác")
         lbl_calm.setStyleSheet("QLabel{font-size:11px;color:#6e6e73;background:transparent;border:none;}")
         temp_row.addWidget(lbl_calm)
@@ -2700,7 +2896,7 @@ class SettingsDialog(QDialog):
             "background:transparent;border:none;}"
         )
         temp_row.addWidget(self._settings_temp_val_lbl)
-        v.addLayout(temp_row)
+        vt.addLayout(temp_row)
 
         def _on_settings_temp(val: int):
             t = val / 100.0
@@ -2708,9 +2904,9 @@ class SettingsDialog(QDialog):
             self.settings["enhance_style_temperature"] = t
         self._settings_temp_slider.valueChanged.connect(_on_settings_temp)
 
-        # ── Custom styles section ──────────────────────────────────
+        # ── Custom styles ──────────────────────────────────────────
         custom_hdr = QHBoxLayout()
-        custom_hdr.setContentsMargins(0, 16, 0, 6)
+        custom_hdr.setContentsMargins(0, 20, 0, 6)
         custom_hdr.addWidget(self._section_label("Phong cách tuỳ chỉnh"))
         custom_hdr.addStretch()
         btn_add_style = QPushButton("+ Thêm")
@@ -2722,14 +2918,18 @@ class SettingsDialog(QDialog):
         )
         btn_add_style.clicked.connect(self._add_custom_style)
         custom_hdr.addWidget(btn_add_style)
-        v.addLayout(custom_hdr)
+        vt.addLayout(custom_hdr)
 
-        # Container for custom style rows (rebuilt by _refresh_custom_styles)
         self._custom_styles_grp, self._custom_styles_glay = self._group()
-        v.addWidget(self._custom_styles_grp)
+        vt.addWidget(self._custom_styles_grp)
         self._refresh_custom_styles()
+        vt.addStretch()
 
-        v.addStretch()
+        # ── Wire stacked widget ────────────────────────────────────
+        self._prompts_stacked.addWidget(page_chat)   # index 0
+        self._prompts_stacked.addWidget(page_tts)    # index 1
+        outer.addWidget(self._prompts_stacked, 1)
+
         return page
 
     def _refresh_custom_styles(self):

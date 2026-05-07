@@ -1,2 +1,2 @@
-VERSION = "1.2.45"
+VERSION = "1.2.46"
 GITHUB_REPO = "hedracentral9999/Hedra-Studio"
