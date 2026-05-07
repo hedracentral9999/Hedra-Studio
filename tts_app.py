@@ -2506,16 +2506,23 @@ class SettingsDialog(QDialog):
                     ("Xác nhận email",
                      "Kiểm tra hộp thư → nhấn link xác nhận từ ElevenLabs\n"
                      "(kiểm tra thư mục Spam nếu không thấy)"),
-                    ("Vào trang Profile",
-                     'Sau khi đăng nhập → nhấn ảnh đại diện góc trên phải\n'
-                     '→ chọn "Profile + API Key"'),
-                    ("Tạo API Key mới",
-                     'Kéo xuống mục "API Keys"\n'
-                     '→ nhấn "Create new API Key" → đặt tên bất kỳ (vd: "Hedra")'),
+                    ("Vào API Keys",
+                     'Sau khi đăng nhập → vào menu trái "API Keys"\n'
+                     '→ nhấn "Create Key"'),
+                    ("Chọn quyền đơn giản, đủ dùng",
+                     "Trong khung Create API Key, bật như sau:\n"
+                     "• Text to Speech: Access\n"
+                     "• Voices: Read (hoặc Access nếu bạn cần thêm/sửa voices)\n"
+                     "• Các mục khác: No Access"),
+                    ("Tạo key",
+                     'Nhấn "Create Key" → đặt tên (ví dụ: Hedra Studio Mac)\n'
+                     "→ copy key ngay sau khi tạo"),
                     ("Copy key vào app",
                      "Copy key vừa tạo\n"
                      "→ Paste vào ô API Keys trong Hedra Studio\n"
                      "→ Mỗi key 1 dòng — có thể thêm nhiều key để tự xoay"),
+                    ("Kiểm tra nhanh",
+                     "Nhấn Generate 1 đoạn ngắn để xác nhận key hoạt động"),
                 ],
             },
             "deepseek": {
