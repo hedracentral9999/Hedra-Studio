@@ -1070,7 +1070,7 @@ Màn máy em vẫn OK anh, cắm vào là xài được luôn.
 
 Vậy ổn rồi em! Lần đầu cắm vào bấm chấp nhận một lần là xong, sau đó tự nhận luôn. Chốt sáu trăm năm mươi nghìn nha, em cọc một trăm năm mươi nghìn, còn lại thanh toán khi nhận hàng.
 
-Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!\"\"\"
+Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!"""
 
 
 # ── Telegram feedback config ──────────────────────────────────────────
