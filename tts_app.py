@@ -3258,16 +3258,8 @@ class SettingsDialog(QDialog):
             self.settings["enhance_style_temperature"] = t
         self._settings_temp_slider.valueChanged.connect(_on_settings_temp)
 
-        # ── Custom styles ──────────────────────────────────────────
-        vt.addSpacing(20)
-        vt.addWidget(self._section_label("Phong cách tuỳ chỉnh"))
-        vt.addSpacing(6)
-
-        self._custom_styles_grp, self._custom_styles_glay = self._group()
-        vt.addWidget(self._custom_styles_grp)
-        self._refresh_custom_styles()
-
-        # "+" nằm dưới danh sách
+        # Nút + thêm style (gọn, dưới temp slider)
+        vt.addSpacing(16)
         btn_add_style = QPushButton("+")
         btn_add_style.setFixedSize(24, 20)
         btn_add_style.setStyleSheet(
@@ -3277,8 +3269,11 @@ class SettingsDialog(QDialog):
             "QPushButton:pressed{background:#d1d1d6;}"
         )
         btn_add_style.clicked.connect(self._add_custom_style)
-        vt.addSpacing(8)
-        vt.addWidget(btn_add_style)
+        add_row = QHBoxLayout()
+        add_row.setContentsMargins(0, 0, 0, 0)
+        add_row.addStretch()
+        add_row.addWidget(btn_add_style)
+        vt.addLayout(add_row)
 
         # ── Wire stacked widget ────────────────────────────────────
         self._prompts_stacked.addWidget(page_chat)   # index 0
@@ -3288,76 +3283,8 @@ class SettingsDialog(QDialog):
         return page
 
     def _refresh_custom_styles(self):
-        """Xoá và vẽ lại danh sách custom styles."""
-        # Xoá rows cũ
-        while self._custom_styles_glay.count():
-            item = self._custom_styles_glay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        custom = self.settings.get("custom_styles", [])
-        if not custom:
-            empty = QLabel("Chưa có phong cách tuỳ chỉnh — nhấn + Thêm")
-            empty.setStyleSheet(
-                "QLabel{font-size:12px;color:#6e6e73;"
-                "padding:12px 16px;background:transparent;border:none;}"
-            )
-            self._custom_styles_glay.addWidget(empty)
-            return
-
-        for i, style in enumerate(custom):
-            is_last = (i == len(custom) - 1)
-            row_w = QWidget()
-            row_w.setStyleSheet(
-                "QWidget{background:transparent;border:none;"
-                + ("" if is_last else "border-bottom:1px solid #e5e5ea;")
-                + "}"
-            )
-            rh = QHBoxLayout(row_w)
-            rh.setContentsMargins(16, 8, 12, 8)
-            rh.setSpacing(10)
-
-            icon_lbl = QLabel(style.get("icon", "🎯"))
-            icon_lbl.setFixedWidth(24)
-            icon_lbl.setStyleSheet(
-                "QLabel{font-size:16px;background:transparent;border:none;}"
-            )
-            name_lbl = QLabel(style.get("name", ""))
-            name_lbl.setStyleSheet(
-                "QLabel{font-size:13px;color:#1d1d1f;background:transparent;border:none;}"
-            )
-            cr_lbl = QLabel("🎨 Sáng tạo" if style.get("creative") else "🎯 Nghiêm túc")
-            cr_lbl.setStyleSheet(
-                "QLabel{font-size:11px;color:#6e6e73;background:transparent;border:none;}"
-            )
-
-            btn_edit = QPushButton("✏️")
-            btn_edit.setFixedSize(28, 28)
-            btn_edit.setToolTip("Sửa")
-            btn_edit.setStyleSheet(
-                "QPushButton{background:transparent;border:none;font-size:14px;}"
-                "QPushButton:hover{background:#f0f0f5;border-radius:6px;}"
-                "QPushButton:pressed{background:#e5e5ea;border-radius:6px;}"
-            )
-            btn_edit.clicked.connect(lambda _, idx=i: self._edit_custom_style(idx))
-
-            btn_del = QPushButton("🗑")
-            btn_del.setFixedSize(28, 28)
-            btn_del.setToolTip("Xóa")
-            btn_del.setStyleSheet(
-                "QPushButton{background:transparent;border:none;font-size:14px;}"
-                "QPushButton:hover{background:#fee2e2;border-radius:6px;}"
-                "QPushButton:pressed{background:#fecaca;border-radius:6px;}"
-            )
-            btn_del.clicked.connect(lambda _, idx=i: self._delete_custom_style(idx))
-
-            rh.addWidget(icon_lbl)
-            rh.addWidget(name_lbl)
-            rh.addWidget(cr_lbl)
-            rh.addStretch()
-            rh.addWidget(btn_edit)
-            rh.addWidget(btn_del)
-            self._custom_styles_glay.addWidget(row_w)
+        """Không còn render list riêng — custom styles hiện trong sidebar tabs."""
+        pass
 
     def _expand_prompt_dialog(self, title: str, text_edit: QTextEdit):
         """Mở dialog editor lớn để chỉnh sửa prompt thoải mái."""
