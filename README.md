@@ -73,7 +73,7 @@ Bạn cần ít nhất 2 API keys:
 
 | Service | Dùng để | Lấy ở đâu |
 |---------|---------|-----------|
-| **ElevenLabs** | Generate giọng nói | https://elevenlabs.io → Profile → API Key |
+| **ElevenLabs** | Generate giọng nói | https://try.elevenlabs.io/rinor1xaj4ze → Sign Up → API Keys |
 | **DeepSeek** | Enhance kịch bản | https://platform.deepseek.com/api_keys |
 | **Gemini** (tuỳ chọn) | Chat → Kịch bản | https://aistudio.google.com/apikey |
 
