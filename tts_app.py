@@ -5314,10 +5314,11 @@ echo "$(date): Done ✅" >> "$LOG"
 # Dọn DMG tạm
 rm -f "$DMG" 2>/dev/null
 """
-            script_path = "/tmp/hedra_auto_update.sh"
-            with open(script_path, "w") as f:
+            import tempfile
+            fd, script_path = tempfile.mkstemp(suffix=".sh", prefix="hedra_update_")
+            with os.fdopen(fd, "w") as f:
                 f.write(script)
-            os.chmod(script_path, 0o755)
+            os.chmod(script_path, 0o700)
             subprocess.Popen(
                 ["/bin/bash", script_path],
                 stdout=subprocess.DEVNULL,
