@@ -3098,9 +3098,18 @@ class SettingsDialog(QDialog):
         ep_tab_v = QVBoxLayout(ep_tab_col)
         ep_tab_v.setContentsMargins(6, 10, 6, 10)
         ep_tab_v.setSpacing(4)
+        self._ep_tab_layout = ep_tab_v   # lưu để _refresh_custom_styles dùng
 
         self._ep_style_tabs: dict[str, QPushButton] = {}
         ep_prompts_map = dict(PROMPTS)
+        # Merge custom styles vào map — lưu thành instance var để _refresh_custom_styles dùng
+        self._ep_prompts_map = dict(ep_prompts_map)
+        for cs in self.settings.get("custom_styles", []):
+            cs_name = cs.get("name", "")
+            cs_prompt = cs.get("prompt", "")
+            if cs_name and cs_prompt:
+                label = f"{cs.get('icon', '')}  {cs_name}" if cs.get("icon") else cs_name
+                self._ep_prompts_map[label] = cs_prompt
         # Temperature per built-in style (phải khớp với _all_styles())
         ep_temp_map = {
             "🎯  Nghiêm túc": 0.3,
@@ -3119,8 +3128,8 @@ class SettingsDialog(QDialog):
                     "QPushButton:hover{background:#ebebf0;}")
 
         _saved_ep   = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
-        _active_ep  = list(ep_prompts_map.keys())[0]
-        for _n, _t in ep_prompts_map.items():
+        _active_ep  = list(self._ep_prompts_map.keys())[0]
+        for _n, _t in self._ep_prompts_map.items():
             if _t.strip() == _saved_ep.strip():
                 _active_ep = _n
                 break
@@ -3128,7 +3137,7 @@ class SettingsDialog(QDialog):
         def _switch_ep_tab(name: str):
             for n, b in self._ep_style_tabs.items():
                 b.setStyleSheet(_ep_tab_style(n == name))
-            self.prompt.setPlainText(ep_prompts_map[name])
+            self.prompt.setPlainText(self._ep_prompts_map[name])
             # Sync temperature slider với style vừa chọn
             if hasattr(self, "_settings_temp_slider") and name in ep_temp_map:
                 t = ep_temp_map[name]
@@ -3137,7 +3146,7 @@ class SettingsDialog(QDialog):
                     self._settings_temp_val_lbl.setText(f"{t:.2f}")
                 self.settings["enhance_style_temperature"] = t
 
-        for name, prompt_text in ep_prompts_map.items():
+        for name, prompt_text in self._ep_prompts_map.items():
             tb = QPushButton(name)
             tb.setMinimumHeight(28)
             tb.setStyleSheet(_ep_tab_style(name == _active_ep))
@@ -3330,8 +3339,66 @@ class SettingsDialog(QDialog):
         return page
 
     def _refresh_custom_styles(self):
-        """Không còn render list riêng — custom styles hiện trong sidebar tabs."""
-        pass
+        """Rebuild sidebar tabs — built-in + custom styles."""
+        if not hasattr(self, "_ep_tab_layout") or not hasattr(self, "_ep_prompts_map"):
+            return
+        layout = self._ep_tab_layout
+
+        # Xoá tabs cũ
+        for btn in list(self._ep_style_tabs.values()):
+            try:
+                btn.deleteLater()
+            except RuntimeError:
+                pass
+        self._ep_style_tabs.clear()
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Build map: built-in + custom
+        self._ep_prompts_map = dict(PROMPTS)
+        for cs in self.settings.get("custom_styles", []):
+            cs_name = cs.get("name", "")
+            cs_prompt = cs.get("prompt", "")
+            if cs_name and cs_prompt:
+                label = f"{cs.get('icon', '')}  {cs_name}" if cs.get("icon") else cs_name
+                self._ep_prompts_map[label] = cs_prompt
+
+        # Tìm tab đang active
+        _saved = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        _active = list(self._ep_prompts_map.keys())[0]
+        for n, t in self._ep_prompts_map.items():
+            if t.strip() == _saved.strip():
+                _active = n
+                break
+
+        # Style helper
+        def _tab_style(active: bool) -> str:
+            if active:
+                return ("QPushButton{background:#ffffff;color:#0071e3;"
+                        "border:1px solid #d2d2d7;border-radius:6px;"
+                        "font-size:11px;font-weight:600;padding:5px 6px;"
+                        "text-align:left;}")
+            return ("QPushButton{background:transparent;color:#1d1d1f;"
+                    "border:none;border-radius:6px;"
+                    "font-size:11px;padding:5px 6px;text-align:left;}"
+                    "QPushButton:hover{background:#ebebf0;}")
+
+        def _switch(name: str):
+            for n, b in self._ep_style_tabs.items():
+                b.setStyleSheet(_tab_style(n == name))
+            self.prompt.setPlainText(self._ep_prompts_map[name])
+
+        # Thêm tabs mới
+        for name, prompt_text in self._ep_prompts_map.items():
+            tb = QPushButton(name)
+            tb.setMinimumHeight(28)
+            tb.setStyleSheet(_tab_style(name == _active))
+            tb.clicked.connect(lambda _, n=name: _switch(n))
+            layout.addWidget(tb)
+            self._ep_style_tabs[name] = tb
+        layout.addStretch()
 
     def _expand_prompt_dialog(self, title: str, text_edit: QTextEdit):
         """Mở dialog editor lớn để chỉnh sửa prompt thoải mái."""
