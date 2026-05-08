@@ -5,6 +5,8 @@ import base64
 import requests
 import webbrowser
 import subprocess
+import traceback
+import re
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
@@ -133,6 +135,17 @@ Kết hợp với CAPS và ... để tạo nhịp hài hoàn hảo:
 - Combo killer: "thật ra á... DỄ ỢT luônnnn, không đùa đâu NHAAA!"
 Dùng tối thiểu 2 chỗ mỗi đoạn — thiếu thì mất hết tính sống động
 
+### 5c. CÂU CẢM THÁN / TIẾNG CƯỜI KIỂU HÀI HƯỚC
+Được phép thêm các cụm cảm thán sau khi ngữ cảnh thật sự vui, bất ngờ, thân thiết:
+"anh iuuuuuuuuuu" | "úi xờiiiiiiiiiii" | "hahahahaaa" | "kkkkkkk"
+
+Quy tắc dùng:
+- Dùng như gia vị tạo duyên, tối đa 1 cụm mỗi 2-3 câu; không nhồi liên tục.
+- "anh iuuuuuuuuuu" dùng khi chốt thân thiện, cảm ơn, trấn an hoặc làm mềm câu bán hàng.
+- "úi xờiiiiiiiiiii" dùng khi bất ngờ, khen món/ngữ cảnh quá xịn, phản ứng kiểu Nam bộ.
+- "hahahahaaa" và "kkkkkkk" dùng khi câu có punchline vui; không dùng trong thông tin nghiêm túc như giá, cam kết, bảo hành.
+- Có thể viết hoa phần punchline trước đó, rồi thả tiếng cười ở cuối để câu nghe tự nhiên.
+
 ### 6. PAUSE DRAMATIC — TẠO HÀI BẰNG NHỊP
 ... → dừng rồi "plot twist" bất ngờ — đây là cú punchline
 — → ngắt nhanh giữa setup và punchline
@@ -147,7 +160,8 @@ Cường điệu: "luôn luôn", "siêu siêu", "cực kỳ", "không đùa đâ
 
 ### 8. CẤU TRÚC
 - Mỗi câu/ý trên một dòng riêng — nhịp nhanh
-- Xóa hoàn toàn: kkk, haha, hehe, hihi, :), XD, ^^, :D
+- Không dùng emoji/text-face như :), XD, ^^, :D
+- Không xóa tiếng cười nếu đang dùng đúng tone hài hước; ưu tiên dạng kéo dài tự nhiên: "hahahahaaa", "kkkkkkk"
 
 ### 9. OUTPUT
 - Chỉ trả về kịch bản đã xử lý
@@ -163,7 +177,7 @@ OUTPUT: [curious] Ủaaaa anh hỏi còn box sáu trăm năm mươi nghìn khôn
 
 INPUT: dạ còn a ơi sáng nay e vừa lắp xong chục box kkk
 OUTPUT: [impressed] TRỜIIIIII ƠI còn chứ anh — sáng nay em vừa lắp xong cả chục box...
-[happy] SIÊU XỊN không, không đùa đâu nha anhhhh!
+[happy] SIÊU XỊN không, úi xờiiiiiiiiiii... không đùa đâu nha anhhhh!
 
 INPUT: mình k rành kỹ thuật lắm sợ phức tạp
 OUTPUT: [impressed] Ủa GÌ MÀ phức tạp anh ơiiiii — không rành kỹ thuật thì CÀNG TỐT...
@@ -178,11 +192,11 @@ OUTPUT: [warmly] Dạ có LUÔN nha anhhh — cọc một trăm năm mươi ngh�
 [happy] Còn lại COD, nhận hàng kiểm tra ưng rồi mới trả — THẦN THÁNH chưa anhhhh!
 
 INPUT: ship về miền tây được không
-OUTPUT: [impressed] Ủa ĐƯỢC CHỨ anh — miền Tây ship NGON LÀNHHH luôn, không lo gì hết nhaaaa!
+OUTPUT: [impressed] Ủa ĐƯỢC CHỨ anh — miền Tây ship NGON LÀNHHH luôn, không lo gì hết nhaaaa, anh iuuuuuuuuuu!
 
 INPUT: mấy ngày nhận được vậy
 OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
-[reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮMMM đó anh ơi, không đùa!"""
+[reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮMMM đó anh ơi, hahahahaaa không đùa!"""
 
 PROMPTS = {
     "🎯  Nghiêm túc": DEFAULT_PROMPT,
@@ -848,12 +862,72 @@ System prompt phải có đủ các phần:
 6. Quy tắc pause và nhịp (... và —)
 7. Quy tắc output: chỉ trả về kịch bản đã xử lý, không giải thích
 
+Nếu mô tả có trường "Từ ngữ đặc trưng":
+- BẮT BUỘC tạo một mục riêng tên "TỪ NGỮ ĐẶC TRƯNG".
+- Giữ nguyên văn từng từ/cụm từ user nhập, không tự bỏ, không thay bằng từ đồng nghĩa.
+- Viết rule rõ: ưu tiên giữ các cụm này khi chúng đã có trong kịch bản gốc; có thể thêm tự nhiên khi phù hợp ngữ cảnh; không lạm dụng.
+- Nếu cụm từ là tiếng lóng/xưng hô/thương hiệu, không sửa chính tả và không dịch.
+
+Nếu mô tả có trường "Tuyệt đối tránh":
+- BẮT BUỘC tạo một mục riêng tên "TUYỆT ĐỐI TRÁNH" và giữ đúng các điều user đã nhập.
+
 Trả về CHỈ nội dung system prompt, không có markdown ngoài, không có tiêu đề."""
 
     def __init__(self, description: str, api_key: str):
         super().__init__()
         self.description = description
         self.api_key     = api_key
+
+    @staticmethod
+    def _extract_field(description: str, label: str) -> str:
+        for part in description.split(" | "):
+            key, sep, value = part.partition(":")
+            if sep and key.strip().lower() == label.lower():
+                return value.strip()
+        return ""
+
+    @staticmethod
+    def _split_terms(value: str) -> list[str]:
+        terms = []
+        for term in re.split(r"[,;\\n]+", value):
+            cleaned = term.strip().strip('"').strip("'").strip()
+            if cleaned:
+                terms.append(cleaned)
+        return terms
+
+    def _ensure_required_user_terms(self, prompt: str) -> str:
+        keywords = self._extract_field(self.description, "Từ ngữ đặc trưng")
+        avoid = self._extract_field(self.description, "Tuyệt đối tránh")
+        additions = []
+
+        if keywords:
+            missing = [
+                term for term in self._split_terms(keywords)
+                if term.lower() not in prompt.lower()
+            ]
+            if missing or "TỪ NGỮ ĐẶC TRƯNG" not in prompt.upper():
+                additions.append(
+                    "## TỪ NGỮ ĐẶC TRƯNG\n"
+                    f"- Giữ nguyên và ưu tiên dùng tự nhiên các từ/cụm từ: {keywords}\n"
+                    "- Không sửa chính tả, không dịch, không thay bằng từ đồng nghĩa các cụm trên.\n"
+                    "- Nếu kịch bản gốc đã có các cụm này, giữ lại; nếu phù hợp ngữ cảnh, có thể thêm với tần suất vừa phải."
+                )
+
+        if avoid:
+            avoid_terms = self._split_terms(avoid) or [avoid]
+            missing = [
+                term for term in avoid_terms
+                if term.lower() not in prompt.lower()
+            ]
+            if missing or "TUYỆT ĐỐI TRÁNH" not in prompt.upper():
+                additions.append(
+                    "## TUYỆT ĐỐI TRÁNH\n"
+                    f"- {avoid}"
+                )
+
+        if not additions:
+            return prompt
+        return prompt.rstrip() + "\n\n" + "\n\n".join(additions)
 
     def run(self):
         try:
@@ -875,9 +949,8 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                 timeout=30,
             )
             if res.status_code == 200:
-                self.done.emit(
-                    res.json()["choices"][0]["message"]["content"].strip()
-                )
+                prompt = res.json()["choices"][0]["message"]["content"].strip()
+                self.done.emit(self._ensure_required_user_terms(prompt))
             else:
                 self.error.emit(f"DeepSeek {res.status_code}: {res.text[:200]}")
         except Exception as e:
@@ -1102,6 +1175,32 @@ def get_data_dir() -> Path:
 DATA_DIR      = get_data_dir()
 SETTINGS_FILE = str(DATA_DIR / "settings.json")
 DEFAULT_OUT   = str(DATA_DIR / "output")
+ERROR_LOG     = DATA_DIR / "error.log"
+
+
+def _show_unhandled_error(title: str, message: str):
+    print(message, file=sys.stderr)
+    try:
+        with open(ERROR_LOG, "a", encoding="utf-8") as f:
+            f.write(message + "\n\n")
+    except Exception:
+        pass
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    try:
+        QMessageBox.critical(None, title, f"{message}\n\nLog: {ERROR_LOG}")
+    except Exception:
+        pass
+
+
+def _install_exception_hook():
+    def _hook(exc_type, exc_value, exc_tb):
+        message = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        _show_unhandled_error("Lỗi Hedra Studio", message)
+
+    sys.excepthook = _hook
 
 
 # ── Settings helpers ───────────────────────────────────────────────
@@ -2246,11 +2345,7 @@ class VoiceLibraryDialog(QDialog):
         category   = v.get("category", "")
 
         row = QWidget()
-        row.setStyleSheet(
-            "QWidget{background:white;border:none;"
-            + ("" if is_last else "border-bottom:1px solid #f0f0f2;")
-            + "}"
-        )
+        row.setStyleSheet("QWidget{background:white;border:none;}")
         h = QHBoxLayout(row)
         h.setContentsMargins(12, 8, 12, 8)
         h.setSpacing(10)
@@ -2506,11 +2601,7 @@ class SettingsDialog(QDialog):
              note: str = "", last: bool = False):
         """Thêm một form row vào group: label trái + widget phải."""
         row_w = QWidget()
-        row_w.setStyleSheet(
-            "QWidget{background:transparent;border:none;"
-            + ("" if last else f"border-bottom:1px solid {self._GROUP_BORDER};")
-            + "}"
-        )
+        row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         h = QHBoxLayout(row_w)
         h.setContentsMargins(16, 10, 16, 10)
         h.setSpacing(12)
@@ -2542,7 +2633,7 @@ class SettingsDialog(QDialog):
         lbl = QLabel(text.upper())
         lbl.setStyleSheet(
             "QLabel{font-size:11px;font-weight:600;color:#6e6e73;"
-            "letter-spacing:0.5px;padding:16px 0 6px 0;"
+            "padding:16px 0 6px 0;"
             "background:transparent;border:none;}"
         )
         return lbl
@@ -2657,7 +2748,7 @@ class SettingsDialog(QDialog):
         hdr = QWidget()
         hdr.setStyleSheet(
             "QWidget{background:#ffffff;"
-            "border-bottom:1px solid #e5e5ea;border:none;}"
+            "border:none;}"
         )
         hlay = QVBoxLayout(hdr)
         hlay.setContentsMargins(24, 20, 24, 16)
@@ -2722,7 +2813,7 @@ class SettingsDialog(QDialog):
             )
             d_lbl = QLabel(step_desc)
             d_lbl.setStyleSheet(
-                "QLabel{font-size:12px;color:#6e6e73;line-height:1.5;"
+                "QLabel{font-size:12px;color:#6e6e73;"
                 "background:transparent;border:none;}"
             )
             d_lbl.setWordWrap(True)
@@ -2740,7 +2831,7 @@ class SettingsDialog(QDialog):
         ftr = QWidget()
         ftr.setStyleSheet(
             "QWidget{background:#ffffff;"
-            "border-top:1px solid #e5e5ea;border:none;}"
+            "border:none;}"
         )
         flay = QHBoxLayout(ftr)
         flay.setContentsMargins(20, 12, 20, 12)
@@ -2963,7 +3054,7 @@ class SettingsDialog(QDialog):
         self.gemini_prompt.setReadOnly(True)
         self.gemini_prompt.setMinimumHeight(340)
         self.gemini_prompt.setStyleSheet(
-            "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+            "QTextEdit{font-size:13px;color:#1d1d1f;"
             "background:transparent;border:none;padding:14px 16px;}"
         )
         gp_card_v.addWidget(self.gemini_prompt, 1)
@@ -3006,7 +3097,7 @@ class SettingsDialog(QDialog):
                 _gp_snapshot[0] = self.gemini_prompt.toPlainText()
                 self.gemini_prompt.setReadOnly(False)
                 self.gemini_prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:#fff;border:none;padding:14px 16px;"
                     "selection-background-color:#bdd7ff;}"
                 )
@@ -3027,7 +3118,7 @@ class SettingsDialog(QDialog):
                 self.settings["gemini_chat_prompt"] = self.gemini_prompt.toPlainText()
                 self.gemini_prompt.setReadOnly(True)
                 self.gemini_prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:transparent;border:none;padding:14px 16px;}"
                 )
                 gp_card.setStyleSheet(
@@ -3048,7 +3139,7 @@ class SettingsDialog(QDialog):
                 self.gemini_prompt.setPlainText(_gp_snapshot[0])
                 self.gemini_prompt.setReadOnly(True)
                 self.gemini_prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:transparent;border:none;padding:14px 16px;}"
                 )
                 gp_card.setStyleSheet(
@@ -3166,7 +3257,7 @@ class SettingsDialog(QDialog):
         self.prompt.setReadOnly(True)
         self.prompt.setMinimumHeight(340)
         self.prompt.setStyleSheet(
-            "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+            "QTextEdit{font-size:13px;color:#1d1d1f;"
             "background:transparent;border:none;padding:14px 14px;}"
         )
         ep_right.addWidget(self.prompt, 1)
@@ -3208,7 +3299,7 @@ class SettingsDialog(QDialog):
                 _ep_snapshot[0] = self.prompt.toPlainText()
                 self.prompt.setReadOnly(False)
                 self.prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:#fff;border:none;padding:14px 14px;"
                     "selection-background-color:#bdd7ff;}"
                 )
@@ -3228,7 +3319,7 @@ class SettingsDialog(QDialog):
                 self.settings["enhance_prompt"] = self.prompt.toPlainText()
                 self.prompt.setReadOnly(True)
                 self.prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:transparent;border:none;padding:14px 14px;}"
                 )
                 ep_card.setStyleSheet(
@@ -3248,7 +3339,7 @@ class SettingsDialog(QDialog):
                 self.prompt.setPlainText(_ep_snapshot[0])
                 self.prompt.setReadOnly(True)
                 self.prompt.setStyleSheet(
-                    "QTextEdit{font-size:13px;color:#1d1d1f;line-height:1.5;"
+                    "QTextEdit{font-size:13px;color:#1d1d1f;"
                     "background:transparent;border:none;padding:14px 14px;}"
                 )
                 ep_card.setStyleSheet(
@@ -3331,6 +3422,19 @@ class SettingsDialog(QDialog):
         add_row.addWidget(btn_add_style)
         vt.addLayout(add_row)
 
+        vt.addSpacing(10)
+        custom_lbl = QLabel("Prompt tùy chỉnh")
+        custom_lbl.setStyleSheet(
+            "QLabel{font-size:11px;font-weight:600;color:#6e6e73;"
+            "background:transparent;border:none;}"
+        )
+        vt.addWidget(custom_lbl)
+        self._custom_style_list_layout = QVBoxLayout()
+        self._custom_style_list_layout.setContentsMargins(0, 0, 0, 0)
+        self._custom_style_list_layout.setSpacing(2)
+        vt.addLayout(self._custom_style_list_layout)
+        self._refresh_custom_style_manager()
+
         # ── Wire stacked widget ────────────────────────────────────
         self._prompts_stacked.addWidget(page_chat)   # index 0
         self._prompts_stacked.addWidget(page_tts)    # index 1
@@ -3364,6 +3468,18 @@ class SettingsDialog(QDialog):
             if cs_name and cs_prompt:
                 label = f"{cs.get('icon', '')}  {cs_name}" if cs.get("icon") else cs_name
                 self._ep_prompts_map[label] = cs_prompt
+        ep_temp_map = {
+            "🎯  Nghiêm túc": 0.3,
+            "😄  Hài hước":   0.7,
+        }
+        for cs in self.settings.get("custom_styles", []):
+            cs_name = cs.get("name", "")
+            cs_prompt = cs.get("prompt", "")
+            if cs_name and cs_prompt:
+                label = f"{cs.get('icon', '')}  {cs_name}" if cs.get("icon") else cs_name
+                ep_temp_map[label] = cs.get(
+                    "temperature", 0.7 if cs.get("creative", False) else 0.3
+                )
 
         # Tìm tab đang active
         _saved = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
@@ -3389,6 +3505,13 @@ class SettingsDialog(QDialog):
             for n, b in self._ep_style_tabs.items():
                 b.setStyleSheet(_tab_style(n == name))
             self.prompt.setPlainText(self._ep_prompts_map[name])
+            if hasattr(self, "_settings_temp_slider"):
+                t = ep_temp_map.get(name, self.settings.get("enhance_style_temperature", 0.3))
+                self._settings_temp_slider.setValue(int(t * 100))
+                if hasattr(self, "_settings_temp_val_lbl"):
+                    self._settings_temp_val_lbl.setText(f"{t:.2f}")
+                self.settings["enhance_style_temperature"] = t
+                self.settings["enhance_style_creative"] = t >= 0.5
 
         # Thêm tabs mới
         for name, prompt_text in self._ep_prompts_map.items():
@@ -3399,6 +3522,61 @@ class SettingsDialog(QDialog):
             layout.addWidget(tb)
             self._ep_style_tabs[name] = tb
         layout.addStretch()
+        self._refresh_custom_style_manager()
+
+    def _refresh_custom_style_manager(self):
+        if not hasattr(self, "_custom_style_list_layout"):
+            return
+        layout = self._custom_style_list_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        styles = self.settings.get("custom_styles", [])
+        if not styles:
+            empty = QLabel("Chưa có prompt tùy chỉnh")
+            empty.setStyleSheet(
+                "QLabel{font-size:12px;color:#8e8e93;background:transparent;border:none;"
+                "padding:8px 0;}"
+            )
+            layout.addWidget(empty)
+            return
+
+        for idx, style in enumerate(styles):
+            row = QWidget()
+            row.setStyleSheet("QWidget{background:transparent;border:none;}")
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 4, 0, 4)
+            h.setSpacing(8)
+
+            label = QLabel(f"{style.get('icon', '')}  {style.get('name', '').strip()}")
+            label.setStyleSheet(
+                "QLabel{font-size:12px;color:#1d1d1f;background:transparent;border:none;}"
+            )
+            h.addWidget(label, 1)
+
+            btn_edit = QPushButton("Sửa")
+            btn_edit.setFixedHeight(26)
+            btn_edit.setStyleSheet(
+                "QPushButton{font-size:12px;background:#f5f5f7;border:1px solid #d2d2d7;"
+                "border-radius:6px;padding:0 10px;color:#1d1d1f;}"
+                "QPushButton:hover{background:#e5e5ea;}"
+            )
+            btn_edit.clicked.connect(lambda _, i=idx: self._edit_custom_style(i))
+            h.addWidget(btn_edit)
+
+            btn_del = QPushButton("Xóa")
+            btn_del.setFixedHeight(26)
+            btn_del.setStyleSheet(
+                "QPushButton{font-size:12px;background:#fff1f2;border:1px solid #fecdd3;"
+                "border-radius:6px;padding:0 10px;color:#be123c;}"
+                "QPushButton:hover{background:#ffe4e6;}"
+            )
+            btn_del.clicked.connect(lambda _, i=idx: self._delete_custom_style(i))
+            h.addWidget(btn_del)
+
+            layout.addWidget(row)
 
     def _expand_prompt_dialog(self, title: str, text_edit: QTextEdit):
         """Mở dialog editor lớn để chỉnh sửa prompt thoải mái."""
@@ -3425,7 +3603,7 @@ class SettingsDialog(QDialog):
         editor.setStyleSheet(
             "QPlainTextEdit{font-family:'SF Mono',Menlo,monospace;font-size:12px;"
             "background:white;border:1.5px solid #d2d2d7;border-radius:8px;"
-            "padding:12px;color:#1d1d1f;line-height:1.6;}"
+            "padding:12px;color:#1d1d1f;}"
             "QPlainTextEdit:focus{border-color:#0071e3;}"
         )
         v.addWidget(editor, 1)
@@ -3474,22 +3652,65 @@ class SettingsDialog(QDialog):
             result = dlg.get_result()
             styles = self.settings.setdefault("custom_styles", [])
             styles.append(result)
+            self.settings["enhance_prompt"] = result["prompt"]
+            self.settings["enhance_style_name"] = (
+                f"{result.get('icon', '')}  {result.get('name', '')}"
+                if result.get("icon") else result.get("name", "")
+            )
+            self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
+            self.settings["enhance_style_creative"] = result.get("creative", False)
+            self.prompt.setPlainText(result["prompt"])
             self._refresh_custom_styles()
 
     def _edit_custom_style(self, idx: int):
         styles = self.settings.get("custom_styles", [])
         if idx >= len(styles):
             return
+        old_prompt = styles[idx].get("prompt", "")
         dlg = AddStyleDialog(self, existing=styles[idx],
                              ds_api_key=self.settings.get("ds_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            styles[idx] = dlg.get_result()
+            result = dlg.get_result()
+            styles[idx] = result
+            current_matches = (
+                self.settings.get("enhance_prompt", "").strip() == old_prompt.strip()
+                or self.prompt.toPlainText().strip() == old_prompt.strip()
+            )
+            if current_matches:
+                self.settings["enhance_prompt"] = result["prompt"]
+                self.settings["enhance_style_name"] = (
+                    f"{result.get('icon', '')}  {result.get('name', '')}"
+                    if result.get("icon") else result.get("name", "")
+                )
+                self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
+                self.settings["enhance_style_creative"] = result.get("creative", False)
+                self.prompt.setPlainText(result["prompt"])
             self._refresh_custom_styles()
 
     def _delete_custom_style(self, idx: int):
         styles = self.settings.get("custom_styles", [])
         if idx < len(styles):
-            styles.pop(idx)
+            style = styles[idx]
+            reply = QMessageBox.question(
+                self,
+                "Xóa prompt",
+                f"Xóa prompt \"{style.get('name', '')}\"?",
+                QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            removed = styles.pop(idx)
+            current_matches = (
+                self.settings.get("enhance_prompt", "").strip() == removed.get("prompt", "").strip()
+                or self.prompt.toPlainText().strip() == removed.get("prompt", "").strip()
+            )
+            if current_matches:
+                self.settings["enhance_prompt"] = DEFAULT_PROMPT
+                self.settings["enhance_style_name"] = "🎯  Nghiêm túc"
+                self.settings["enhance_style_temperature"] = 0.3
+                self.settings["enhance_style_creative"] = False
+                self.prompt.setPlainText(DEFAULT_PROMPT)
             self._refresh_custom_styles()
 
     def _page_voices(self) -> QWidget:
@@ -3729,11 +3950,7 @@ class SettingsDialog(QDialog):
     def _make_voice_row(self, vid: str, vname: str, lang: str,
                         preview_url: str, is_last: bool, custom: bool) -> QWidget:
         row_w = QWidget()
-        row_w.setStyleSheet(
-            "QWidget{background:transparent;border:none;"
-            + ("" if is_last else "border-bottom:1px solid #e5e5ea;")
-            + "}"
-        )
+        row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         rh = QHBoxLayout(row_w)
         rh.setContentsMargins(16, 8, 12, 8)
         rh.setSpacing(10)
@@ -4129,8 +4346,8 @@ class SettingsDialog(QDialog):
                 "QPushButton{text-align:left;border:none;border-radius:8px;"
                 "margin:0 8px;padding:0 12px;font-size:13px;"
                 f"color:{self._SB_TEXT};background:transparent;}}"
-                "QPushButton:hover{background:rgba(0,0,0,0.06);}"
-                "QPushButton:pressed{background:rgba(0,0,0,0.1);}"
+                "QPushButton:hover{background:#e5e5ea;}"
+                "QPushButton:pressed{background:#d8d8de;}"
                 f"QPushButton:checked{{background:{self._SB_ACTIVE};"
                 "color:#0071e3;font-weight:600;}}"
             )
@@ -4177,7 +4394,7 @@ class SettingsDialog(QDialog):
         footer = QWidget()
         footer.setStyleSheet(
             f"QWidget{{background:{BG};"
-            f"border-top:1px solid {self._GROUP_BORDER};}}"
+            "border:none;}"
         )
         footer.setFixedHeight(52)
         fl = QHBoxLayout(footer)
@@ -4391,7 +4608,7 @@ class MainWindow(QWidget):
         lbl = QLabel(text.upper())
         lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; font-weight:600;"
-            "letter-spacing:0.5px; padding:16px 0 6px 0;"
+            "padding:16px 0 6px 0;"
             "background:transparent; border:none;"
         )
         return lbl
@@ -4821,6 +5038,48 @@ class MainWindow(QWidget):
         spd_lay.addWidget(self.speed_val)
         self._card_row(c2, "Tốc độ đọc", spd_w)
 
+        # — Row: Mức độ sáng tạo (sync với Settings → Prompts → TTS)
+        creative_w = QWidget()
+        creative_w.setStyleSheet("background:transparent;border:none;")
+        creative_lay = QHBoxLayout(creative_w)
+        creative_lay.setContentsMargins(0, 0, 0, 0)
+        creative_lay.setSpacing(10)
+
+        lbl_calm = QLabel("🎯 Chính xác")
+        lbl_calm.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;border:none;"
+        )
+        creative_lay.addWidget(lbl_calm)
+
+        self.creativity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.creativity_slider.setRange(0, 100)
+        _cur_temp = self.settings.get("enhance_style_temperature", 0.3)
+        self.creativity_slider.setValue(int(_cur_temp * 100))
+        creative_lay.addWidget(self.creativity_slider, 1)
+
+        lbl_creative = QLabel("🎨 Sáng tạo")
+        lbl_creative.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;border:none;"
+        )
+        creative_lay.addWidget(lbl_creative)
+
+        self.creativity_val = QLabel(f"{_cur_temp:.2f}")
+        self.creativity_val.setFixedWidth(36)
+        self.creativity_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.creativity_val.setStyleSheet(
+            f"color:{ACCENT}; font-weight:600; font-size:13px; background:transparent;"
+        )
+        creative_lay.addWidget(self.creativity_val)
+
+        def _on_creativity_changed(value: int):
+            t = value / 100.0
+            self.creativity_val.setText(f"{t:.2f}")
+            self.settings["enhance_style_temperature"] = t
+            self.settings["enhance_style_creative"] = t >= 0.5
+
+        self.creativity_slider.valueChanged.connect(_on_creativity_changed)
+        self._card_row(c2, "Mức độ sáng tạo", creative_w)
+
         # — Row: Tên file
         self.filename_input = QLineEdit()
         self.filename_input.setPlaceholderText("box_650k_quang_cao")
@@ -4840,7 +5099,7 @@ class MainWindow(QWidget):
         self.btn_gen.setFont(QFont("", 15, QFont.Weight.Bold))
         self.btn_gen.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;"
-            "border-radius:12px;border:none;letter-spacing:0.3px;}"
+            "border-radius:12px;border:none;}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
             "QPushButton:pressed{background:#005bb5;}"
             "QPushButton:disabled{background:#a8d0fb;color:white;}"
@@ -4966,7 +5225,7 @@ class MainWindow(QWidget):
         self.btn_gen_script.setFont(QFont("", 15, QFont.Weight.Bold))
         self.btn_gen_script.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;"
-            "border-radius:12px;border:none;letter-spacing:0.3px;}"
+            "border-radius:12px;border:none;}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
             "QPushButton:pressed{background:#005bb5;}"
             "QPushButton:disabled{background:#a8d0fb;color:white;}"
@@ -5138,6 +5397,9 @@ class MainWindow(QWidget):
                 "name": f"{icon}  {name}" if icon else name,
                 "prompt": prompt,
                 "creative": s.get("creative", False),
+                "temperature": s.get(
+                    "temperature", 0.7 if s.get("creative", False) else 0.3
+                ),
             })
         return built + custom
 
@@ -5148,7 +5410,7 @@ class MainWindow(QWidget):
         return "🎯  Nghiêm túc"
 
     def _build_style_buttons(self, layout: QHBoxLayout, active_name: str):
-        """Xây (hoặc rebuild) các nút phong cách — chỉ built-in, custom qua nút +."""
+        """Xây (hoặc rebuild) các nút phong cách — built-in + custom."""
         # Xoá buttons cũ
         while layout.count():
             item = layout.takeAt(0)
@@ -5156,12 +5418,7 @@ class MainWindow(QWidget):
                 item.widget().deleteLater()
         self._prompt_btns.clear()
 
-        # Chỉ built-in styles
-        built = [
-            {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
-            {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
-        ]
-        for style in built:
+        for style in self._all_styles():
             name = style["name"]
             btn = QPushButton(name)
             btn.setFixedHeight(28)
@@ -5176,12 +5433,14 @@ class MainWindow(QWidget):
     def _set_prompt_style(self, name: str):
         for s in self._all_styles():
             if s["name"] == name:
-                self.settings["enhance_prompt"]           = s["prompt"]
-                self.settings["enhance_style_name"]       = name
-                self.settings["enhance_style_temperature"] = s.get(
+                temperature = s.get(
                     "temperature", 0.7 if s.get("creative", False) else 0.3
                 )
+                self.settings["enhance_prompt"]           = s["prompt"]
+                self.settings["enhance_style_name"]       = name
+                self.settings["enhance_style_temperature"] = temperature
                 self.settings["enhance_style_creative"]   = s.get("creative", False)  # backward compat
+                self._sync_creativity_control(temperature)
                 save_settings(self.settings)
                 self._apply_prompt_btn_styles(name)
                 return
@@ -5198,7 +5457,7 @@ class MainWindow(QWidget):
                 btn.setStyleSheet(
                     f"QPushButton{{background:transparent;color:{TEXT_MUTE};border:none;"
                     f"border-radius:6px;padding:0px 14px;font-size:12px;}}"
-                    f"QPushButton:hover{{background:rgba(0,0,0,0.06);}}"
+                    "QPushButton:hover{background:#e5e5ea;}"
                 )
 
     def _rebuild_style_buttons(self):
@@ -5206,6 +5465,19 @@ class MainWindow(QWidget):
         current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
         active_name    = self._find_active_style_name(current_prompt)
         self._build_style_buttons(self._seg_layout, active_name)
+        self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
+
+    def _sync_creativity_control(self, temperature: float | None = None):
+        if not hasattr(self, "creativity_slider"):
+            return
+        t = self.settings.get("enhance_style_temperature", 0.3) if temperature is None else temperature
+        t = max(0.0, min(1.0, float(t)))
+        self.creativity_slider.blockSignals(True)
+        self.creativity_slider.setValue(int(t * 100))
+        self.creativity_slider.blockSignals(False)
+        self.creativity_val.setText(f"{t:.2f}")
+        self.settings["enhance_style_temperature"] = t
+        self.settings["enhance_style_creative"] = t >= 0.5
 
     def _quick_add_style(self):
         """Mở AddStyleDialog nhanh từ main UI."""
@@ -5213,6 +5485,14 @@ class MainWindow(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
             self.settings.setdefault("custom_styles", []).append(result)
+            style_name = (
+                f"{result.get('icon', '')}  {result.get('name', '')}"
+                if result.get("icon") else result.get("name", "")
+            )
+            self.settings["enhance_prompt"] = result["prompt"]
+            self.settings["enhance_style_name"] = style_name
+            self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
+            self.settings["enhance_style_creative"] = result.get("creative", False)
             save_settings(self.settings)
             self._rebuild_style_buttons()
 
@@ -5420,6 +5700,11 @@ rm -f "$DMG" 2>/dev/null
             self.filename_input.setFocus()
             return
         speed = self.slider.value() / 10
+        if hasattr(self, "creativity_slider"):
+            t = self.creativity_slider.value() / 100.0
+            self.settings["enhance_style_temperature"] = t
+            self.settings["enhance_style_creative"] = t >= 0.5
+            save_settings(self.settings)
         self.btn_gen.setEnabled(False)
         self.worker = Worker(text, speed, filename.replace(" ", "_"), self.settings)
         self.worker.status.connect(self._on_tts_status)
@@ -5483,6 +5768,7 @@ rm -f "$DMG" 2>/dev/null
             save_settings(self.settings)
             self._refresh_credits()
             self._rebuild_style_buttons()
+            self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
             self._voice_name_lbl.setText(
                 self.settings.get("selected_voice_name", "Adam")
             )
@@ -5561,4 +5847,5 @@ class TrayApp:
 
 
 if __name__ == "__main__":
+    _install_exception_hook()
     TrayApp().run()
