@@ -223,6 +223,8 @@ Hedra-Studio/
 | `prompt-elevenlabs-v3.md` | Prompt gốc cho ElevenLabs v3 - giọng Adam |
 | `prompt-chat-to-script.md` | Prompt cho Gemini chat → kịch bản |
 
+> 💡 **Tạo prompt riêng?** Tham khảo [ElevenLabs Docs](https://try.elevenlabs.io/rinor1xaj4ze) về tags, controls, và voice settings để custom prompt theo ý bạn.
+
 ---
 
 ## 📄 License
