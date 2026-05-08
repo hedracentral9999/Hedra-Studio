@@ -1070,7 +1070,22 @@ Màn máy em vẫn OK anh, cắm vào là xài được luôn.
 
 Vậy ổn rồi em! Lần đầu cắm vào bấm chấp nhận một lần là xong, sau đó tự nhận luôn. Chốt sáu trăm năm mươi nghìn nha, em cọc một trăm năm mươi nghìn, còn lại thanh toán khi nhận hàng.
 
-Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!"""
+Anh nhận cọc rồi, đang xử lý đơn, em chờ hàng nha!\"\"\"
+
+
+# ── Telegram feedback config ──────────────────────────────────────────
+# Ưu tiên: telegram_config.py > biến môi trường > mặc định rỗng
+# Tạo file telegram_config.py (đã trong .gitignore) với nội dung:
+#   TELEGRAM_BOT_TOKEN = "your_bot_token"
+#   TELEGRAM_CHAT_ID   = "your_chat_id"
+# Hoặc set biến môi trường: ELEVENLABS_TELEGRAM_BOT_TOKEN, ELEVENLABS_TELEGRAM_CHAT_ID
+try:
+    from telegram_config import TELEGRAM_BOT_TOKEN as _TG_BOT, TELEGRAM_CHAT_ID as _TG_CHAT
+    TELEGRAM_BOT_TOKEN = _TG_BOT
+    TELEGRAM_CHAT_ID = _TG_CHAT
+except (ImportError, ModuleNotFoundError):
+    TELEGRAM_BOT_TOKEN = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
 
 
 # ── Data directory (persists across updates) ───────────────────────
@@ -1110,8 +1125,6 @@ def load_settings() -> dict:
         "ds_api_key":        "",
         "gemini_api_key":    "",
         "gemini_chat_prompt": "",
-        "telegram_bot_token": "",
-        "telegram_chat_id":   "",
         "output_dir":        DEFAULT_OUT,
         "enhance_prompt":    DEFAULT_PROMPT,
         "default_speed":     1.0,
@@ -2801,26 +2814,6 @@ class SettingsDialog(QDialog):
         )
         self._row(glay3, "API Key", self.gemini_key, last=True)
         v.addWidget(grp3)
-
-        # ── Group: Telegram Feedback (optional) ─────────────────────
-        v.addWidget(self._section_label("Telegram Feedback (tuỳ chọn)"))
-        grp4, glay4 = self._group()
-        self.telegram_bot_token = QLineEdit(self.settings.get("telegram_bot_token", ""))
-        self.telegram_bot_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.telegram_bot_token.setPlaceholderText("Bot token...")
-        self.telegram_bot_token.setStyleSheet(
-            "QLineEdit{background:transparent;border:none;font-size:13px;}"
-        )
-        self._row(glay4, "Bot Token", self.telegram_bot_token)
-
-        self.telegram_chat_id = QLineEdit(self.settings.get("telegram_chat_id", ""))
-        self.telegram_chat_id.setPlaceholderText("Chat ID nhận phản hồi")
-        self.telegram_chat_id.setStyleSheet(
-            "QLineEdit{background:transparent;border:none;font-size:13px;}"
-        )
-        self._row(glay4, "Chat ID", self.telegram_chat_id,
-                  "Bỏ trống nếu không dùng nút Gửi phản hồi", last=True)
-        v.addWidget(grp4)
 
         v.addStretch()
         return page
@@ -5409,8 +5402,8 @@ rm -f "$DMG" 2>/dev/null
             self,
             version=VERSION,
             telegram_cfg={
-                "bot_token": self.settings.get("telegram_bot_token", "").strip(),
-                "chat_id": self.settings.get("telegram_chat_id", "").strip(),
+                "bot_token": TELEGRAM_BOT_TOKEN,
+                "chat_id": TELEGRAM_CHAT_ID,
             },
         )
         dlg.exec()

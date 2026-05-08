@@ -1,0 +1,9 @@
+# Telegram feedback config
+# Copy file này thành telegram_config.py và điền thông tin của bạn
+# (telegram_config.py đã trong .gitignore — không bị commit lên GitHub)
+
+# Bot Token: lấy từ @BotFather trên Telegram
+TELEGRAM_BOT_TOKEN = ""
+
+# Chat ID: nhắn bot 1 tin → vào https://api.telegram.org/bot<TOKEN>/getUpdates → lấy chat.id
+TELEGRAM_CHAT_ID = ""

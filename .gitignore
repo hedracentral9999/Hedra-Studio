@@ -16,6 +16,7 @@ rw.*.dmg
 
 # Data / secrets
 settings.json
+telegram_config.py
 web/.env
 output/
 *.mp3
