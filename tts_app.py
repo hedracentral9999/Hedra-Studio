@@ -699,7 +699,6 @@ class AddStyleDialog(QDialog):
             "prompt":      prompt,
             "temperature": self._temp_val,
             "creative":    self._temp_val >= 0.5,   # backward compat
-            "description": self._desc_edit.text().strip(),
         }
         self.accept()
 
@@ -2513,7 +2512,14 @@ class SettingsDialog(QDialog):
                      "Trong khung Create API Key, bật như sau:\n"
                      "• Text to Speech: Access\n"
                      "• Voices: Read (hoặc Access nếu bạn cần thêm/sửa voices)\n"
-                     "• Các mục khác: No Access"),
+                     "• Models: Read\n"
+                     "• History: Read\n"
+                     "• Pronunciation Dictionaries: Read (nếu có dùng)\n"
+                     "• User: Read\n"
+                     "• Các mục còn lại: No Access"),
+                    ("Gợi ý an toàn",
+                     "Ưu tiên chỉ cấp Read khi có thể.\n"
+                     "Chỉ bật Write/Access cho mục bạn thật sự cần thao tác."),
                     ("Tạo key",
                      'Nhấn "Create Key" → đặt tên (ví dụ: Hedra Studio Mac)\n'
                      "→ copy key ngay sau khi tạo"),
@@ -4201,8 +4207,7 @@ class SettingsDialog(QDialog):
         # Voice selection
         self.settings["selected_voice_id"]   = self._sel_voice_id
         self.settings["selected_voice_name"] = self._sel_voice_name
-        # Language
-        self.settings["tts_language_code"] = self._lang_code
+        # Language code is managed from MainWindow's TTS tab — preserve existing
         self.accept()
 
     def get_settings(self) -> dict:
@@ -4684,6 +4689,8 @@ class MainWindow(QWidget):
                     self._lang_code = c
                     self._lang_btn.setText(l + "  ▾")
                     self._lang_btn.setStyleSheet(_lang_btn_style(c != ""))
+                    self.settings["tts_language_code"] = c
+                    save_settings(self.settings)
                 action.triggered.connect(_pick)
                 menu.addAction(action)
             # Separator → phần còn lại
@@ -4696,6 +4703,8 @@ class MainWindow(QWidget):
                     self._lang_code = c
                     self._lang_btn.setText(l + "  ▾")
                     self._lang_btn.setStyleSheet(_lang_btn_style(c != ""))
+                    self.settings["tts_language_code"] = c
+                    save_settings(self.settings)
                 action.triggered.connect(_pick)
                 menu.addAction(action)
             # Separator + reset
@@ -4705,6 +4714,8 @@ class MainWindow(QWidget):
                 self._lang_code = ""
                 self._lang_btn.setText("🌐  Tự động  ▾")
                 self._lang_btn.setStyleSheet(_lang_btn_style(False))
+                self.settings["tts_language_code"] = ""
+                save_settings(self.settings)
             reset.triggered.connect(_reset)
             menu.addAction(reset)
             menu.exec(self._lang_btn.mapToGlobal(
@@ -5370,8 +5381,11 @@ rm -f "$DMG" 2>/dev/null
         # Lưu path và hiện nút 📂 — user chủ động mở thư mục nếu muốn
         self._last_audio_path = path
         self._btn_open_folder.setVisible(True)
-        self._btn_open_folder.clicked.disconnect() if self._btn_open_folder.receivers(
-            self._btn_open_folder.clicked) > 0 else None
+        # Disconnect cũ an toàn — tránh TypeError nếu chưa có connection nào
+        try:
+            self._btn_open_folder.clicked.disconnect()
+        except TypeError:
+            pass
         self._btn_open_folder.clicked.connect(lambda: reveal_file(self._last_audio_path))
         self._refresh_credits()
         QTimer.singleShot(4000, self._reset_tts_status)

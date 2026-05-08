@@ -9,6 +9,10 @@ venv/
 dist/
 build/
 *.spec.bak
+*.dmg
+rw.*.dmg
+*.exe
+*.msi
 
 # Data / secrets
 settings.json
