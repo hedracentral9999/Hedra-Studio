@@ -308,12 +308,12 @@ class AddStyleDialog(QDialog):
         top.addSpacing(10)
         name_col = QVBoxLayout()
         name_col.setSpacing(4)
-        name_lbl = QLabel("Tên phong cách")
+        name_lbl = QLabel("Tên hiển thị  (đặt tùy ý)")
         name_lbl.setStyleSheet(
             "font-size:11px;color:#6e6e73;background:transparent;border:none;"
         )
         self._name_edit = QLineEdit(data.get("name", ""))
-        self._name_edit.setPlaceholderText("Vd: Bán hàng, Tư vấn, Kể chuyện...")
+        self._name_edit.setPlaceholderText("Vd: Chốt đơn vui, Tư vấn miền Tây, Kể chuyện drama...")
         name_col.addWidget(name_lbl)
         name_col.addWidget(self._name_edit)
         top.addLayout(name_col, 1)
@@ -4587,6 +4587,11 @@ class MainWindow(QWidget):
         self.gemini_worker = None
         self.image_paths   = []
         self._parent_ref   = self          # self-ref cho _open_voices_settings
+        self._output_audio = QAudioOutput()
+        self._output_audio.setVolume(1.0)
+        self._output_player = QMediaPlayer()
+        self._output_player.setAudioOutput(self._output_audio)
+        self._output_player.playbackStateChanged.connect(self._on_output_playback_state)
         self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
         self.setMinimumSize(540, 640)
         self.resize(580, 740)
@@ -5045,23 +5050,11 @@ class MainWindow(QWidget):
         creative_lay.setContentsMargins(0, 0, 0, 0)
         creative_lay.setSpacing(10)
 
-        lbl_calm = QLabel("🎯 Chính xác")
-        lbl_calm.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;border:none;"
-        )
-        creative_lay.addWidget(lbl_calm)
-
         self.creativity_slider = QSlider(Qt.Orientation.Horizontal)
         self.creativity_slider.setRange(0, 100)
         _cur_temp = self.settings.get("enhance_style_temperature", 0.3)
         self.creativity_slider.setValue(int(_cur_temp * 100))
         creative_lay.addWidget(self.creativity_slider, 1)
-
-        lbl_creative = QLabel("🎨 Sáng tạo")
-        lbl_creative.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;border:none;"
-        )
-        creative_lay.addWidget(lbl_creative)
 
         self.creativity_val = QLabel(f"{_cur_temp:.2f}")
         self.creativity_val.setFixedWidth(36)
@@ -5117,6 +5110,19 @@ class MainWindow(QWidget):
         )
         self.tts_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_row.addWidget(self.tts_status_lbl, 1)
+
+        self._btn_play_audio = QPushButton("▶")
+        self._btn_play_audio.setFixedSize(28, 28)
+        self._btn_play_audio.setToolTip("Nghe file vừa tạo")
+        self._btn_play_audio.setVisible(False)
+        self._btn_play_audio.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
+            f"background:{SURFACE};font-size:13px;}}"
+            "QPushButton:hover{background:#ebebf0;}"
+            "QPushButton:pressed{background:#d8d8de;}"
+        )
+        self._btn_play_audio.clicked.connect(self._toggle_last_audio)
+        status_row.addWidget(self._btn_play_audio)
 
         self._btn_open_folder = QPushButton("📂")
         self._btn_open_folder.setFixedSize(28, 28)
@@ -5726,6 +5732,7 @@ rm -f "$DMG" 2>/dev/null
         )
         # Lưu path và hiện nút 📂 — user chủ động mở thư mục nếu muốn
         self._last_audio_path = path
+        self._btn_play_audio.setVisible(True)
         self._btn_open_folder.setVisible(True)
         # Disconnect cũ an toàn — tránh TypeError nếu chưa có connection nào
         try:
@@ -5736,7 +5743,28 @@ rm -f "$DMG" 2>/dev/null
         self._refresh_credits()
         QTimer.singleShot(4000, self._reset_tts_status)
 
+    def _toggle_last_audio(self):
+        if not self._last_audio_path or not os.path.exists(self._last_audio_path):
+            QMessageBox.warning(self, "Không thấy file", "File audio vừa tạo không còn tồn tại.")
+            return
+        if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._output_player.stop()
+            return
+        self._output_player.setSource(QUrl.fromLocalFile(self._last_audio_path))
+        self._output_player.play()
+        self._btn_play_audio.setText("■")
+        self.tts_status_lbl.setText("Đang phát audio...")
+        self.tts_status_lbl.setStyleSheet(
+            "color:#15803d; font-size:11px; background:transparent;"
+        )
+
+    def _on_output_playback_state(self, state):
+        if state == QMediaPlayer.PlaybackState.StoppedState and hasattr(self, "_btn_play_audio"):
+            self._btn_play_audio.setText("▶")
+
     def _reset_tts_status(self):
+        if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            return
         self.tts_status_lbl.setText("Sẵn sàng")
         self.tts_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"

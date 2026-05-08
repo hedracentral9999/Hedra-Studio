@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.1-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.1-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.2-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.2-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
@@ -184,8 +184,8 @@ pyinstaller TTS.spec --clean --noconfirm
 Push tag `v*` → tự động build Mac + Windows → upload lên Release.
 
 ```bash
-git tag v1.4.1
-git push origin v1.4.1
+git tag v1.4.2
+git push origin v1.4.2
 ```
 
 ---
