@@ -1277,7 +1277,7 @@ class Worker(QThread):
             keys = [old] if old else []
         keys = [k.strip() for k in keys if k.strip()]
         if not keys:
-            raise Exception("Chưa nhập ElevenLabs API key. Vào Settings để thêm.")
+            raise Exception("⚠️ Chưa nhập ElevenLabs API key.\n📌 Vào Settings → tab API Keys để thêm.")
         last_err = None
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
@@ -5012,7 +5012,7 @@ class MainWindow(QWidget):
         api_key = self.settings.get("gemini_api_key", "").strip()
         if not api_key:
             QMessageBox.warning(self, "Thiếu Gemini API Key",
-                                "Vào Settings nhập Gemini API Key trước nhé!")
+                                "Vào Settings → tab API Keys\nnhập Gemini API Key trước nhé!")
             return
 
         self.btn_gen_script.setEnabled(False)
@@ -5358,7 +5358,15 @@ rm -f "$DMG" 2>/dev/null
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
         if not self.settings.get("el_api_keys") or not self.settings.get("ds_api_key"):
-            QMessageBox.warning(self, "Thiếu API key", "Vào Settings nhập API keys trước nhé!")
+            missing = []
+            if not self.settings.get("el_api_keys"):
+                missing.append("🔑 ElevenLabs API Key")
+            if not self.settings.get("ds_api_key"):
+                missing.append("🤖 DeepSeek API Key")
+            QMessageBox.warning(self, "Thiếu API Key",
+                                "Cần các API key sau:\n\n"
+                                + "\n".join(missing)
+                                + "\n\n📌 Vào Settings → tab API Keys để thêm.")
             return
         filename = self.filename_input.text().strip()
         if not filename:
