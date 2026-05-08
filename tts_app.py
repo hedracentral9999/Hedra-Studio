@@ -4331,8 +4331,7 @@ class MainWindow(QWidget):
         self.gemini_worker = None
         self.image_paths   = []
         self._parent_ref   = self          # self-ref cho _open_voices_settings
-        from version import BUILD as _BUILD
-        self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION} (build {_BUILD})")
+        self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
         self.setMinimumSize(540, 640)
         self.resize(580, 740)
         self.setStyleSheet(STYLE)
@@ -5449,8 +5448,7 @@ class TrayApp:
 
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(self._make_icon())
-        from version import BUILD
-        self.tray.setToolTip(f"Hedra Studio v{VERSION} (build {BUILD})")
+        self.tray.setToolTip(f"Hedra Studio v{VERSION}")
 
         menu = QMenu()
         a_open     = QAction("🎙  Mở Tool");    a_open.triggered.connect(self._show_main)
