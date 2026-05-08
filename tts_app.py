@@ -5130,26 +5130,26 @@ class MainWindow(QWidget):
         self.tts_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_row.addWidget(self.tts_status_lbl, 1)
 
-        self._btn_play_audio = QPushButton("▶")
-        self._btn_play_audio.setFixedSize(28, 28)
+        self._btn_play_audio = QPushButton("Phát")
+        self._btn_play_audio.setFixedSize(64, 30)
         self._btn_play_audio.setToolTip("Nghe file vừa tạo")
         self._btn_play_audio.setVisible(False)
         self._btn_play_audio.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
-            f"background:{SURFACE};font-size:13px;}}"
+            f"background:{SURFACE};color:{TEXT};font-size:12px;font-weight:600;}}"
             "QPushButton:hover{background:#ebebf0;}"
             "QPushButton:pressed{background:#d8d8de;}"
         )
         self._btn_play_audio.clicked.connect(self._toggle_last_audio)
         status_row.addWidget(self._btn_play_audio)
 
-        self._btn_open_folder = QPushButton("📂")
-        self._btn_open_folder.setFixedSize(28, 28)
-        self._btn_open_folder.setToolTip("Mở thư mục chứa file")
+        self._btn_open_folder = QPushButton("Mở file")
+        self._btn_open_folder.setFixedSize(76, 30)
+        self._btn_open_folder.setToolTip("Mở file audio vừa tạo")
         self._btn_open_folder.setVisible(False)
         self._btn_open_folder.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:6px;"
-            f"background:{SURFACE};font-size:14px;}}"
+            f"background:{SURFACE};color:{TEXT};font-size:12px;font-weight:600;}}"
             "QPushButton:hover{background:#ebebf0;}"
             "QPushButton:pressed{background:#d8d8de;}"
         )
@@ -5803,7 +5803,7 @@ rm -f "$DMG" 2>/dev/null
             return
         self._output_player.setSource(QUrl.fromLocalFile(self._last_audio_path))
         self._output_player.play()
-        self._btn_play_audio.setText("■")
+        self._btn_play_audio.setText("Dừng")
         self.tts_status_lbl.setText("Đang phát audio...")
         self.tts_status_lbl.setStyleSheet(
             "color:#15803d; font-size:11px; background:transparent;"
@@ -5811,7 +5811,7 @@ rm -f "$DMG" 2>/dev/null
 
     def _on_output_playback_state(self, state):
         if state == QMediaPlayer.PlaybackState.StoppedState and hasattr(self, "_btn_play_audio"):
-            self._btn_play_audio.setText("▶")
+            self._btn_play_audio.setText("Phát")
 
     def _reset_tts_status(self):
         if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
