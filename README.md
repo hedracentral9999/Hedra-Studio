@@ -184,8 +184,8 @@ pyinstaller TTS.spec --clean --noconfirm
 Push tag `v*` → tự động build Mac + Windows → upload lên Release.
 
 ```bash
-git tag v1.2.63
-git push origin v1.2.63
+git tag v1.3
+git push origin v1.3
 ```
 
 ---
