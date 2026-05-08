@@ -30,3 +30,7 @@ Thumbs.db
 
 # Misc
 *.log
+*.command
+CONTEXT.md
+test_adam.py
+test_*.py
