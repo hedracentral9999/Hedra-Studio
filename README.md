@@ -227,6 +227,55 @@ Hedra-Studio/
 
 ---
 
+## 🔒 Security & Privacy
+
+Hedra Studio được thiết kế **minh bạch** — không có tracking, telemetry, hay hành vi ẩn.
+
+### Network requests
+
+| Gửi đến | Mục đích | Khi nào |
+|---------|----------|---------|
+| `api.elevenlabs.io` | Generate TTS audio, check credits, tải voices | Khi bạn generate / refresh |
+| `api.deepseek.com` | Enhance kịch bản | Khi bạn nhấn Generate |
+| `generativelanguage.googleapis.com` | Gemini chat → kịch bản | Khi bạn dùng Chat tab |
+| `api.telegram.org` | Gửi feedback đến dev | Chỉ khi bạn nhấn **Gửi phản hồi** |
+| `api.github.com` | Kiểm tra bản cập nhật | Khi khởi động app, 1 lần |
+
+### Auto-update
+
+App tải DMG từ GitHub Releases về `~/Library/Caches/` và chạy script tự động:
+1. Đợi app cũ thoát (max 30s)
+2. Mount DMG mới
+3. Copy app mới vào `Applications/`
+4. Mở app mới
+
+Script ghi log tại `/tmp/hedra_update.log` — bạn có thể kiểm tra bất kỳ lúc nào.
+
+> Script chỉ chạy khi bạn **chủ động nhấn "Cập nhật"** — không tự động cài đặt.
+
+### API Keys
+
+Keys được lưu trong file `settings.json` tại:
+- **macOS:** `~/Library/Application Support/TTSApp/settings.json`
+- **Windows:** `%APPDATA%/TTSApp/settings.json`
+
+**Không** được gửi đi đâu ngoài các API bạn đã cấu hình (ElevenLabs, DeepSeek, Gemini).
+
+### Những gì app KHÔNG làm
+
+- ❌ **Không** tracking, analytics, telemetry
+- ❌ **Không** gửi dữ liệu cá nhân ra ngoài
+- ❌ **Không** đọc file ngoài thư mục được chỉ định
+- ❌ **Không** chạy ngầm ẩn (chỉ chạy khi bạn mở)
+- ❌ **Không** ghi đè hay sửa file hệ thống
+- ❌ **Không** keylogger, không capture màn hình (trừ Gemini chat bạn tự kéo thả ảnh)
+
+### Build từ source
+
+Nếu bạn lo ngại về bảo mật, hoàn toàn có thể [build từ source](#-build-từ-source) và tự kiểm tra code.
+
+---
+
 ## 📄 License
 
 MIT License — xem file [LICENSE](LICENSE).
