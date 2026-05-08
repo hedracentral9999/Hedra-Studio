@@ -4558,7 +4558,7 @@ class MainWindow(QWidget):
         layout.addWidget(self._section_lbl("PHONG CÁCH & GIỌNG"))
         card1, c1 = self._card()
 
-        # — Row: Phong cách
+        # — Style row: segmented + nút + nằm dưới
         seg_frame = QFrame()
         seg_frame.setFixedHeight(36)
         seg_frame.setStyleSheet(
@@ -4576,14 +4576,31 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        style_w = QWidget()
-        style_w.setStyleSheet("background:transparent;border:none;")
-        sw = QHBoxLayout(style_w)
-        sw.setContentsMargins(0, 0, 0, 0)
-        sw.setSpacing(6)
-        sw.addWidget(seg_frame)
-        sw.addStretch()
-        self._card_row(c1, "Phong cách", style_w)
+        # Nút + nằm dưới segmented, căn phải (dưới Hài hước)
+        style_row = QWidget()
+        style_row.setStyleSheet("background:transparent;border:none;")
+        sr = QVBoxLayout(style_row)
+        sr.setContentsMargins(16, 13, 16, 10)
+        sr.setSpacing(6)
+        sr.addWidget(seg_frame)
+
+        btn_add = QPushButton("＋ Thêm phong cách")
+        btn_add.setFixedHeight(28)
+        btn_add.setStyleSheet(
+            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
+            "border:none;padding:0 0;text-align:left;}"
+            "QPushButton:hover{color:#0077ed;}"
+            "QPushButton:pressed{color:#005bb5;}"
+        )
+        btn_add.clicked.connect(self._quick_add_style)
+        # Đẩy + sang phải, dưới Hài hước
+        add_row = QHBoxLayout()
+        add_row.setContentsMargins(0, 0, 0, 0)
+        add_row.addStretch()
+        add_row.addWidget(btn_add)
+        sr.addLayout(add_row)
+
+        c1.addWidget(style_row)
 
         # — Row: Giọng đọc (voice name + language pill-dropdown + đổi giọng — 1 hàng)
         # Full ElevenLabs language list — top picks + separator + alphabetical
@@ -5110,20 +5127,6 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda checked, n=name: self._set_prompt_style(n))
             self._prompt_btns[name] = btn
             layout.addWidget(btn)
-
-        # Nút + ở cuối (thêm style custom)
-        btn_add = QPushButton("+")
-        btn_add.setFixedSize(28, 28)
-        btn_add.setToolTip("Thêm phong cách tùy chỉnh")
-        btn_add.setStyleSheet(
-            f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
-            f"border-radius:8px;color:{TEXT_MUTE};font-size:18px;font-weight:300;"
-            f"padding:0;line-height:1;}}"
-            "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;color:#1d1d1f;}"
-            "QPushButton:pressed{background:#c7c7cc;}"
-        )
-        btn_add.clicked.connect(self._quick_add_style)
-        layout.addWidget(btn_add)
 
         self._apply_prompt_btn_styles(active_name)
 
