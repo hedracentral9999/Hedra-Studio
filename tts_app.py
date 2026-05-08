@@ -1342,9 +1342,9 @@ class GeminiWorker(QThread):
                 parts.append({"inline_data": {"mime_type": mime, "data": data}})
 
             self.status.emit("Gemini đang phân tích chat...")
-            # Try gemini-2.5-flash first, fallback to 2.5-flash-lite
+            # Try gemini-2.5-pro first for best quality, fallback to flash
             last_err = None
-            for model in ["gemini-2.5-flash", "gemini-2.5-flash-lite"]:
+            for model in ["gemini-2.5-pro", "gemini-2.5-flash"]:
                 res = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model}:generateContent?key={self.api_key}",
@@ -4576,30 +4576,29 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        # Nút + nằm dưới segmented, căn phải (dưới Hài hước)
-        style_row = QWidget()
-        style_row.setStyleSheet("background:transparent;border:none;")
-        sr = QVBoxLayout(style_row)
-        sr.setContentsMargins(16, 13, 16, 10)
-        sr.setSpacing(6)
-        sr.addWidget(seg_frame)
-
-        btn_add = QPushButton("＋ Thêm phong cách")
-        btn_add.setFixedHeight(28)
+        # Nút + nho nhỏ dưới Hài hước
+        btn_add = QPushButton("+")
+        btn_add.setFixedSize(22, 18)
+        btn_add.setToolTip("Thêm phong cách tùy chỉnh")
         btn_add.setStyleSheet(
-            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
-            "border:none;padding:0 0;text-align:left;}"
-            "QPushButton:hover{color:#0077ed;}"
+            "QPushButton{background:transparent;border:none;color:#86868b;"
+            "font-size:15px;font-weight:400;padding:0;}"
+            "QPushButton:hover{color:#0071e3;}"
             "QPushButton:pressed{color:#005bb5;}"
         )
         btn_add.clicked.connect(self._quick_add_style)
-        # Đẩy + sang phải, dưới Hài hước
+
+        style_row = QWidget()
+        style_row.setStyleSheet("background:transparent;border:none;")
+        sr = QVBoxLayout(style_row)
+        sr.setContentsMargins(16, 10, 16, 10)
+        sr.setSpacing(4)
+        sr.addWidget(seg_frame)
         add_row = QHBoxLayout()
         add_row.setContentsMargins(0, 0, 0, 0)
         add_row.addStretch()
         add_row.addWidget(btn_add)
         sr.addLayout(add_row)
-
         c1.addWidget(style_row)
 
         # — Row: Giọng đọc (voice name + language pill-dropdown + đổi giọng — 1 hàng)
