@@ -7,7 +7,7 @@ venv/
 
 # Build output
 dist/
-build/
+# build/ (keep icon files)
 *.spec.bak
 *.dmg
 rw.*.dmg

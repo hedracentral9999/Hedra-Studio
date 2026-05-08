@@ -9,7 +9,7 @@ a = Analysis(
     ['tts_app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('build/icon.icns', '.')],
     hiddenimports=['PyQt6.sip', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets'],
     hookspath=[],
     runtime_hooks=[],
@@ -46,6 +46,7 @@ if sys.platform == 'darwin':
         coll,
         name='Hedra Studio.app',
         bundle_identifier='com.hedracentral.hedrastudio',
+        icon='build/icon.icns',
         info_plist={
             'CFBundleShortVersionString': VERSION,
             'CFBundleVersion': VERSION,

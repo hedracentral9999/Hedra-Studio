@@ -4335,6 +4335,13 @@ class MainWindow(QWidget):
         self.setMinimumSize(540, 640)
         self.resize(580, 740)
         self.setStyleSheet(STYLE)
+        # App icon
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__) if not getattr(sys, 'frozen', False) else sys._MEIPASS, "icon.icns")
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception:
+            pass
         self._build()
         self._refresh_credits()
         self._check_update()
@@ -5452,6 +5459,14 @@ class TrayApp:
         self._show_main()
 
     def _make_icon(self) -> QIcon:
+        # Ưu tiên .icns nếu có (khi build bằng PyInstaller)
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__) if not getattr(sys, 'frozen', False) else sys._MEIPASS, "icon.icns")
+            if os.path.exists(icon_path):
+                return QIcon(icon_path)
+        except Exception:
+            pass
+        # Fallback: blue circle
         px = QPixmap(32, 32)
         px.fill(Qt.GlobalColor.transparent)
         p = QPainter(px)
