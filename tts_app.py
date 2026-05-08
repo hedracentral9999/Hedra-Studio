@@ -1319,7 +1319,7 @@ class Worker(QThread):
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
             self.status.emit(f"Đang generate audio [{label}]...")
-            voice_id = self.s.get("selected_voice_id", VOICE_ID)
+            voice_id = self.s.get("selected_voice_id") or VOICE_ID
             tts_body: dict = {
                 "text":     text,
                 "model_id": MODEL,
@@ -2472,8 +2472,8 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(700, 540)
         self.resize(820, 700)
         # Voice selection state (edited in dialog, saved on accept)
-        self._sel_voice_id   = self.settings.get("selected_voice_id",   VOICE_ID)
-        self._sel_voice_name = self.settings.get("selected_voice_name",  "Adam")
+        self._sel_voice_id   = self.settings.get("selected_voice_id") or VOICE_ID
+        self._sel_voice_name = self.settings.get("selected_voice_name") or "Adam"
         self._voice_rows: list[tuple] = []        # (widget, voice_id) for API voices
         self._voice_rows_lang: list[tuple] = []   # (widget, voice_id, lang, name)
         self._lang_chips: dict = {}
