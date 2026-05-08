@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/🎙_Hedra_Studio-v1.3.4-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/🎙_Hedra_Studio-v1.3.4-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/🎙_Hedra_Studio-v1.3.5-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/🎙_Hedra_Studio-v1.3.5-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
