@@ -3040,16 +3040,16 @@ class SettingsDialog(QDialog):
         ep_card_h.setContentsMargins(0, 0, 0, 0)
         ep_card_h.setSpacing(0)
 
-        # Left style tabs
+        # Left style tabs — compact, ngang
         ep_tab_col = QFrame()
-        ep_tab_col.setFixedWidth(130)
+        ep_tab_col.setFixedWidth(105)
         ep_tab_col.setStyleSheet(
             "QFrame{background:#f5f5f7;border:none;"
             "border-right:1px solid #e5e5ea;border-top-left-radius:10px;"
             "border-bottom-left-radius:10px;}"
         )
         ep_tab_v = QVBoxLayout(ep_tab_col)
-        ep_tab_v.setContentsMargins(8, 8, 8, 8)
+        ep_tab_v.setContentsMargins(6, 10, 6, 10)
         ep_tab_v.setSpacing(4)
 
         self._ep_style_tabs: dict[str, QPushButton] = {}
@@ -3063,12 +3063,12 @@ class SettingsDialog(QDialog):
         def _ep_tab_style(active: bool) -> str:
             if active:
                 return ("QPushButton{background:#ffffff;color:#0071e3;"
-                        "border:1px solid #d2d2d7;border-radius:8px;"
-                        "font-size:12px;font-weight:600;padding:7px 8px;"
+                        "border:1px solid #d2d2d7;border-radius:6px;"
+                        "font-size:11px;font-weight:600;padding:5px 6px;"
                         "text-align:left;}")
             return ("QPushButton{background:transparent;color:#1d1d1f;"
-                    "border:none;border-radius:8px;"
-                    "font-size:12px;padding:7px 8px;text-align:left;}"
+                    "border:none;border-radius:6px;"
+                    "font-size:11px;padding:5px 6px;text-align:left;}"
                     "QPushButton:hover{background:#ebebf0;}")
 
         _saved_ep   = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
@@ -3092,7 +3092,7 @@ class SettingsDialog(QDialog):
 
         for name, prompt_text in ep_prompts_map.items():
             tb = QPushButton(name)
-            tb.setMinimumHeight(34)
+            tb.setMinimumHeight(28)
             tb.setStyleSheet(_ep_tab_style(name == _active_ep))
             tb.clicked.connect(lambda _, n=name: _switch_ep_tab(n))
             ep_tab_v.addWidget(tb)
@@ -4501,30 +4501,27 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        # Nút + nho nhỏ dưới Hài hước
-        btn_add = QPushButton("+")
-        btn_add.setFixedSize(22, 18)
-        btn_add.setToolTip("Thêm phong cách tùy chỉnh")
-        btn_add.setStyleSheet(
-            "QPushButton{background:transparent;border:none;color:#86868b;"
-            "font-size:15px;font-weight:400;padding:0;}"
-            "QPushButton:hover{color:#0071e3;}"
-            "QPushButton:pressed{color:#005bb5;}"
+        btn_add_style = QPushButton("+")
+        btn_add_style.setFixedSize(28, 28)
+        btn_add_style.setToolTip("Thêm phong cách tùy chỉnh")
+        btn_add_style.setStyleSheet(
+            f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
+            f"border-radius:8px;color:{TEXT};font-size:16px;font-weight:400;"
+            f"padding:0;}}"
+            "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;}"
+            "QPushButton:pressed{background:#c7c7cc;}"
         )
-        btn_add.clicked.connect(self._quick_add_style)
+        btn_add_style.clicked.connect(self._quick_add_style)
 
-        style_row = QWidget()
-        style_row.setStyleSheet("background:transparent;border:none;")
-        sr = QVBoxLayout(style_row)
-        sr.setContentsMargins(16, 10, 16, 10)
-        sr.setSpacing(4)
-        sr.addWidget(seg_frame)
-        add_row = QHBoxLayout()
-        add_row.setContentsMargins(0, 0, 0, 0)
-        add_row.addStretch()
-        add_row.addWidget(btn_add)
-        sr.addLayout(add_row)
-        c1.addWidget(style_row)
+        style_w = QWidget()
+        style_w.setStyleSheet("background:transparent;border:none;")
+        sw = QHBoxLayout(style_w)
+        sw.setContentsMargins(0, 0, 0, 0)
+        sw.setSpacing(6)
+        sw.addWidget(seg_frame)
+        sw.addWidget(btn_add_style)
+        sw.addStretch()
+        self._card_row(c1, "Phong cách", style_w)
 
         # — Row: Giọng đọc (voice name + language pill-dropdown + đổi giọng — 1 hàng)
         # Full ElevenLabs language list — top picks + separator + alphabetical
