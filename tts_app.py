@@ -1107,27 +1107,61 @@ DEFAULT_OUT   = str(DATA_DIR / "output")
 # ── Settings helpers ───────────────────────────────────────────────
 def load_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, encoding="utf-8") as f:
-            s = json.load(f)
+        try:
+            with open(SETTINGS_FILE, encoding="utf-8") as f:
+                s = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            # File corrupt — backup và trả về defaults
+            backup = SETTINGS_FILE + ".corrupt.bak"
+            try:
+                os.rename(SETTINGS_FILE, backup)
+            except Exception:
+                pass
+            print(f"[WARN] settings.json corrupt ({e}), reset to defaults")
+            s = {}
+        # Migration: el_api_key → el_api_keys
         if "el_api_key" in s and "el_api_keys" not in s:
             s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
-        if "gemini_api_key" not in s:
-            s["gemini_api_key"] = ""
-        if "gemini_chat_prompt" not in s:
-            s["gemini_chat_prompt"] = ""
-        if "telegram_bot_token" not in s:
-            s["telegram_bot_token"] = ""
-        if "telegram_chat_id" not in s:
-            s["telegram_chat_id"] = ""
+        # Backfill tất cả key có thể thiếu từ phiên bản cũ
+        _DEFAULTS = {
+            "el_api_keys":              [],
+            "ds_api_key":               "",
+            "gemini_api_key":           "",
+            "gemini_chat_prompt":       "",
+            "telegram_bot_token":       "",
+            "telegram_chat_id":         "",
+            "output_dir":               DEFAULT_OUT,
+            "enhance_prompt":           DEFAULT_PROMPT,
+            "default_speed":            1.0,
+            "selected_voice_id":        "",
+            "selected_voice_name":      "Adam",
+            "custom_styles":            [],
+            "enhance_style_name":       "🎯  Nghiêm túc",
+            "enhance_style_temperature": 0.3,
+            "enhance_style_creative":   False,
+            "language_code":            "vi",
+        }
+        for key, default in _DEFAULTS.items():
+            if key not in s:
+                s[key] = default
         return s
     return {
-        "el_api_keys":       [],
-        "ds_api_key":        "",
-        "gemini_api_key":    "",
-        "gemini_chat_prompt": "",
-        "output_dir":        DEFAULT_OUT,
-        "enhance_prompt":    DEFAULT_PROMPT,
-        "default_speed":     1.0,
+        "el_api_keys":              [],
+        "ds_api_key":               "",
+        "gemini_api_key":           "",
+        "gemini_chat_prompt":       "",
+        "telegram_bot_token":       "",
+        "telegram_chat_id":         "",
+        "output_dir":               DEFAULT_OUT,
+        "enhance_prompt":           DEFAULT_PROMPT,
+        "default_speed":            1.0,
+        "selected_voice_id":        "",
+        "selected_voice_name":      "Adam",
+        "custom_styles":            [],
+        "enhance_style_name":       "🎯  Nghiêm túc",
+        "enhance_style_temperature": 0.3,
+        "enhance_style_creative":   False,
+        "language_code":            "vi",
     }
 
 def save_settings(s: dict):
@@ -1247,9 +1281,12 @@ class Worker(QThread):
             self.error.emit(str(e))
 
     def _enhance(self, text: str) -> str:
+        api_key = self.s.get("ds_api_key", "")
+        if not api_key:
+            raise Exception("⚠️ Chưa nhập DeepSeek API key.\n📌 Vào Settings → tab API Keys để thêm.")
         res = requests.post(
             "https://api.deepseek.com/chat/completions",
-            headers={"Authorization": f"Bearer {self.s['ds_api_key']}",
+            headers={"Authorization": f"Bearer {api_key}",
                      "Content-Type": "application/json"},
             json={
                 "model": "deepseek-chat",
@@ -2408,6 +2445,16 @@ class VoiceLibraryDialog(QDialog):
 # Mỗi section là một "page" — không dump tất cả vào 1 cột
 # Fixed window size, content scroll bên trong — không tràn màn hình
 #
+# ── Helper: null widget dùng làm fallback khi widget chưa được tạo ──
+class _NullEdit:
+    """QLineEdit/QTextEdit stub — trả về chuỗi rỗng, tránh AttributeError."""
+    def text(self) -> str:
+        return ""
+
+    def toPlainText(self) -> str:
+        return ""
+
+
 class SettingsDialog(QDialog):
     # Màu sidebar kiểu macOS System Settings
     _SB_BG       = "#f0f0f5"
@@ -4116,8 +4163,8 @@ class SettingsDialog(QDialog):
         self.settings["el_api_keys"]        = [k.strip() for k in raw_keys if k.strip()]
         self.settings["ds_api_key"]         = self.ds_key.text().strip()
         self.settings["gemini_api_key"]     = self.gemini_key.text().strip()
-        self.settings["telegram_bot_token"] = self.telegram_bot_token.text().strip()
-        self.settings["telegram_chat_id"]   = self.telegram_chat_id.text().strip()
+        self.settings["telegram_bot_token"] = getattr(self, "telegram_bot_token", _NullEdit()).text().strip()
+        self.settings["telegram_chat_id"]   = getattr(self, "telegram_chat_id", _NullEdit()).text().strip()
         self.settings["output_dir"]         = self.out_dir.text()
         self.settings["enhance_prompt"]     = self.prompt.toPlainText()
         gp = self.gemini_prompt.toPlainText().strip()
@@ -5013,10 +5060,18 @@ class MainWindow(QWidget):
             {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
             {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
         ]
-        custom = [
-            {"name": f"{s['icon']}  {s['name']}", "prompt": s["prompt"], "creative": s.get("creative", False)}
-            for s in self.settings.get("custom_styles", [])
-        ]
+        custom = []
+        for s in self.settings.get("custom_styles", []):
+            icon = s.get("icon", "")
+            name = s.get("name", "")
+            prompt = s.get("prompt", "")
+            if not name or not prompt:
+                continue  # bỏ qua entry hỏng
+            custom.append({
+                "name": f"{icon}  {name}" if icon else name,
+                "prompt": prompt,
+                "creative": s.get("creative", False),
+            })
         return built + custom
 
     def _find_active_style_name(self, current_prompt: str) -> str:
