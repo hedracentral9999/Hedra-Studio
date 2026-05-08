@@ -1281,6 +1281,8 @@ def reveal_file(path: str):
 # ── Update checker ─────────────────────────────────────────────────
 class UpdateChecker(QThread):
     update_found = pyqtSignal(str, str)
+    no_update    = pyqtSignal(str)
+    error        = pyqtSignal(str)
 
     def run(self):
         try:
@@ -1289,13 +1291,16 @@ class UpdateChecker(QThread):
                 timeout=5
             )
             if res.status_code != 200:
+                self.error.emit(f"GitHub trả về lỗi {res.status_code}")
                 return
             data = res.json()
             tag_name = data.get("tag_name")
             if not tag_name:
+                self.error.emit("Không đọc được tag release mới nhất")
                 return
             latest = str(tag_name).lstrip("v")
             if not self._is_newer(latest, VERSION):
+                self.no_update.emit(latest)
                 return
             html_url = data.get("html_url")
             if not html_url:
@@ -1309,8 +1314,8 @@ class UpdateChecker(QThread):
                     download_url = asset.get("browser_download_url"); break
             # Emit: download_url nếu có file trực tiếp, ngược lại emit html_url để mở browser
             self.update_found.emit(latest, download_url or html_url)
-        except Exception:
-            pass
+        except Exception as e:
+            self.error.emit(str(e))
 
     @staticmethod
     def _is_newer(latest: str, current: str) -> bool:
@@ -4719,6 +4724,20 @@ class MainWindow(QWidget):
         header_row.addWidget(btn_feedback)
         header_row.addSpacing(6)
 
+        self._btn_check_update = QPushButton("Update")
+        self._btn_check_update.setFixedHeight(28)
+        self._btn_check_update.setToolTip("Kiểm tra và tải bản mới nhất")
+        self._btn_check_update.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
+            f"padding:3px 14px;background:{SURFACE};color:{TEXT_MUTE};font-size:12px;}}"
+            f"QPushButton:hover{{background:#ebebf0;color:{TEXT};}}"
+            f"QPushButton:pressed{{background:{SEG_BG};}}"
+            "QPushButton:disabled{color:#aeaeb2;background:#f5f5f7;}"
+        )
+        self._btn_check_update.clicked.connect(self._manual_check_update)
+        header_row.addWidget(self._btn_check_update)
+        header_row.addSpacing(6)
+
         btn_settings = QPushButton("Settings")
         btn_settings.setFixedHeight(28)
         btn_settings.setStyleSheet(
@@ -5519,6 +5538,38 @@ class MainWindow(QWidget):
         self._updater = UpdateChecker()
         self._updater.update_found.connect(self._on_update_found)
         self._updater.start()
+
+    def _manual_check_update(self):
+        self._btn_check_update.setEnabled(False)
+        self._btn_check_update.setText("Checking...")
+        self._manual_updater = UpdateChecker()
+        self._manual_updater.update_found.connect(self._on_manual_update_found)
+        self._manual_updater.no_update.connect(self._on_manual_no_update)
+        self._manual_updater.error.connect(self._on_manual_update_error)
+        self._manual_updater.finished.connect(self._reset_update_button)
+        self._manual_updater.start()
+
+    def _reset_update_button(self):
+        self._btn_check_update.setEnabled(True)
+        self._btn_check_update.setText("Update")
+
+    def _on_manual_update_found(self, version: str, url: str):
+        self._on_update_found(version, url)
+        QMessageBox.information(
+            self,
+            "Có bản cập nhật",
+            f"Đã tìm thấy v{version}. Nhấn \"Cập nhật ngay\" trên banner để tải và cài đặt.",
+        )
+
+    def _on_manual_no_update(self, latest: str):
+        QMessageBox.information(
+            self,
+            "Đã là bản mới nhất",
+            f"Bạn đang dùng v{VERSION}. Release mới nhất hiện tại là v{latest}.",
+        )
+
+    def _on_manual_update_error(self, msg: str):
+        QMessageBox.warning(self, "Không kiểm tra được cập nhật", msg)
 
     def _on_update_found(self, version: str, url: str):
         self._update_url = url
