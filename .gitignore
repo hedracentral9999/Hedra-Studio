@@ -14,6 +14,9 @@ rw.*.dmg
 *.exe
 *.msi
 
+# ElevenLabs reference docs (local only)
+0*.md
+
 # Data / secrets
 settings.json
 telegram_config.py
