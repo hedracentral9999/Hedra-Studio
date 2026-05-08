@@ -4576,25 +4576,12 @@ class MainWindow(QWidget):
         active_name = self._find_active_style_name(current_prompt)
         self._build_style_buttons(seg_layout, active_name)
 
-        btn_add_style = QPushButton("+")
-        btn_add_style.setFixedSize(28, 28)
-        btn_add_style.setToolTip("Thêm phong cách tùy chỉnh")
-        btn_add_style.setStyleSheet(
-            f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
-            f"border-radius:8px;color:{TEXT};font-size:16px;font-weight:400;"
-            f"padding:0;}}"
-            "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;}"
-            "QPushButton:pressed{background:#c7c7cc;}"
-        )
-        btn_add_style.clicked.connect(self._quick_add_style)
-
         style_w = QWidget()
         style_w.setStyleSheet("background:transparent;border:none;")
         sw = QHBoxLayout(style_w)
         sw.setContentsMargins(0, 0, 0, 0)
         sw.setSpacing(6)
         sw.addWidget(seg_frame)
-        sw.addWidget(btn_add_style)
         sw.addStretch()
         self._card_row(c1, "Phong cách", style_w)
 
@@ -5101,7 +5088,7 @@ class MainWindow(QWidget):
         return "🎯  Nghiêm túc"
 
     def _build_style_buttons(self, layout: QHBoxLayout, active_name: str):
-        """Xây (hoặc rebuild) các nút phong cách trong seg_frame."""
+        """Xây (hoặc rebuild) các nút phong cách — chỉ built-in, custom qua nút +."""
         # Xoá buttons cũ
         while layout.count():
             item = layout.takeAt(0)
@@ -5109,7 +5096,12 @@ class MainWindow(QWidget):
                 item.widget().deleteLater()
         self._prompt_btns.clear()
 
-        for style in self._all_styles():
+        # Chỉ built-in styles
+        built = [
+            {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
+            {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
+        ]
+        for style in built:
             name = style["name"]
             btn = QPushButton(name)
             btn.setFixedHeight(28)
@@ -5118,6 +5110,20 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda checked, n=name: self._set_prompt_style(n))
             self._prompt_btns[name] = btn
             layout.addWidget(btn)
+
+        # Nút + ở cuối (thêm style custom)
+        btn_add = QPushButton("+")
+        btn_add.setFixedSize(28, 28)
+        btn_add.setToolTip("Thêm phong cách tùy chỉnh")
+        btn_add.setStyleSheet(
+            f"QPushButton{{background:{SEG_BG};border:1px solid #c7c7cc;"
+            f"border-radius:8px;color:{TEXT_MUTE};font-size:18px;font-weight:300;"
+            f"padding:0;line-height:1;}}"
+            "QPushButton:hover{background:#d8d8de;border-color:#aeaeb2;color:#1d1d1f;}"
+            "QPushButton:pressed{background:#c7c7cc;}"
+        )
+        btn_add.clicked.connect(self._quick_add_style)
+        layout.addWidget(btn_add)
 
         self._apply_prompt_btn_styles(active_name)
 
