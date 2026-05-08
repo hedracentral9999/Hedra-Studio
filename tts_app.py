@@ -3267,20 +3267,18 @@ class SettingsDialog(QDialog):
         vt.addWidget(self._custom_styles_grp)
         self._refresh_custom_styles()
 
-        # "+ Thêm" nằm dưới danh sách — dễ thấy và hợp lý hơn
-        btn_add_style = QPushButton("＋  Thêm phong cách")
-        btn_add_style.setFixedHeight(30)
+        # "+" nằm dưới danh sách
+        btn_add_style = QPushButton("+")
+        btn_add_style.setFixedSize(24, 20)
         btn_add_style.setStyleSheet(
-            "QPushButton{font-size:12px;color:#0071e3;background:transparent;"
-            "border:1px solid #d2d2d7;border-radius:8px;padding:0 14px;"
-            "text-align:left;}"
-            "QPushButton:hover{background:#f0f6ff;border-color:#0071e3;}"
-            "QPushButton:pressed{background:#e0edff;}"
+            "QPushButton{font-size:16px;color:#86868b;background:transparent;"
+            "border:1px solid #c7c7cc;border-radius:6px;padding:0;font-weight:400;}"
+            "QPushButton:hover{color:#1d1d1f;border-color:#aeaeb2;background:#ebebf0;}"
+            "QPushButton:pressed{background:#d1d1d6;}"
         )
         btn_add_style.clicked.connect(self._add_custom_style)
         vt.addSpacing(8)
         vt.addWidget(btn_add_style)
-        vt.addSpacing(16)
 
         # ── Wire stacked widget ────────────────────────────────────
         self._prompts_stacked.addWidget(page_chat)   # index 0
