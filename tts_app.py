@@ -1482,7 +1482,16 @@ class Worker(QThread):
                any(w in res.text.lower() for w in ("quota", "insufficient", "limit")):
                 reason = {401: "key không hợp lệ", 403: "không có quyền",
                           429: "rate limited / hết credit"}.get(res.status_code, "hết credit")
-                last_err = Exception(f"{label}: {reason}")
+                detail_msg = f"{label}: {reason}"
+                if body:
+                    try:
+                        err_data = res.json()
+                        err_msg = err_data.get("detail", {}).get("message", "") or str(err_data)
+                        if err_msg and err_msg != "None":
+                            detail_msg += f"\n→ {err_msg[:200]}"
+                    except Exception:
+                        detail_msg += f"\n→ {body[:200]}"
+                last_err = Exception(detail_msg)
                 if idx < len(keys):
                     self.status.emit(f"⚠️ {label} {reason} — thử key tiếp theo...")
                 continue
