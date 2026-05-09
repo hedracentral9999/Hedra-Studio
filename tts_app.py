@@ -8,6 +8,15 @@ import subprocess
 import traceback
 import re
 from pathlib import Path
+
+# ── Fix SSL certificates on Windows PyInstaller builds ────────────
+# PyInstaller thường không bundle được certifi certs → requests lỗi SSL
+if getattr(sys, "frozen", False) and sys.platform == "win32":
+    try:
+        import certifi
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except ImportError:
+        pass
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QLabel, QSlider, QPushButton, QSystemTrayIcon,
@@ -1477,7 +1486,17 @@ class Worker(QThread):
                 if idx < len(keys):
                     self.status.emit(f"⚠️ {label} {reason} — thử key tiếp theo...")
                 continue
-            raise Exception(f"ElevenLabs {res.status_code}: {body}")
+            # Lỗi không rõ — hiển thị chi tiết để debug
+            reason_map = {
+                400: "sai request (có thể model/voice không tồn tại)",
+                422: "dữ liệu không hợp lệ (có thể text quá dài hoặc ký tự đặc biệt)",
+            }
+            hint = reason_map.get(res.status_code, "")
+            detail = f"ElevenLabs {res.status_code}"
+            if hint:
+                detail += f" — {hint}"
+            detail += f"\n\n{body}"
+            raise Exception(detail)
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
 
