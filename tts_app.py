@@ -198,6 +198,23 @@ INPUT: mấy ngày nhận được vậy
 OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
 [reassuring] thường thì ba đến bốn ngày thôi — NHANH LẮMMM đó anh ơi, hahahahaaa không đùa!"""
 
+# ── Content lock: gắn vào cuối prompt khi sáng tạo = 0 ─
+# Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, pause...).
+# Slider chỉ kiểm soát 1 thứ: có được THÊM NỘI DUNG MỚI hay không.
+CREATIVITY_CONTENT_LOCK = """
+
+## ⚠️ LƯU Ý QUAN TRỌNG
+
+Bạn vẫn phải áp dụng TẤT CẢ các quy tắc ở trên — tags, viết hoa, kéo dài âm, pause, từ đệm... đầy đủ 100%.
+
+TUY NHIÊN, bạn TUYỆT ĐỐI KHÔNG ĐƯỢC thêm nội dung mới:
+- KHÔNG thêm câu mới không có trong input gốc
+- KHÔNG diễn giải dài dòng, không mở rộng ý
+- KHÔNG thêm lời chào, lời kết, lời dẫn dắt nếu input không có
+- KHÔNG biến 1 câu ngắn thành 1 đoạn văn dài
+- Chỉ áp dụng quy tắc format (tags, CAPS, kéo dài âm, pause...) lên CHÍNH XÁC những gì input có
+- Số lượng câu output = số lượng ý trong input — không nhiều hơn"""
+
 PROMPTS = {
     "🎯  Nghiêm túc": DEFAULT_PROMPT,
     "😄  Hài hước":   DEFAULT_PROMPT_FUNNY,
@@ -1388,6 +1405,16 @@ class Worker(QThread):
         api_key = self.s.get("ds_api_key", "")
         if not api_key:
             raise Exception("⚠️ Chưa nhập DeepSeek API key.\n📌 Vào Settings → tab API Keys để thêm.")
+        # ── Lấy temperature từ style (slider), fallback về creative bool nếu chưa có
+        temperature = self.s.get(
+            "enhance_style_temperature",
+            0.7 if self.s.get("enhance_style_creative", False) else 0.3
+        )
+        # ── Lấy base prompt
+        system_prompt = self.s.get("enhance_prompt", DEFAULT_PROMPT)
+        # ── Khi sáng tạo = 0: gắn content lock, cấm thêm nội dung mới ─
+        if temperature <= 0.0:
+            system_prompt += CREATIVITY_CONTENT_LOCK
         res = requests.post(
             "https://api.deepseek.com/chat/completions",
             headers={"Authorization": f"Bearer {api_key}",
@@ -1395,14 +1422,10 @@ class Worker(QThread):
             json={
                 "model": "deepseek-chat",
                 "messages": [
-                    {"role": "system", "content": self.s.get("enhance_prompt", DEFAULT_PROMPT)},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": self.text},
                 ],
-                # Dùng temperature từ style (slider), fallback về creative bool nếu chưa có
-                "temperature": self.s.get(
-                    "enhance_style_temperature",
-                    0.7 if self.s.get("enhance_style_creative", False) else 0.3
-                ),
+                "temperature": temperature,
                 "max_tokens":  2000,
             },
             timeout=30,
@@ -5083,9 +5106,18 @@ class MainWindow(QWidget):
         )
         creative_lay.addWidget(self.creativity_val)
 
+        # Label hiển thị tên mức độ (Khóa / Tiết chế / Tự do)
+        self.creativity_tier = QLabel(self._tier_label(_cur_temp))
+        self.creativity_tier.setFixedWidth(82)
+        self.creativity_tier.setStyleSheet(
+            "font-size:12px;font-weight:600;color:#6e6e73;background:transparent;"
+        )
+        creative_lay.addWidget(self.creativity_tier)
+
         def _on_creativity_changed(value: int):
             t = value / 100.0
             self.creativity_val.setText(f"{t:.2f}")
+            self.creativity_tier.setText(self._tier_label(t))
             self.settings["enhance_style_temperature"] = t
             self.settings["enhance_style_creative"] = t >= 0.5
 
@@ -5492,6 +5524,13 @@ class MainWindow(QWidget):
         self._build_style_buttons(self._seg_layout, active_name)
         self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
 
+    @staticmethod
+    def _tier_label(temperature: float) -> str:
+        """Trả về nhãn mức độ sáng tạo: chỉ báo khi khóa nội dung."""
+        if temperature <= 0.0:
+            return "🔒 Khóa nội dung"
+        return ""
+
     def _sync_creativity_control(self, temperature: float | None = None):
         if not hasattr(self, "creativity_slider"):
             return
@@ -5501,6 +5540,8 @@ class MainWindow(QWidget):
         self.creativity_slider.setValue(int(t * 100))
         self.creativity_slider.blockSignals(False)
         self.creativity_val.setText(f"{t:.2f}")
+        if hasattr(self, "creativity_tier"):
+            self.creativity_tier.setText(self._tier_label(t))
         self.settings["enhance_style_temperature"] = t
         self.settings["enhance_style_creative"] = t >= 0.5
 
