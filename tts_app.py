@@ -2901,11 +2901,12 @@ class SettingsDialog(QDialog):
             "genmax": {
                 "title":     "Hướng dẫn lấy GenMax API Key",
                 "subtitle":  "GenMax rẻ hơn ElevenLabs nhiều — voice ID giống nhau 100%",
-                "url":       "https://genmax.io/app/api-docs",
-                "url_label": "🔗  Mở GenMax Dashboard",
+                "url":       "https://genmax.io/?ref=e3tsg8",
+                "url_label": "🔗  Đăng ký GenMax (link ưu đãi)",
                 "steps": [
                     ("Mở GenMax",
-                     "Nhấn nút bên dưới → genmax.io"),
+                     "Nhấn nút bên dưới → genmax.io\n"
+                     "(Link ưu đãi — đăng ký qua link này để hỗ trợ Hedra Studio 🙏)"),
                     ("Tạo tài khoản",
                      "Nhấn Sign Up → điền email + mật khẩu\n"
                      "(hoặc đăng nhập bằng Google)"),

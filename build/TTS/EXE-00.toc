@@ -72,7 +72,7 @@
  [],
  False,
  False,
- 1778415836,
+ 1778415939,
  [('runw',
    '/Users/admin/tài liệu '
    'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
