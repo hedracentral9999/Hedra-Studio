@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import base64
+import time
 import requests
 import webbrowser
 import subprocess
@@ -1250,6 +1251,7 @@ def load_settings() -> dict:
         # Backfill tất cả key có thể thiếu từ phiên bản cũ
         _DEFAULTS = {
             "el_api_keys":              [],
+            "genmax_api_key":           "",
             "ds_api_key":               "",
             "gemini_api_key":           "",
             "gemini_chat_prompt":       "",
@@ -1272,6 +1274,7 @@ def load_settings() -> dict:
         return s
     return {
         "el_api_keys":              [],
+        "genmax_api_key":           "",
         "ds_api_key":               "",
         "gemini_api_key":           "",
         "gemini_chat_prompt":       "",
@@ -1444,19 +1447,88 @@ class Worker(QThread):
         return res.json()["choices"][0]["message"]["content"].strip()
 
     def _tts(self, text: str) -> bytes:
+        voice_id = self.s.get("selected_voice_id") or VOICE_ID
+
+        # ── Thử GenMax trước ─────────────────────────────────────
+        gm_key = self.s.get("genmax_api_key", "").strip()
+        if gm_key:
+            try:
+                self.status.emit("Đang generate audio [GenMax]...")
+                tts_body: dict = {
+                    "text":     text,
+                    "model_id": MODEL,
+                    "output_format": EL_OUTPUT_FORMAT,
+                    "voice_settings": {
+                        "stability":        0.5,
+                        "similarity_boost": 0.75,
+                        "speed":            self.speed,
+                    },
+                }
+                _lang = self.s.get("tts_language_code", "")
+                if _lang:
+                    tts_body["language_code"] = _lang
+                res = requests.post(
+                    f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
+                    headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
+                    json=tts_body,
+                    timeout=30,
+                )
+                if res.status_code == 202:
+                    task_id = res.json().get("id")
+                    if not task_id:
+                        raise Exception("GenMax không trả về task_id")
+                    # Poll cho đến khi hoàn thành (tối đa 90 giây)
+                    deadline = time.time() + 90
+                    poll_interval = 2
+                    while time.time() < deadline:
+                        time.sleep(poll_interval)
+                        self.status.emit("Đang chờ GenMax render audio...")
+                        p = requests.get(
+                            f"https://api.genmax.io/v1/history/{task_id}",
+                            headers={"xi-api-key": gm_key},
+                            timeout=15,
+                        )
+                        if p.status_code != 200:
+                            raise Exception(f"GenMax poll lỗi {p.status_code}: {p.text[:200]}")
+                        pdata = p.json()
+                        status = pdata.get("status", "")
+                        if status == "completed":
+                            audio_url = (pdata.get("result") or {}).get("audio_url", "")
+                            if not audio_url:
+                                raise Exception("GenMax không trả về audio_url")
+                            self.status.emit("Đang tải audio từ GenMax...")
+                            dl = requests.get(audio_url, timeout=30)
+                            if dl.status_code != 200:
+                                raise Exception(f"GenMax download lỗi {dl.status_code}")
+                            return dl.content
+                        elif status in ("failed", "error"):
+                            raise Exception(f"GenMax render thất bại: {pdata}")
+                        # pending/processing — tiếp tục poll
+                        poll_interval = min(poll_interval + 1, 5)
+                    raise Exception("GenMax timeout sau 90 giây")
+                elif res.status_code == 200:
+                    # Một số response trả về audio trực tiếp
+                    return res.content
+                else:
+                    raise Exception(f"GenMax {res.status_code}: {res.text[:300]}")
+            except Exception as gm_err:
+                self.status.emit(f"⚠️ GenMax lỗi — chuyển sang ElevenLabs... ({gm_err})")
+
+        # ── Fallback ElevenLabs ───────────────────────────────────
         keys = self.s.get("el_api_keys", [])
         if not keys:
             old = self.s.get("el_api_key", "").strip()
             keys = [old] if old else []
         keys = [k.strip() for k in keys if k.strip()]
         if not keys:
-            raise Exception("⚠️ Chưa nhập ElevenLabs API key.\n📌 Vào Settings → tab API Keys để thêm.")
+            if gm_key:
+                raise Exception("⚠️ GenMax lỗi và chưa có ElevenLabs API key.\n📌 Vào Settings → tab API Keys để thêm.")
+            raise Exception("⚠️ Chưa nhập API key.\n📌 Vào Settings → tab API Keys để thêm GenMax hoặc ElevenLabs key.")
         last_err = None
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
-            self.status.emit(f"Đang generate audio [{label}]...")
-            voice_id = self.s.get("selected_voice_id") or VOICE_ID
-            tts_body: dict = {
+            self.status.emit(f"Đang generate audio ElevenLabs [{label}]...")
+            tts_body = {
                 "text":     text,
                 "model_id": MODEL,
                 "output_format": EL_OUTPUT_FORMAT,
@@ -1486,7 +1558,15 @@ class Worker(QThread):
                 if body:
                     try:
                         err_data = res.json()
-                        err_msg = err_data.get("detail", {}).get("message", "") or str(err_data)
+                        detail = err_data.get("detail", "")
+                        if isinstance(detail, str):
+                            err_msg = detail
+                        elif isinstance(detail, list) and detail:
+                            err_msg = detail[0].get("msg", str(detail[0]))
+                        elif isinstance(detail, dict):
+                            err_msg = detail.get("message", str(detail))
+                        else:
+                            err_msg = str(err_data)
                         if err_msg and err_msg != "None":
                             detail_msg += f"\n→ {err_msg[:200]}"
                     except Exception:
@@ -2738,6 +2818,32 @@ class SettingsDialog(QDialog):
                      "Nhấn Generate 1 đoạn ngắn để xác nhận key hoạt động"),
                 ],
             },
+            "genmax": {
+                "title":     "Hướng dẫn lấy GenMax API Key",
+                "subtitle":  "GenMax rẻ hơn ElevenLabs nhiều — voice ID giống nhau 100%",
+                "url":       "https://genmax.io/app/api-docs",
+                "url_label": "🔗  Mở GenMax Dashboard",
+                "steps": [
+                    ("Mở GenMax",
+                     "Nhấn nút bên dưới → genmax.io"),
+                    ("Tạo tài khoản",
+                     "Nhấn Sign Up → điền email + mật khẩu\n"
+                     "(hoặc đăng nhập bằng Google)"),
+                    ("Nạp credits",
+                     "GenMax tính phí theo số ký tự — rẻ hơn ElevenLabs đáng kể\n"
+                     "→ Vào Billing để nạp lần đầu"),
+                    ("Lấy API Key",
+                     "Vào Dashboard → mục API Keys\n"
+                     "→ Nhấn \"Create API Key\" → đặt tên → Copy key"),
+                    ("Paste vào app",
+                     "Paste key vào ô GenMax API Key trong Hedra Studio\n"
+                     "→ nhấn Lưu\n\n"
+                     "✅ App sẽ dùng GenMax làm TTS chính,\n"
+                     "tự động chuyển sang ElevenLabs nếu GenMax lỗi"),
+                    ("Kiểm tra",
+                     "Generate 1 đoạn ngắn — nếu thấy \"Đang chờ GenMax render audio\" là đang hoạt động"),
+                ],
+            },
             "deepseek": {
                 "title":     "Hướng dẫn lấy DeepSeek API Key",
                 "subtitle":  "DeepSeek tặng free credits khi đăng ký tài khoản mới",
@@ -2962,6 +3068,22 @@ class SettingsDialog(QDialog):
             h.addStretch()
             h.addWidget(btn)
             return w
+
+        # ── Group: GenMax (TTS chính — rẻ hơn ElevenLabs) ──────────
+        gm_btn = _api_guide_btn("📖  Hướng dẫn lấy API key  →", is_ref=True)
+        gm_btn.setToolTip("Xem hướng dẫn đăng ký & lấy API key GenMax")
+        gm_btn.clicked.connect(lambda: self._show_api_guide("genmax"))
+        v.addWidget(_svc_header("GenMax  (TTS chính — rẻ hơn ElevenLabs)", gm_btn))
+        grp_gm, glay_gm = self._group()
+        self.genmax_key = QLineEdit(self.settings.get("genmax_api_key", ""))
+        self.genmax_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.genmax_key.setPlaceholderText("sk_...")
+        self.genmax_key.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
+        )
+        self._row(glay_gm, "API Key", self.genmax_key,
+                  "Ưu tiên dùng GenMax — tự động fallback sang ElevenLabs nếu lỗi", last=True)
+        v.addWidget(grp_gm)
 
         # ── Group: ElevenLabs ────────────────────────────────────────
         el_btn = _api_guide_btn("📖  Hướng dẫn lấy API key  →", is_ref=True)
@@ -4501,6 +4623,7 @@ class SettingsDialog(QDialog):
     def _save(self):
         raw_keys = self.el_keys.toPlainText().strip().splitlines()
         self.settings["el_api_keys"]        = [k.strip() for k in raw_keys if k.strip()]
+        self.settings["genmax_api_key"]     = getattr(self, "genmax_key", _NullEdit()).text().strip()
         self.settings["ds_api_key"]         = self.ds_key.text().strip()
         self.settings["gemini_api_key"]     = self.gemini_key.text().strip()
         self.settings["telegram_bot_token"] = getattr(self, "telegram_bot_token", _NullEdit()).text().strip()
