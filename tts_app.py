@@ -1414,9 +1414,15 @@ class Worker(QThread):
             self.error.emit(str(e))
 
     def _enhance(self, text: str) -> str:
-        api_key = self.s.get("ds_api_key", "")
-        if not api_key:
-            raise Exception("⚠️ Chưa nhập DeepSeek API key.\n📌 Vào Settings → tab API Keys để thêm.")
+        ds_key     = self.s.get("ds_api_key", "").strip()
+        gemini_key = self.s.get("gemini_api_key", "").strip()
+        if not ds_key and not gemini_key:
+            raise Exception(
+                "⚠️ Chưa có AI key để enhance kịch bản.\n"
+                "📌 Vào Settings → tab API Keys:\n"
+                "  • Gemini API Key (miễn phí — khuyến nghị cho người mới)\n"
+                "  • DeepSeek API Key (trả phí, chất lượng cao)"
+            )
         # ── Lấy temperature từ style (slider), fallback về creative bool nếu chưa có
         temperature = self.s.get(
             "enhance_style_temperature",
@@ -1427,24 +1433,45 @@ class Worker(QThread):
         # ── Khi sáng tạo = 0: gắn content lock, cấm thêm nội dung mới ─
         if temperature <= 0.0:
             system_prompt += CREATIVITY_CONTENT_LOCK
+
+        # ── Ưu tiên DeepSeek → fallback Gemini ──────────────────────
+        if ds_key:
+            res = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {ds_key}",
+                         "Content-Type": "application/json"},
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": text},
+                    ],
+                    "temperature": temperature,
+                    "max_tokens":  2000,
+                },
+                timeout=30,
+            )
+            if res.status_code == 200:
+                return res.json()["choices"][0]["message"]["content"].strip()
+            # DeepSeek lỗi → thử Gemini nếu có
+            if not gemini_key:
+                raise Exception(f"DeepSeek {res.status_code}: {res.text[:200]}")
+
+        # ── Gemini (miễn phí, dùng khi không có DeepSeek hoặc DeepSeek lỗi) ─
+        full_prompt = f"{system_prompt}\n\n{text}"
         res = requests.post(
-            "https://api.deepseek.com/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}",
-                     "Content-Type": "application/json"},
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": self.text},
-                ],
-                "temperature": temperature,
-                "max_tokens":  2000,
-            },
-            timeout=30,
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.5-flash:generateContent?key={gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": full_prompt}]}]},
+            timeout=60,
         )
         if res.status_code != 200:
-            raise Exception(f"DeepSeek {res.status_code}: {res.text[:200]}")
-        return res.json()["choices"][0]["message"]["content"].strip()
+            raise Exception(f"Gemini {res.status_code}: {res.text[:200]}")
+        candidates = res.json().get("candidates", [])
+        if not candidates:
+            raise Exception("Gemini không trả về kết quả")
+        return candidates[0]["content"]["parts"][0]["text"].strip()
 
     def _tts(self, text: str) -> bytes:
         voice_id = self.s.get("selected_voice_id") or VOICE_ID
@@ -1587,6 +1614,59 @@ class Worker(QThread):
             detail += f"\n\n{body}"
             raise Exception(detail)
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
+
+
+# ── TTS-Only Worker — chỉ gen audio, không enhance (dùng sau preview) ─
+class _TTSOnlyWorker(QThread):
+    """Nhận text đã enhance sẵn → chỉ gọi TTS, không gọi AI."""
+    status = pyqtSignal(str)
+    done   = pyqtSignal(str)
+    error  = pyqtSignal(str)
+
+    def __init__(self, text: str, speed: float, filename: str, settings: dict):
+        super().__init__()
+        self.text     = text
+        self.speed    = speed
+        self.filename = filename
+        self.s        = settings
+        # Mượn _tts từ Worker
+        self._tts = Worker(text, speed, filename, settings)._tts
+
+    def run(self):
+        try:
+            self.status.emit("Đang generate audio...")
+            audio = self._tts(self.text)
+            out_dir = self.s.get("output_dir", DEFAULT_OUT)
+            os.makedirs(out_dir, exist_ok=True)
+            path = os.path.join(out_dir, self.filename + ".mp3")
+            with open(path, "wb") as f:
+                f.write(audio)
+            self.done.emit(path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+# ── Preview Worker — chỉ enhance, không gen audio ─────────────────
+class PreviewWorker(QThread):
+    """Chạy _enhance() và trả về text đã xử lý để user xem trước."""
+    status = pyqtSignal(str)
+    done   = pyqtSignal(str)   # enhanced text
+    error  = pyqtSignal(str)
+
+    def __init__(self, text: str, settings: dict):
+        super().__init__()
+        self.text = text
+        self.s    = settings
+        # Mượn _enhance từ Worker — inject speed=1.0, filename="" để dùng chung
+        self._enhance = Worker(text, 1.0, "", settings)._enhance
+
+    def run(self):
+        try:
+            self.status.emit("⏳  AI đang xử lý kịch bản...")
+            result = self._enhance(self.text)
+            self.done.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 # ── Gemini Vision Worker ───────────────────────────────────────────
@@ -4996,7 +5076,29 @@ class MainWindow(QWidget):
         layout.setSpacing(0)
 
         # ══ Section 1: Kịch bản (content chính — không cần card, nổi bật) ═══
-        layout.addWidget(self._section_lbl("KỊCH BẢN"))
+        # Header row: label + nút "Xem kịch bản"
+        sec1_row = QWidget()
+        sec1_row.setStyleSheet("background:transparent;border:none;")
+        sec1_lay = QHBoxLayout(sec1_row)
+        sec1_lay.setContentsMargins(0, 12, 0, 4)
+        sec1_lay.setSpacing(8)
+        sec1_lay.addWidget(self._section_lbl("KỊCH BẢN"))
+        sec1_lay.addStretch()
+
+        self._btn_preview = QPushButton("✨  Xem kịch bản")
+        self._btn_preview.setFixedHeight(30)
+        self._btn_preview.setStyleSheet(
+            f"QPushButton{{background:#f0f6ff;color:{ACCENT};"
+            "border:1.5px solid #c5d9f8;border-radius:8px;"
+            "font-size:12px;font-weight:600;padding:0 14px;}}"
+            f"QPushButton:hover{{background:#dce9fd;border-color:{ACCENT};}}"
+            "QPushButton:pressed{background:#cfe0fc;}"
+            "QPushButton:disabled{background:#f5f5f7;color:#aeaeb2;border-color:#e5e5ea;}"
+        )
+        self._btn_preview.clicked.connect(self._do_preview)
+        sec1_lay.addWidget(self._btn_preview)
+        layout.addWidget(sec1_row)
+
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
         self.text_input.setMinimumHeight(210)
@@ -5006,7 +5108,54 @@ class MainWindow(QWidget):
             f"font-size:14px;}}"
             f"QTextEdit:focus{{border:1.5px solid {ACCENT};}}"
         )
+        # Khi user sửa kịch bản gốc → xóa preview cũ (tránh gen sai)
+        self.text_input.textChanged.connect(self._on_script_changed)
         layout.addWidget(self.text_input)
+
+        # ── Kết quả preview (ẩn lúc đầu) ────────────────────────────
+        self._preview_box = QWidget()
+        self._preview_box.setStyleSheet("background:transparent;border:none;")
+        self._preview_box.setVisible(False)
+        pv_lay = QVBoxLayout(self._preview_box)
+        pv_lay.setContentsMargins(0, 8, 0, 0)
+        pv_lay.setSpacing(4)
+
+        pv_header = QWidget()
+        pv_header.setStyleSheet("background:transparent;border:none;")
+        pv_h = QHBoxLayout(pv_header)
+        pv_h.setContentsMargins(0, 0, 0, 0)
+        pv_h.setSpacing(8)
+        pv_lbl = QLabel("KẾT QUẢ SAU KHI XỬ LÝ")
+        pv_lbl.setStyleSheet(
+            "font-size:10px;font-weight:700;letter-spacing:0.8px;"
+            "color:#6e6e73;background:transparent;border:none;"
+        )
+        pv_h.addWidget(pv_lbl)
+        pv_h.addStretch()
+        pv_note = QLabel("Có thể chỉnh sửa trước khi gen giọng")
+        pv_note.setStyleSheet("font-size:10px;color:#aeaeb2;background:transparent;border:none;")
+        pv_h.addWidget(pv_note)
+        pv_lay.addWidget(pv_header)
+
+        self.preview_text = QTextEdit()
+        self.preview_text.setPlaceholderText("Nhấn \"✨ Xem kịch bản\" để xem kịch bản sau khi AI xử lý...")
+        self.preview_text.setMinimumHeight(160)
+        self.preview_text.setStyleSheet(
+            "QTextEdit{border:1.5px solid #c5d9f8;border-radius:10px;"
+            "background:#f0f6ff;color:#1d1d1f;padding:12px 14px;font-size:13px;}"
+            f"QTextEdit:focus{{border:1.5px solid {ACCENT};}}"
+        )
+        pv_lay.addWidget(self.preview_text)
+
+        self._preview_status = QLabel("")
+        self._preview_status.setStyleSheet(
+            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+        )
+        self._preview_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pv_lay.addWidget(self._preview_status)
+
+        layout.addWidget(self._preview_box)
+        self._enhanced_cache = ""   # lưu text đã enhance để Worker dùng lại
 
         # ══ Section 2: Phong cách & Giọng — grouped card ═════════════════
         layout.addWidget(self._section_lbl("PHONG CÁCH & GIỌNG"))
@@ -5932,17 +6081,18 @@ rm -f "$DMG" 2>/dev/null
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
-        if not self.settings.get("el_api_keys") or not self.settings.get("ds_api_key"):
-            missing = []
-            if not self.settings.get("el_api_keys"):
-                missing.append("🔑 ElevenLabs API Key")
-            if not self.settings.get("ds_api_key"):
-                missing.append("🤖 DeepSeek API Key")
-            QMessageBox.warning(self, "Thiếu API Key",
-                                "Cần các API key sau:\n\n"
-                                + "\n".join(missing)
-                                + "\n\n📌 Vào Settings → tab API Keys để thêm.")
+
+        # Kiểm tra TTS key (GenMax hoặc ElevenLabs)
+        has_tts = bool(self.settings.get("genmax_api_key") or self.settings.get("el_api_keys"))
+        if not has_tts:
+            QMessageBox.warning(self, "Thiếu TTS API Key",
+                                "Cần ít nhất một TTS API Key:\n\n"
+                                "🎙 GenMax API Key (rẻ hơn, khuyến nghị)\n"
+                                "  hoặc\n"
+                                "🔑 ElevenLabs API Key\n\n"
+                                "📌 Vào Settings → tab API Keys để thêm.")
             return
+
         filename = self.filename_input.text().strip()
         if not filename:
             QMessageBox.warning(self, "Thiếu tên file", "Nhập tên file trước khi generate nhé!")
@@ -5955,11 +6105,86 @@ rm -f "$DMG" 2>/dev/null
             self.settings["enhance_style_creative"] = t >= 0.5
             save_settings(self.settings)
         self.btn_gen.setEnabled(False)
-        self.worker = Worker(text, speed, filename.replace(" ", "_"), self.settings)
+
+        # Nếu đã có preview text (user đã xem trước) → dùng luôn, không enhance lại
+        preview_text = getattr(self, "_enhanced_cache", "").strip()
+        if preview_text:
+            self.worker = _TTSOnlyWorker(preview_text, speed,
+                                         filename.replace(" ", "_"), self.settings)
+        else:
+            # Chưa preview → enhance + TTS như cũ
+            self.worker = Worker(text, speed, filename.replace(" ", "_"), self.settings)
+
         self.worker.status.connect(self._on_tts_status)
         self.worker.done.connect(self._on_done)
         self.worker.error.connect(self._on_error)
         self.worker.start()
+
+    # ── Preview handlers ──────────────────────────────────────────────
+    def _do_preview(self):
+        text = self.text_input.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
+            return
+        has_ai = bool(self.settings.get("ds_api_key") or self.settings.get("gemini_api_key"))
+        if not has_ai:
+            QMessageBox.warning(self, "Thiếu AI Key",
+                                "Cần API key AI để xử lý kịch bản:\n\n"
+                                "🆓 Gemini API Key (miễn phí — khuyến nghị)\n"
+                                "   hoặc\n"
+                                "🤖 DeepSeek API Key\n\n"
+                                "📌 Vào Settings → tab API Keys để thêm.")
+            return
+        self._btn_preview.setEnabled(False)
+        self._btn_preview.setText("⏳  Đang xử lý...")
+        self._enhanced_cache = ""
+        self._preview_box.setVisible(True)
+        self.preview_text.setPlainText("")
+        self._preview_status.setText("AI đang xử lý kịch bản...")
+        self._preview_status.setStyleSheet(
+            "font-size:11px;color:#b45309;background:transparent;border:none;"
+        )
+        self._preview_worker = PreviewWorker(text, self.settings)
+        self._preview_worker.status.connect(lambda m: self._preview_status.setText(m))
+        self._preview_worker.done.connect(self._on_preview_done)
+        self._preview_worker.error.connect(self._on_preview_error_msg)
+        self._preview_worker.start()
+
+    def _on_preview_done(self, enhanced: str):
+        self._enhanced_cache = enhanced
+        self.preview_text.setPlainText(enhanced)
+        self._preview_status.setText("✅  Xem xong — chỉnh sửa nếu cần rồi nhấn Generate Audio")
+        self._preview_status.setStyleSheet(
+            "font-size:11px;color:#15803d;background:transparent;border:none;"
+        )
+        self._btn_preview.setEnabled(True)
+        self._btn_preview.setText("✨  Xem kịch bản")
+        # Khi user chỉnh sửa preview → cập nhật cache
+        try:
+            self.preview_text.textChanged.disconnect()
+        except TypeError:
+            pass
+        self.preview_text.textChanged.connect(
+            lambda: setattr(self, "_enhanced_cache", self.preview_text.toPlainText())
+        )
+
+    def _on_preview_error_msg(self, msg: str):
+        self._preview_status.setText(f"❌  {msg}")
+        self._preview_status.setStyleSheet(
+            "font-size:11px;color:#dc2626;background:transparent;border:none;"
+        )
+        self._btn_preview.setEnabled(True)
+        self._btn_preview.setText("✨  Xem kịch bản")
+
+    def _on_script_changed(self):
+        """Khi sửa kịch bản gốc → reset preview để tránh gen sai."""
+        if getattr(self, "_enhanced_cache", ""):
+            self._enhanced_cache = ""
+            self.preview_text.setPlainText("")
+            self._preview_status.setText("⚠️  Kịch bản đã thay đổi — nhấn lại \"Xem kịch bản\" để cập nhật")
+            self._preview_status.setStyleSheet(
+                "font-size:11px;color:#b45309;background:transparent;border:none;"
+            )
 
     def _on_tts_status(self, msg: str):
         self.tts_status_lbl.setText(msg)
