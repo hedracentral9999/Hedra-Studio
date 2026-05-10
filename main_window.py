@@ -1,4 +1,6 @@
 import os
+import sys
+import subprocess
 import webbrowser
 
 from PyQt6.QtWidgets import (
@@ -24,6 +26,15 @@ from app_workers import (
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from settings_dialog import SettingsDialog
+
+# ── Telegram config ────────────────────────────────────────────────
+try:
+    from telegram_config import TELEGRAM_BOT_TOKEN as _TG_BOT, TELEGRAM_CHAT_ID as _TG_CHAT
+    TELEGRAM_BOT_TOKEN = _TG_BOT
+    TELEGRAM_CHAT_ID = _TG_CHAT
+except ImportError:
+    TELEGRAM_BOT_TOKEN = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
 
 # ── Main window ────────────────────────────────────────────────────
 class MainWindow(QWidget):
