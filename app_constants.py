@@ -281,9 +281,12 @@ OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
 # ── Content lock: gắn vào cuối prompt khi sáng tạo = 0 ─
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, pause...).
 # Slider chỉ kiểm soát 1 thứ: có được THÊM NỘI DUNG MỚI hay không.
-CREATIVITY_CONTENT_LOCK = """
+def get_creativity_guide(temperature: float) -> str:
+    """Trả về hướng dẫn mức sáng tạo theo temperature (0.0 → 1.0)."""
+    if temperature <= 0.0:
+        return """
 
-## ⚠️ LƯU Ý QUAN TRỌNG
+## 🔒 MỨC SÁNG TẠO: KHÓA NỘI DUNG
 
 Bạn vẫn phải áp dụng TẤT CẢ các quy tắc ở trên — tags, viết hoa, kéo dài âm, pause, từ đệm... đầy đủ 100%.
 
@@ -292,8 +295,47 @@ TUY NHIÊN, bạn TUYỆT ĐỐI KHÔNG ĐƯỢC thêm nội dung mới:
 - KHÔNG diễn giải dài dòng, không mở rộng ý
 - KHÔNG thêm lời chào, lời kết, lời dẫn dắt nếu input không có
 - KHÔNG biến 1 câu ngắn thành 1 đoạn văn dài
-- Chỉ áp dụng quy tắc format (tags, CAPS, kéo dài âm, pause...) lên CHÍNH XÁC những gì input có
-- Số lượng câu output = số lượng ý trong input — không nhiều hơn"""
+- Chỉ áp dụng quy tắc format lên CHÍNH XÁC những gì input có
+- Số lượng câu output = số lượng ý trong input"""
+    elif temperature <= 0.3:
+        return """
+
+## 🎯 MỨC SÁNG TẠO: TIẾT CHẾ (30%)
+
+Bạn vẫn áp dụng đầy đủ các quy tắc format ở trên.
+
+Giới hạn sáng tạo:
+- Bám sát nội dung gốc, hạn chế thêm ý mới
+- Có thể thêm 1-2 từ đệm/cảm thán tự nhiên nếu thật sự cần
+- Không mở rộng câu, không thêm câu dẫn dài
+- Ưu tiên giữ nguyên cấu trúc và ý chính của input"""
+    elif temperature <= 0.6:
+        return """
+
+## ⚖️ MỨC SÁNG TẠO: CÂN BẰNG (60%)
+
+Bạn vẫn áp dụng đầy đủ các quy tắc format ở trên.
+
+Sáng tạo vừa phải:
+- Được phép thêm từ đệm, câu dẫn ngắn tự nhiên
+- Có thể diễn đạt lại cho mượt mà, tự nhiên hơn
+- Giữ nguyên ý chính, không bịa thêm thông tin
+- Thêm tags cảm xúc phong phú hơn khi phù hợp"""
+    else:
+        return """
+
+## 🎨 MỨC SÁNG TẠO: TỰ DO (100%)
+
+Bạn vẫn áp dụng đầy đủ các quy tắc format ở trên.
+
+Thoải mái sáng tạo:
+- Thêm câu dẫn, từ đệm, bình luận tự nhiên như người thật
+- Có thể mở rộng ý, thêm ví dụ ngắn, diễn giải nhẹ nhàng
+- Không bịa thông tin sai, nhưng được làm cho câu chuyện sinh động hơn
+- Tạo cảm giác như đang trò chuyện thật, có cảm xúc, có cá tính"""
+
+# Giữ lại để backward compat
+CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
 
 PROMPTS = {
     "🎯  Nghiêm túc": DEFAULT_PROMPT,

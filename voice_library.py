@@ -46,9 +46,10 @@ class VoiceLibraryDialog(QDialog):
 
     voice_added = pyqtSignal(str, str)  # (voice_id, voice_name) — sau khi add thành công
 
-    def __init__(self, parent, api_key: str):
+    def __init__(self, parent, api_key: str, genmax_key: str = ""):
         super().__init__(parent)
         self.api_key    = api_key
+        self.genmax_key = genmax_key
         self._workers: list = []
         self._playing_btn: QPushButton | None = None   # nút đang phát
         self._dl_worker: AudioPreviewDownloader | None = None
@@ -208,6 +209,7 @@ class VoiceLibraryDialog(QDialog):
             language=self._sel_lang,
             search=self._search_box.text().strip(),
             page_size=40,
+            genmax_key=self.genmax_key,
         )
         w.done.connect(self._on_results)
         w.error.connect(lambda e: self._status.setText(f"⚠️  {e}"))

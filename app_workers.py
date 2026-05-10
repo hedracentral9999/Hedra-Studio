@@ -11,23 +11,35 @@ from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app_constants import (
-    DEFAULT_PROMPT, CREATIVITY_CONTENT_LOCK,
+    DEFAULT_PROMPT, get_creativity_guide, CREATIVITY_CONTENT_LOCK,
     VERSION, GITHUB_REPO, VOICE_ID, MODEL, EL_OUTPUT_FORMAT,
     GEMINI_CHAT_PROMPT,
 )
 from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE
 
 class VoiceFetcher(QThread):
-    """Fetch danh sách voices từ ElevenLabs API."""
+    """Fetch danh sách voices — ưu tiên GenMax nếu có key, fallback ElevenLabs."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, genmax_key: str = ""):
         super().__init__()
-        self.api_key = api_key
+        self.api_key    = api_key
+        self.genmax_key = genmax_key
 
     def run(self):
         try:
+            if self.genmax_key:
+                r = requests.get(
+                    "https://api.genmax.io/v1/default-voices?page_size=100",
+                    headers={"xi-api-key": self.genmax_key},
+                    timeout=10,
+                )
+                if r.status_code == 200:
+                    voices = r.json().get("voices", [])
+                    voices.sort(key=lambda v: v.get("name", "").lower())
+                    self.done.emit(voices)
+                    return
             r = requests.get(
                 "https://api.elevenlabs.io/v1/voices",
                 headers={"xi-api-key": self.api_key},
@@ -44,16 +56,18 @@ class VoiceFetcher(QThread):
 
 
 class SharedVoiceFetcher(QThread):
-    """Fetch voices từ ElevenLabs Shared Voice Library."""
+    """Fetch voices từ Shared Voice Library — ưu tiên GenMax, fallback ElevenLabs."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
-    def __init__(self, api_key: str, language: str = "", search: str = "", page_size: int = 30):
+    def __init__(self, api_key: str, language: str = "", search: str = "",
+                 page_size: int = 30, genmax_key: str = ""):
         super().__init__()
-        self.api_key   = api_key
-        self.language  = language
-        self.search    = search
-        self.page_size = page_size
+        self.api_key    = api_key
+        self.language   = language
+        self.search     = search
+        self.page_size  = page_size
+        self.genmax_key = genmax_key
 
     def run(self):
         try:
@@ -62,6 +76,17 @@ class SharedVoiceFetcher(QThread):
                 params["language"] = self.language
             if self.search:
                 params["search"] = self.search
+            if self.genmax_key:
+                r = requests.get(
+                    "https://api.genmax.io/v1/shared-voices",
+                    headers={"xi-api-key": self.genmax_key},
+                    params=params,
+                    timeout=12,
+                )
+                if r.status_code == 200:
+                    voices = r.json().get("voices", [])
+                    self.done.emit(voices)
+                    return
             r = requests.get(
                 "https://api.elevenlabs.io/v1/shared-voices",
                 headers={"xi-api-key": self.api_key},
@@ -483,9 +508,8 @@ class Worker(QThread):
         )
         # ── Lấy base prompt
         system_prompt = self.s.get("enhance_prompt", DEFAULT_PROMPT)
-        # ── Khi sáng tạo = 0: gắn content lock, cấm thêm nội dung mới ─
-        if temperature <= 0.0:
-            system_prompt += CREATIVITY_CONTENT_LOCK
+        # ── Gắn hướng dẫn mức sáng tạo theo temperature ─
+        system_prompt += get_creativity_guide(temperature)
 
         # ── Ưu tiên Gemini (miễn phí) → fallback DeepSeek (trả phí) ─
         if gemini_key:

@@ -1333,26 +1333,28 @@ class SettingsDialog(QDialog):
 
         # Auto-fetch khi mở trang
         keys = self.settings.get("el_api_keys", [])
+        gm_key = self.settings.get("genmax_api_key", "")
         key  = next((k.strip() for k in keys if k.strip()), "")
-        if key:
-            self._fetcher = VoiceFetcher(key)
+        if key or gm_key:
+            self._fetcher = VoiceFetcher(key, gm_key)
             self._fetcher.done.connect(self._on_voices_fetched)
             self._fetcher.error.connect(lambda e: self._voice_status.setText(f"⚠️ {e}"))
             self._fetcher.start()
         else:
-            self._voice_status.setText("⚠️ Chưa có ElevenLabs API key — vào API Keys để thêm.")
+            self._voice_status.setText("⚠️ Chưa có TTS API key — vào API Keys để thêm.")
 
         return page
 
     def _open_voice_library(self):
         """Mở dialog browse ElevenLabs Shared Voice Library."""
         keys = self.settings.get("el_api_keys", [])
+        gm_key = self.settings.get("genmax_api_key", "")
         key  = next((k.strip() for k in keys if k.strip()), "")
-        if not key:
+        if not key and not gm_key:
             QMessageBox.warning(self, "Thiếu API Key",
                                 "Cần ElevenLabs API key để duyệt thư viện.\nVào API Keys để thêm.")
             return
-        dlg = VoiceLibraryDialog(self, api_key=key)
+        dlg = VoiceLibraryDialog(self, api_key=key, genmax_key=gm_key)
         dlg.voice_added.connect(self._on_library_voice_added)
         dlg.exec()
 
@@ -1362,9 +1364,10 @@ class SettingsDialog(QDialog):
         self._voice_status.setText("⏳  Đang tải lại danh sách giọng...")
         self._api_voices_grp.setVisible(False)
         keys = self.settings.get("el_api_keys", [])
+        gm_key = self.settings.get("genmax_api_key", "")
         key  = next((k.strip() for k in keys if k.strip()), "")
-        if key:
-            self._fetcher = VoiceFetcher(key)
+        if key or gm_key:
+            self._fetcher = VoiceFetcher(key, gm_key)
             self._fetcher.done.connect(self._on_voices_fetched)
             self._fetcher.error.connect(lambda e: self._voice_status.setText(f"⚠️ {e}"))
             self._fetcher.start()
