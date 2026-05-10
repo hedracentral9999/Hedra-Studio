@@ -282,23 +282,31 @@ OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, pause...).
 # Slider chỉ kiểm soát 1 thứ: có được THÊM NỘI DUNG MỚI hay không.
 def get_creativity_guide(temperature: float) -> str:
-    """Trả về hướng dẫn mức sáng tạo — AI tự hiểu % và điều chỉnh theo scale."""
+    """Trả về hướng dẫn mức sáng tạo chính xác theo % — AI áp dụng tỉ lệ thuận."""
     pct = int(temperature * 100)
+    # Các ngưỡng tính theo % — công thức tỉ lệ thuận
+    filler_words = 0 if pct < 20 else 1 if pct < 40 else 2 if pct < 60 else 3 if pct < 80 else 5
+    rephrase_pct = max(0, pct - 30)  # bắt đầu đảo câu từ 30%
+    can_add_sentence = "CÓ" if pct >= 60 else "KHÔNG"
+    can_paraphrase  = "CÓ" if pct >= 40 else "KHÔNG"
+    max_new_chars   = int((pct / 100) * 200)  # tối đa ký tự mới được thêm
     return f"""
 
-## 🎚 MỨC SÁNG TẠO HIỆN TẠI: {pct}%
+## 🎚 MỨC SÁNG TẠO: {pct}/100
 
-⚠️ Hướng dẫn này GHI ĐÈ các quy tắc cứng ở dưới. Hãy tự điều chỉnh hành vi THEO CON SỐ {pct}%.
+⚠️ GHI ĐÈ mọi quy tắc cứng ở dưới. Áp dụng CHÍNH XÁC các thông số sau:
 
-THANG ĐO (0% → 100%):
-  0-20% : CHỈ format (tags, CAPS, pause, sửa chính tả). KHÔNG thêm từ mới, KHÔNG đổi câu.
- 20-40% : Format + thêm từ đệm tự nhiên (ạ, nha, nhé, đó...). Vẫn KHÔNG thêm câu mới.
- 40-60% : Format + diễn đạt lại cho mượt + thêm 1-2 từ cảm thán. Được đảo câu.
- 60-80% : Format + thêm câu dẫn ngắn, bình luận tự nhiên. Giữ ý chính.
- 80-100%: TỰ DO — thêm câu, diễn giải, ví dụ, cá tính. Không bịa thông tin sai.
+- Số từ đệm được thêm tối đa: {filler_words} (ạ/nha/nhé/đó/ơi...)
+- Được đảo/đổi cấu trúc câu: {can_paraphrase}
+- Được thêm câu mới (dẫn/bình luận): {can_add_sentence}
+- Tối đa ký tự mới được thêm: {max_new_chars}
+- Số câu được phép diễn đạt lại: ~{rephrase_pct}%
 
-CON SỐ CỦA BẠN: {pct}% → hãy tự nội suy vị trí của bạn trong thang đo trên và
-điều chỉnh output cho phù hợp. Số càng cao = càng sáng tạo, càng tự nhiên."""
+LUẬT CỨNG (luôn áp dụng):
+- KHÔNG bịa thông tin sai, KHÔNG thêm ý không có trong input gốc
+- Format đầy đủ: tags, CAPS, pause, sửa chính tả, viết tắt → đầy đủ
+
+Số càng cao = càng phóng khoáng. Tuân thủ CHÍNH XÁC các con số trên."""
 
 # Giữ lại để backward compat
 CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
