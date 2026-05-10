@@ -996,7 +996,7 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
 {
   "purpose":  "mục đích chính — 1 trong: Bán hàng | Tư vấn | Giáo dục | Kể chuyện | Truyền cảm hứng | Khác",
   "audience": "đối tượng (nhiều giá trị cách nhau dấu phẩy nếu cần)",
-  "region":   "vùng miền — 1 trong: Miền Nam | Miền Bắc | Trung lập",
+  "region":   "vùng miền — 1 trong: Trung lập | Miền Nam | Miền Bắc | Miền Trung. Để trống (empty string) nếu mô tả không đề cập vùng miền",
   "tone":     "tông cảm xúc (nhiều giá trị cách nhau dấu phẩy nếu cần)",
   "product":  "sản phẩm hoặc lĩnh vực cụ thể",
   "keywords": "từ ngữ đặc trưng muốn dùng trong kịch bản TTS",
@@ -1802,7 +1802,7 @@ class PromptWizardDialog(QDialog):
          ["Người trẻ", "Gia đình", "Doanh nhân", "Học sinh / SV", "Tất cả"],
          True, "Không có lựa chọn phù hợp? Nhập tại đây..."),
         ("region",   "3. Vùng miền / Phong cách",
-         ["Miền Nam", "Miền Trung", "Miền Bắc", "Trung lập"],
+         ["Trung lập", "Miền Nam", "Miền Trung", "Miền Bắc"],
          False, "Không có lựa chọn phù hợp? Nhập tại đây..."),
         ("tone",     "4. Tông cảm xúc",
          ["Vui vẻ", "Nghiêm túc", "Ấm áp", "Hài hước", "Mạnh mẽ", "Chuyên nghiệp"],
