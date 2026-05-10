@@ -844,6 +844,86 @@ class FeedbackSender(QThread):
 
 
 
+# ── Speech-to-Text Worker ──────────────────────────────────────────
+class SpeechToTextWorker(QThread):
+    """Gọi GenMax STT API để chuyển audio → text + timestamps."""
+    done   = pyqtSignal(str, list)  # (full_text, words)
+    status = pyqtSignal(str)
+    error  = pyqtSignal(str)
+
+    def __init__(self, file_path: str, genmax_key: str):
+        super().__init__()
+        self.file_path  = file_path
+        self.genmax_key = genmax_key
+
+    def run(self):
+        try:
+            self.status.emit("Đang upload audio...")
+            with open(self.file_path, "rb") as f:
+                r = requests.post(
+                    "https://api.genmax.io/v1/speech-to-text",
+                    headers={"xi-api-key": self.genmax_key},
+                    files={"file": f},
+                    data={"model_id": "scribe_v1"},
+                    timeout=120,
+                )
+            if r.status_code != 200:
+                self.error.emit(f"GenMax STT lỗi {r.status_code}: {r.text[:200]}")
+                return
+            data = r.json()
+            text  = data.get("text", "")
+            words = data.get("words", [])
+            self.done.emit(text, words)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+def words_to_srt(words: list) -> str:
+    """Chuyển danh sách words (có start/end/text) → chuỗi SRT."""
+    # Gộp words thành subtitle lines ~40 ký tự
+    lines = []
+    current_line = ""
+    line_start = None
+    line_end = None
+
+    for w in words:
+        if w.get("type") == "spacing":
+            if current_line:
+                current_line += " "
+            continue
+        word_text = w.get("text", "")
+        start = w.get("start", 0)
+        end   = w.get("end", 0)
+
+        if line_start is None:
+            line_start = start
+
+        if len(current_line) + len(word_text) > 40 and current_line:
+            lines.append((line_start, line_end or end, current_line.strip()))
+            current_line = word_text
+            line_start = start
+        else:
+            current_line += word_text
+        line_end = end
+
+    if current_line.strip():
+        lines.append((line_start, line_end or 0, current_line.strip()))
+
+    srt = []
+    for i, (start, end, text) in enumerate(lines, 1):
+        def _fmt(sec: float) -> str:
+            h = int(sec // 3600)
+            m = int((sec % 3600) // 60)
+            s = int(sec % 60)
+            ms = int((sec % 1) * 1000)
+            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+        srt.append(f"{i}")
+        srt.append(f"{_fmt(start)} --> {_fmt(end)}")
+        srt.append(text)
+        srt.append("")
+    return "\n".join(srt)
+
+
 # ── Credits checker (background thread — không block UI) ──────────
 class _CreditsChecker(QThread):
     done = pyqtSignal(str)

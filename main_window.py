@@ -23,6 +23,7 @@ from app_utils import load_settings, save_settings, reveal_file, DEFAULT_OUT, DA
 from app_workers import (
     Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker,
     UpdateChecker, UpdateDownloader, _CreditsChecker,
+    SpeechToTextWorker, words_to_srt,
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from settings_dialog import SettingsDialog
@@ -247,6 +248,7 @@ class MainWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
         self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
+        self.tabs.addTab(self._build_stt_tab(),  "📝  STT")
         self.tabs.setCurrentIndex(1)  # TTS mặc định
         layout.addWidget(self.tabs)
 
@@ -692,6 +694,142 @@ class MainWindow(QWidget):
         scroll.setWidget(w)
         outer_lay.addWidget(scroll)
         return outer
+
+    # ── Tab 3: Speech-to-Text ────────────────────────────────────
+    def _build_stt_tab(self) -> QWidget:
+        outer = QWidget()
+        outer_lay = QVBoxLayout(outer)
+        outer_lay.setContentsMargins(0, 0, 0, 0)
+        outer_lay.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG};border:none;}}"
+        )
+
+        w = QWidget()
+        w.setStyleSheet(f"background:{BG};")
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(0, 12, 0, 24)
+        layout.setSpacing(0)
+
+        # ═══ Drop zone / Chọn file ═══
+        layout.addWidget(self._section_lbl("FILE AUDIO"))
+        self._stt_drop = DropZone()
+        self._stt_drop.files_added.connect(self._stt_file_selected)
+        self._stt_drop.setStyleSheet(
+            "QFrame{border:1.5px dashed #c7c7cc;border-radius:10px;background:#ffffff;}"
+            "QFrame:hover{border-color:#0071e3;}"
+        )
+        layout.addWidget(self._stt_drop)
+
+        self._stt_file_lbl = QLabel("Chưa chọn file — kéo thả MP3/WAV vào đây")
+        self._stt_file_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:12px;background:transparent;padding:6px 0;"
+        )
+        layout.addWidget(self._stt_file_lbl)
+        self._stt_path = ""
+
+        layout.addSpacing(12)
+        self._stt_btn = QPushButton("🎤  Nhận diện giọng nói")
+        self._stt_btn.setMinimumHeight(46)
+        self._stt_btn.setFont(QFont("", 14, QFont.Weight.Bold))
+        self._stt_btn.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border-radius:10px;border:none;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:#005bb5;}}"
+            "QPushButton:disabled{background:#a8d0fb;color:white;}"
+        )
+        self._stt_btn.clicked.connect(self._do_stt)
+        layout.addWidget(self._stt_btn)
+
+        self._stt_status = QLabel("")
+        self._stt_status.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;background:transparent;padding:4px 0;"
+        )
+        self._stt_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._stt_status)
+
+        # ═══ Kết quả ═══
+        layout.addWidget(self._section_lbl("KẾT QUẢ"))
+        self._stt_text = QTextEdit()
+        self._stt_text.setPlaceholderText("Nội dung nhận diện sẽ hiện ở đây...")
+        self._stt_text.setMinimumHeight(160)
+        self._stt_text.setStyleSheet(
+            f"QTextEdit{{border:1.5px solid #e5e5ea;border-radius:10px;"
+            f"background:{SURFACE};color:{TEXT};padding:12px 14px;font-size:14px;}}"
+        )
+        layout.addWidget(self._stt_text)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.addStretch()
+        self._stt_export_btn = QPushButton("📥  Xuất SRT")
+        self._stt_export_btn.setFixedHeight(32)
+        self._stt_export_btn.setStyleSheet(
+            f"QPushButton{{background:#f0f6ff;color:{ACCENT};border:1px solid #c5d9f8;"
+            "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#dbeafe;}}"
+            "QPushButton:disabled{background:#f5f5f7;color:#aeaeb2;border-color:#e5e5ea;}"
+        )
+        self._stt_export_btn.clicked.connect(self._export_srt)
+        self._stt_export_btn.setVisible(False)
+        btn_row.addWidget(self._stt_export_btn)
+        layout.addLayout(btn_row)
+        self._stt_words = []
+
+        layout.addStretch()
+        scroll.setWidget(w)
+        outer_lay.addWidget(scroll)
+        return outer
+
+    def _stt_file_selected(self, paths: list):
+        if paths:
+            self._stt_path = paths[0]
+            self._stt_file_lbl.setText(f"📁 {os.path.basename(paths[0])}")
+
+    def _do_stt(self):
+        if not self._stt_path:
+            QMessageBox.warning(self, "Chưa có file", "Kéo thả file audio vào trước nhé!")
+            return
+        gm_key = self.settings.get("genmax_api_key", "").strip()
+        if not gm_key:
+            QMessageBox.warning(self, "Thiếu GenMax API Key",
+                                "Cần GenMax API Key để dùng Speech-to-Text.\nVào Settings → API Keys để thêm.")
+            return
+        self._stt_btn.setEnabled(False)
+        self._stt_status.setText("⏳ Đang nhận diện...")
+        self._stt_worker = SpeechToTextWorker(self._stt_path, gm_key)
+        self._stt_worker.status.connect(self._stt_status.setText)
+        self._stt_worker.done.connect(self._on_stt_done)
+        self._stt_worker.error.connect(self._on_stt_error)
+        self._stt_worker.start()
+
+    def _on_stt_done(self, text: str, words: list):
+        self._stt_btn.setEnabled(True)
+        self._stt_text.setPlainText(text)
+        self._stt_status.setText("✅ Nhận diện xong!")
+        self._stt_words = words
+        self._stt_export_btn.setVisible(True)
+
+    def _on_stt_error(self, msg: str):
+        self._stt_btn.setEnabled(True)
+        self._stt_status.setText(f"❌ {msg[:80]}")
+
+    def _export_srt(self):
+        if not self._stt_words:
+            return
+        srt = words_to_srt(self._stt_words)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Xuất SRT", "transcript.srt", "SRT files (*.srt)"
+        )
+        if path:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(srt)
+            self._stt_status.setText(f"✅ Đã lưu: {os.path.basename(path)}")
+            reveal_file(path)
 
     # ── Tab 2: Chat → Kịch Bản ────────────────────────────────────
     def _build_chat_tab(self) -> QWidget:
