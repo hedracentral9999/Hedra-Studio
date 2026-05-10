@@ -832,22 +832,9 @@ class _CreditsChecker(QThread):
     def run(self):
         try:
             parts = []
-            # ── GenMax credits ────────────────────────────────────
+            # ── GenMax status ─────────────────────────────────────
             if self.genmax_key:
-                try:
-                    r = requests.get(
-                        "https://api.genmax.io/v1/user/subscription",
-                        headers={"xi-api-key": self.genmax_key}, timeout=5,
-                    )
-                    if r.status_code == 200:
-                        d = r.json()
-                        limit = d.get("character_limit", 0)
-                        count = d.get("character_count", 0)
-                        parts.append(f"GenMax: {limit - count:,} còn lại")
-                    else:
-                        parts.append("GenMax: đã kết nối")
-                except Exception:
-                    parts.append("GenMax: đã kết nối")
+                parts.append("✅ GenMax")
             # ── ElevenLabs credits ────────────────────────────────
             if self.el_keys:
                 total = 0
@@ -859,7 +846,7 @@ class _CreditsChecker(QThread):
                     if r.status_code == 200:
                         d = r.json()
                         total += d.get("character_limit", 0) - d.get("character_count", 0)
-                parts.append(f"EL: {total:,} còn lại")
+                parts.append(f"EL: {total:,}")
                 if len(self.el_keys) > 1:
                     parts[-1] += f" ({len(self.el_keys)} keys)"
             # ── Fallback ──────────────────────────────────────────
