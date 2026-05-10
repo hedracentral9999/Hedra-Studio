@@ -1,5 +1,6 @@
 import os
 import re
+import webbrowser
 
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -9,6 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QSlider,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QFont, QIcon, QColor
 
 from app_constants import (
@@ -17,7 +19,7 @@ from app_constants import (
     BG, SURFACE, BORDER, TEXT, TEXT_MUTE, ACCENT, ACCENT_HV, SEG_BG,
 )
 from app_utils import DEFAULT_OUT, save_settings, DATA_DIR, SETTINGS_FILE
-from app_workers import _CreditsChecker, UpdateChecker
+from app_workers import _CreditsChecker, UpdateChecker, VoiceFetcher, AudioPreviewDownloader
 from app_dialogs import AddStyleDialog, PromptWizardDialog, FeedbackDialog
 from voice_library import VoiceLibraryDialog
 
