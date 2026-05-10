@@ -2,7 +2,7 @@ import sys
 import os
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QDialog
-from PyQt6.QtGui import QIcon, QPixmap, QColor, QPainter
+from PyQt6.QtGui import QAction, QIcon, QPixmap, QColor, QPainter
 from PyQt6.QtCore import Qt
 
 from version import VERSION

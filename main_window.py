@@ -3,10 +3,10 @@ import webbrowser
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QTextEdit, QLabel, QSlider, QPushButton, QFrame,
+    QTextEdit, QLabel, QLineEdit, QSlider, QPushButton, QFrame,
     QTabWidget, QScrollArea, QStackedWidget, QFileDialog,
     QMessageBox, QSizePolicy, QSpacerItem, QListWidget,
-    QListWidgetItem, QGridLayout, QComboBox, QDialog,
+    QListWidgetItem, QMenu, QGridLayout, QComboBox, QDialog,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtGui import QIcon, QFont, QAction, QPixmap, QColor, QPainter
@@ -20,7 +20,7 @@ from app_constants import (
 from app_utils import load_settings, save_settings, reveal_file, DEFAULT_OUT, DATA_DIR
 from app_workers import (
     Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker,
-    UpdateChecker, UpdateDownloader,
+    UpdateChecker, UpdateDownloader, _CreditsChecker,
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from settings_dialog import SettingsDialog
