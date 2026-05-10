@@ -282,31 +282,25 @@ OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, pause...).
 # Slider chỉ kiểm soát 1 thứ: có được THÊM NỘI DUNG MỚI hay không.
 def get_creativity_guide(temperature: float) -> str:
-    """Trả về hướng dẫn mức sáng tạo chính xác theo % — AI áp dụng tỉ lệ thuận."""
+    """Trả về hướng dẫn chính xác: X% sáng tạo = X% nội dung được làm mới."""
     pct = int(temperature * 100)
-    # Các ngưỡng tính theo % — công thức tỉ lệ thuận
-    filler_words = 0 if pct < 20 else 1 if pct < 40 else 2 if pct < 60 else 3 if pct < 80 else 5
-    rephrase_pct = max(0, pct - 30)  # bắt đầu đảo câu từ 30%
-    can_add_sentence = "CÓ" if pct >= 60 else "KHÔNG"
-    can_paraphrase  = "CÓ" if pct >= 40 else "KHÔNG"
-    max_new_chars   = int((pct / 100) * 200)  # tối đa ký tự mới được thêm
+    keep_pct = 100 - pct
     return f"""
 
-## 🎚 MỨC SÁNG TẠO: {pct}/100
+## 🎚 SÁNG TẠO: {pct}%
 
-⚠️ GHI ĐÈ mọi quy tắc cứng ở dưới. Áp dụng CHÍNH XÁC các thông số sau:
+QUY TẮC DUY NHẤT — GHI ĐÈ TẤT CẢ CÁC QUY TẮC KHÁC:
 
-- Số từ đệm được thêm tối đa: {filler_words} (ạ/nha/nhé/đó/ơi...)
-- Được đảo/đổi cấu trúc câu: {can_paraphrase}
-- Được thêm câu mới (dẫn/bình luận): {can_add_sentence}
-- Tối đa ký tự mới được thêm: {max_new_chars}
-- Số câu được phép diễn đạt lại: ~{rephrase_pct}%
+- {pct}% nội dung: được LÀM MỚI (thêm từ đệm, đảo câu, diễn đạt lại, thêm câu dẫn)
+- {keep_pct}% nội dung: phải GIỮ NGUYÊN TỪNG CHỮ (chỉ thêm tags, CAPS, pause, sửa chính tả)
 
-LUẬT CỨNG (luôn áp dụng):
-- KHÔNG bịa thông tin sai, KHÔNG thêm ý không có trong input gốc
-- Format đầy đủ: tags, CAPS, pause, sửa chính tả, viết tắt → đầy đủ
+ÁP DỤNG THEO TỈ LỆ:
+- Nếu input có 10 câu → làm mới {pct//10} câu, giữ nguyên {100//10 - pct//10} câu
+- Nếu input có 100 chữ → ~{pct} chữ được biến đổi, ~{keep_pct} chữ giữ nguyên
 
-Số càng cao = càng phóng khoáng. Tuân thủ CHÍNH XÁC các con số trên."""
+LUẬT CỨNG:
+- KHÔNG bịa thông tin sai, KHÔNG thêm ý không có trong input
+- Format đầy đủ: tags, CAPS, pause, sửa chính tả, viết tắt → đầy đủ"""
 
 # Giữ lại để backward compat
 CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
