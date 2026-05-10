@@ -832,9 +832,21 @@ class _CreditsChecker(QThread):
     def run(self):
         try:
             parts = []
-            # ── GenMax status ─────────────────────────────────────
+            # ── GenMax credits ────────────────────────────────────
             if self.genmax_key:
-                parts.append("✅ GenMax")
+                try:
+                    r = requests.get(
+                        "https://api.genmax.io/v1/auth/me",
+                        headers={"xi-api-key": self.genmax_key}, timeout=5,
+                    )
+                    if r.status_code == 200:
+                        d = r.json()
+                        bal = d.get("credit_balance", 0)
+                        parts.append(f"GenMax: {bal:,}")
+                    else:
+                        parts.append("✅ GenMax")
+                except Exception:
+                    parts.append("✅ GenMax")
             # ── ElevenLabs credits ────────────────────────────────
             if self.el_keys:
                 total = 0
