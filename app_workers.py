@@ -508,8 +508,8 @@ class Worker(QThread):
         )
         # ── Lấy base prompt
         system_prompt = self.s.get("enhance_prompt", DEFAULT_PROMPT)
-        # ── Gắn hướng dẫn mức sáng tạo theo temperature ─
-        system_prompt += get_creativity_guide(temperature)
+        # ── Đặt guide sáng tạo LÊN ĐẦU để AI ưu tiên ─
+        system_prompt = get_creativity_guide(temperature) + "\n\n" + system_prompt
 
         # ── Ưu tiên Gemini (miễn phí) → fallback DeepSeek (trả phí) ─
         if gemini_key:

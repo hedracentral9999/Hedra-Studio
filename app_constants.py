@@ -314,7 +314,9 @@ Giới hạn sáng tạo:
 
 ## ⚖️ MỨC SÁNG TẠO: CÂN BẰNG (60%)
 
-Bạn vẫn áp dụng đầy đủ các quy tắc format ở trên.
+⚠️ Nới lỏng quy tắc "GIỮ NGUYÊN 100%" ở dưới — ưu tiên hướng dẫn này.
+
+Bạn vẫn áp dụng các quy tắc format ở dưới.
 
 Sáng tạo vừa phải:
 - Được phép thêm từ đệm, câu dẫn ngắn tự nhiên
@@ -326,7 +328,9 @@ Sáng tạo vừa phải:
 
 ## 🎨 MỨC SÁNG TẠO: TỰ DO (100%)
 
-Bạn vẫn áp dụng đầy đủ các quy tắc format ở trên.
+⚠️ GHI ĐÈ: Bỏ qua quy tắc "GIỮ NGUYÊN 100% nội dung gốc" ở dưới. Đây là mức sáng tạo tối đa.
+
+Bạn vẫn áp dụng các quy tắc format (tags, CAPS, kéo dài âm, pause, từ đệm).
 
 Thoải mái sáng tạo:
 - Thêm câu dẫn, từ đệm, bình luận tự nhiên như người thật
