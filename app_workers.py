@@ -824,25 +824,49 @@ class FeedbackSender(QThread):
 class _CreditsChecker(QThread):
     done = pyqtSignal(str)
 
-    def __init__(self, keys: list):
+    def __init__(self, el_keys: list, genmax_key: str = ""):
         super().__init__()
-        self.keys = [k.strip() for k in keys if k.strip()]
+        self.el_keys     = [k.strip() for k in el_keys if k.strip()]
+        self.genmax_key  = genmax_key.strip()
 
     def run(self):
         try:
-            total = 0
-            for key in self.keys:
-                r = requests.get(
-                    "https://api.elevenlabs.io/v1/user/subscription",
-                    headers={"xi-api-key": key}, timeout=5,
-                )
-                if r.status_code == 200:
-                    d = r.json()
-                    total += d.get("character_limit", 0) - d.get("character_count", 0)
-            label = f"Credits: {total:,} còn lại"
-            if len(self.keys) > 1:
-                label += f"  ({len(self.keys)} keys)"
-            self.done.emit(label)
+            parts = []
+            # ── GenMax credits ────────────────────────────────────
+            if self.genmax_key:
+                try:
+                    r = requests.get(
+                        "https://api.genmax.io/v1/user/subscription",
+                        headers={"xi-api-key": self.genmax_key}, timeout=5,
+                    )
+                    if r.status_code == 200:
+                        d = r.json()
+                        limit = d.get("character_limit", 0)
+                        count = d.get("character_count", 0)
+                        parts.append(f"GenMax: {limit - count:,} còn lại")
+                    else:
+                        parts.append("GenMax: đã kết nối")
+                except Exception:
+                    parts.append("GenMax: đã kết nối")
+            # ── ElevenLabs credits ────────────────────────────────
+            if self.el_keys:
+                total = 0
+                for key in self.el_keys:
+                    r = requests.get(
+                        "https://api.elevenlabs.io/v1/user/subscription",
+                        headers={"xi-api-key": key}, timeout=5,
+                    )
+                    if r.status_code == 200:
+                        d = r.json()
+                        total += d.get("character_limit", 0) - d.get("character_count", 0)
+                parts.append(f"EL: {total:,} còn lại")
+                if len(self.el_keys) > 1:
+                    parts[-1] += f" ({len(self.el_keys)} keys)"
+            # ── Fallback ──────────────────────────────────────────
+            if not parts:
+                self.done.emit("⚠️  Chưa có TTS API key — vào Settings")
+            else:
+                self.done.emit("  ·  ".join(parts))
         except Exception:
             self.done.emit("Không check được credits")
 

@@ -1266,12 +1266,15 @@ rm -f "$DMG" 2>/dev/null
         QApplication.instance().quit()
 
     def _refresh_credits(self):
-        keys = self.settings.get("el_api_keys", [])
-        if not keys:
-            self.credits_lbl.setText("⚠️  Chưa có ElevenLabs API key — vào Settings")
+        el_keys    = self.settings.get("el_api_keys", [])
+        genmax_key = self.settings.get("genmax_api_key", "")
+        has_el  = bool(el_keys)
+        has_gm  = bool(genmax_key)
+        if not has_el and not has_gm:
+            self.credits_lbl.setText("⚠️  Chưa có TTS API key — vào Settings")
             return
         self.credits_lbl.setText("Credits: đang tải...")
-        self._credits_worker = _CreditsChecker(keys)
+        self._credits_worker = _CreditsChecker(el_keys, genmax_key)
         self._credits_worker.done.connect(self.credits_lbl.setText)
         self._credits_worker.start()
 
