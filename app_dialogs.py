@@ -5,9 +5,9 @@ from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QLineEdit, QFrame, QScrollArea, QStackedWidget,
     QGridLayout, QComboBox, QSizePolicy, QSpacerItem,
-    QFileDialog, QMessageBox,
+    QFileDialog, QMessageBox, QWidget, QSlider,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QFont, QIcon
 
 from app_constants import (
