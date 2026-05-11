@@ -297,27 +297,24 @@ GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
 - KHÔNG thêm từ mới, KHÔNG đổi câu, KHÔNG đảo ý
 - Output = input, chỉ khác format"""
 
-    # Độ sâu theo từng 10%
-    _DEPTH = [
-        (0,  "chỉ format, không đụng chữ"),
-        (10, "thêm 1 từ đệm (ạ/nha/nhé)"),
-        (20, "thêm 1-2 từ đệm, giữ nguyên cấu trúc"),
-        (30, "thêm từ đệm + đảo nhẹ câu"),
-        (40, "đảo cấu trúc + thêm 1-2 từ cảm thán"),
-        (50, "diễn đạt lại nhẹ + thêm từ đệm tự nhiên"),
-        (60, "diễn đạt lại mượt + thêm câu dẫn ngắn"),
-        (70, "viết lại tự nhiên + thêm bình luận"),
-        (80, "viết lại hoàn toàn + thêm câu mới ngắn"),
-        (90, "content writer: thêm câu, diễn giải, ví von"),
-        (100,"content writer tối đa: tự do sáng tạo, thêm ý"),
-    ]
-    depth = _DEPTH[-1][1]
-    for threshold, desc in _DEPTH:
-        if pct <= threshold:
-            depth = desc
-            break
+    # ── Công thức liên tục theo từng % ─
+    filler   = pct // 10               # số từ đệm
+    rephrase = max(0, pct - 25)        # % được diễn đạt lại (bắt đầu từ 25%)
+    can_lead = "CÓ" if pct >= 50 else "KHÔNG"
+    can_new  = "CÓ" if pct >= 70 else "KHÔNG"
 
-    count = pct // 10  # số câu trên 10 câu mẫu
+    parts = [f"thêm {filler} từ đệm/cảm thán"]
+    if pct >= 25:
+        parts.append(f"đảo cấu trúc câu ({rephrase}% mức độ)")
+    if pct >= 50:
+        parts.append("thêm câu dẫn/bình luận")
+    if pct >= 70:
+        parts.append("thêm câu mới, diễn giải")
+    if pct >= 85:
+        parts.append("viết lại toàn bộ như content writer")
+    depth = " → ".join(parts)
+
+    count = max(1, pct // 10)
 
     return f"""
 
@@ -326,7 +323,7 @@ GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
 QUY TẮC CHÍNH XÁC THEO %:
 - Chọn {pct}% số câu trong input để LÀM MỚI (khoảng {count}/10 câu)
 - {keep_pct}% số câu còn lại: GIỮ NGUYÊN TỪNG CHỮ, chỉ format
-- Mỗi câu được chọn → làm mới ở độ sâu {pct}%: {depth}
+- Độ sâu làm mới: {depth}
 
 LUẬT CỨNG:
 - Sửa chính tả + viết tắt → đầy đủ (áp dụng 100% câu)
