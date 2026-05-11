@@ -18,6 +18,7 @@ from app_constants import (
     VOICE_ID, MODEL, EL_OUTPUT_FORMAT, PROMPTS, PROMPT_TEMPLATES,
     VERSION, DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY,
     BG, SURFACE, BORDER, TEXT, TEXT_MUTE, ACCENT, ACCENT_HV, SEG_BG, STYLE,
+    get_creativity_guide,
 )
 from app_utils import load_settings, save_settings, reveal_file, DEFAULT_OUT, DATA_DIR
 from app_workers import (
@@ -619,11 +620,21 @@ class MainWindow(QWidget):
             t = value / 100.0
             self.creativity_val.setText(f"{t:.2f}")
             self.creativity_tier.setText(self._tier_label(t))
+            if hasattr(self, "_creativity_detail"):
+                self._creativity_detail.setText(self._creativity_detail_text(t))
             self.settings["enhance_style_temperature"] = t
             self.settings["enhance_style_creative"] = t >= 0.5
 
         self.creativity_slider.valueChanged.connect(_on_creativity_changed)
         self._card_row(c2, "Mức độ sáng tạo", creative_w)
+
+        # ── Label giải thích công thức sáng tạo ─
+        self._creativity_detail = QLabel(self._creativity_detail_text(_cur_temp))
+        self._creativity_detail.setWordWrap(True)
+        self._creativity_detail.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;background:transparent;padding:2px 16px 0 16px;"
+        )
+        layout.addWidget(self._creativity_detail)
 
         # — Row: Tên file
         self.filename_input = QLineEdit()
@@ -1168,6 +1179,15 @@ class MainWindow(QWidget):
             return "🔒 Khóa nội dung"
         return ""
 
+    @staticmethod
+    def _creativity_detail_text(temperature: float) -> str:
+        """Trích dòng 'Độ sâu làm mới' từ guide để hiển thị cho user."""
+        guide = get_creativity_guide(temperature)
+        for line in guide.split("\n"):
+            if "Độ sâu" in line or "làm mới" in line:
+                return line.strip("- ").strip()
+        return ""
+
     def _sync_creativity_control(self, temperature: float | None = None):
         if not hasattr(self, "creativity_slider"):
             return
@@ -1179,6 +1199,8 @@ class MainWindow(QWidget):
         self.creativity_val.setText(f"{t:.2f}")
         if hasattr(self, "creativity_tier"):
             self.creativity_tier.setText(self._tier_label(t))
+        if hasattr(self, "_creativity_detail"):
+            self._creativity_detail.setText(self._creativity_detail_text(t))
         self.settings["enhance_style_temperature"] = t
         self.settings["enhance_style_creative"] = t >= 0.5
 
