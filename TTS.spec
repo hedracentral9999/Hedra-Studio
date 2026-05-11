@@ -16,6 +16,8 @@ a = Analysis(
         'app_constants', 'app_utils', 'app_workers', 'app_dialogs',
         'voice_library', 'settings_dialog', 'main_window', 'version',
         'telegram_config', 'certifi',
+        'auto_video_workers',
+        'anthropic', 'bs4', 'beautifulsoup4',
     ],
     hookspath=[],
     runtime_hooks=[],

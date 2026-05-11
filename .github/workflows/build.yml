@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyinstaller PyQt6 requests
+        run: pip install pyinstaller PyQt6 requests anthropic beautifulsoup4
 
       - name: Read version
         id: ver
@@ -62,7 +62,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyinstaller PyQt6 requests
+        run: pip install pyinstaller PyQt6 requests anthropic beautifulsoup4
 
       - name: Read version
         id: ver
