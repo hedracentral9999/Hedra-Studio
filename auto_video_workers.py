@@ -365,6 +365,7 @@ class AutoVideoEngineWorker(QThread):
                 "TTS_PROVIDER": "genmax",
                 "GENMAX_API_KEY": gm_key,
                 "GENMAX_VOICE_ID": gm_vid,
+                "GENMAX_POLL_TIMEOUT_MS": "300000",
             }
 
         run_env = {**os.environ, **extra_env}
