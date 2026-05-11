@@ -297,17 +297,25 @@ GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
 - KHÔNG thêm từ mới, KHÔNG đổi câu, KHÔNG đảo ý
 - Output = input, chỉ khác format"""
 
-    # Độ sâu dựa trên %
-    if pct <= 20:
-        depth = "thêm 1-2 từ đệm (ạ, nha, nhé), giữ nguyên cấu trúc câu"
-    elif pct <= 45:
-        depth = "thêm từ đệm + đảo nhẹ cấu trúc, thêm 1-2 từ cảm thán"
-    elif pct <= 70:
-        depth = "diễn đạt lại câu cho mượt, thêm câu dẫn ngắn, thêm cảm xúc"
-    elif pct <= 90:
-        depth = "viết lại câu tự nhiên như nói chuyện, thêm bình luận, câu dẫn"
-    else:
-        depth = "viết lại hoàn toàn như content writer, thêm câu mới, sáng tạo tối đa"
+    # Độ sâu theo từng 10%
+    _DEPTH = [
+        (0,  "chỉ format, không đụng chữ"),
+        (10, "thêm 1 từ đệm (ạ/nha/nhé)"),
+        (20, "thêm 1-2 từ đệm, giữ nguyên cấu trúc"),
+        (30, "thêm từ đệm + đảo nhẹ câu"),
+        (40, "đảo cấu trúc + thêm 1-2 từ cảm thán"),
+        (50, "diễn đạt lại nhẹ + thêm từ đệm tự nhiên"),
+        (60, "diễn đạt lại mượt + thêm câu dẫn ngắn"),
+        (70, "viết lại tự nhiên + thêm bình luận"),
+        (80, "viết lại hoàn toàn + thêm câu mới ngắn"),
+        (90, "content writer: thêm câu, diễn giải, ví von"),
+        (100,"content writer tối đa: tự do sáng tạo, thêm ý"),
+    ]
+    depth = _DEPTH[-1][1]
+    for threshold, desc in _DEPTH:
+        if pct <= threshold:
+            depth = desc
+            break
 
     count = pct // 10  # số câu trên 10 câu mẫu
 
