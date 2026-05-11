@@ -15,7 +15,7 @@ a = Analysis(
         'PyQt6.QtMultimedia', 'PyQt6.QtNetwork',
         'app_constants', 'app_utils', 'app_workers', 'app_dialogs',
         'voice_library', 'settings_dialog', 'main_window', 'version',
-        'telegram_config',
+        'telegram_config', 'certifi',
     ],
     hookspath=[],
     runtime_hooks=[],

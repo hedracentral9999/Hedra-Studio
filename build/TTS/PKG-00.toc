@@ -37,17 +37,13 @@
    '/Users/admin/tài liệu '
    'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/loader/pyiboot01_bootstrap.py',
    'PYSOURCE'),
-  ('pyi_rth_pyqt6',
+  ('pyi_rth_inspect',
    '/Users/admin/tài liệu '
-   'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/hooks/rthooks/pyi_rth_pyqt6.py',
+   'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/hooks/rthooks/pyi_rth_inspect.py',
    'PYSOURCE'),
   ('pyi_rth_pkgutil',
    '/Users/admin/tài liệu '
    'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/hooks/rthooks/pyi_rth_pkgutil.py',
-   'PYSOURCE'),
-  ('pyi_rth_inspect',
-   '/Users/admin/tài liệu '
-   'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/hooks/rthooks/pyi_rth_inspect.py',
    'PYSOURCE'),
   ('pyi_rth_multiprocessing',
    '/Users/admin/tài liệu '
@@ -60,6 +56,10 @@
   ('pyi_rth_cryptography_openssl',
    '/Users/admin/tài liệu '
    'gốc/elevenlabs/venv/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/rthooks/pyi_rth_cryptography_openssl.py',
+   'PYSOURCE'),
+  ('pyi_rth_pyqt6',
+   '/Users/admin/tài liệu '
+   'gốc/elevenlabs/venv/lib/python3.14/site-packages/PyInstaller/hooks/rthooks/pyi_rth_pyqt6.py',
    'PYSOURCE'),
   ('tts_app',
    '/Users/admin/tài liệu gốc/elevenlabs/tts_app.py',
