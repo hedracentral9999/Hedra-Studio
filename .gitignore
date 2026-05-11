@@ -31,3 +31,6 @@ Thumbs.db
 CONTEXT.md
 test_adam.py
 test_*.py
+
+# Docs (local reference only)
+docs/

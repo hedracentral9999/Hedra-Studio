@@ -487,6 +487,27 @@ class SettingsDialog(QDialog):
         self._row(glay2, "API Key", self.ds_key, last=True)
         v.addWidget(grp2)
 
+        # ── Group: Claude (Auto Video) ────────────────────────────────
+        v.addWidget(self._section_label("Claude  (Auto Video — Script Generation)"))
+        grp_claude, glay_claude = self._group()
+        self.claude_key = QLineEdit(self.settings.get("claude_api_key", ""))
+        self.claude_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.claude_key.setPlaceholderText("sk-ant-...")
+        self.claude_key.setStyleSheet(
+            "QLineEdit{background:transparent;border:none;font-size:13px;}"
+        )
+        self._row(glay_claude, "API Key", self.claude_key)
+        self.claude_model = QComboBox()
+        self.claude_model.addItems([
+            "claude-3-5-haiku-20241022",
+            "claude-3-5-sonnet-20241022",
+        ])
+        self.claude_model.setCurrentText(
+            self.settings.get("claude_model", "claude-3-5-haiku-20241022")
+        )
+        self._row(glay_claude, "Model", self.claude_model, last=True)
+        v.addWidget(grp_claude)
+
         v.addStretch()
         return page
 
@@ -1986,6 +2007,8 @@ class SettingsDialog(QDialog):
         self.settings["genmax_api_key"]     = getattr(self, "genmax_key", _NullEdit()).text().strip()
         self.settings["ds_api_key"]         = self.ds_key.text().strip()
         self.settings["gemini_api_key"]     = self.gemini_key.text().strip()
+        self.settings["claude_api_key"]     = getattr(self, "claude_key", _NullEdit()).text().strip()
+        self.settings["claude_model"]       = self.claude_model.currentText() if hasattr(self, "claude_model") else "claude-3-5-haiku-20241022"
         self.settings["telegram_bot_token"] = getattr(self, "telegram_bot_token", _NullEdit()).text().strip()
         self.settings["telegram_chat_id"]   = getattr(self, "telegram_chat_id", _NullEdit()).text().strip()
         self.settings["output_dir"]         = self.out_dir.text()

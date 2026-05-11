@@ -28,6 +28,7 @@ from app_workers import (
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from settings_dialog import SettingsDialog
+from auto_video_workers import AutoScriptWorker, AutoVideoEngineWorker
 
 # ── Telegram config ────────────────────────────────────────────────
 try:
@@ -250,6 +251,7 @@ class MainWindow(QWidget):
         self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
         self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
         self.tabs.addTab(self._build_stt_tab(),  "📝  STT")
+        self.tabs.addTab(self._build_auto_video_tab(), "🎬  Auto Video")
         self.tabs.setCurrentIndex(1)  # TTS mặc định
         layout.addWidget(self.tabs)
 
@@ -1637,8 +1639,328 @@ rm -f "$DMG" 2>/dev/null
             except Exception:
                 pass  # Không crash app nếu refresh lỗi
 
+    # ── Tab: Auto Video ────────────────────────────────────────────────
+
+    def _build_auto_video_tab(self) -> QWidget:
+        outer = QWidget()
+        outer.setStyleSheet(f"background:{BG};")
+        layout = QVBoxLayout(outer)
+        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setSpacing(12)
+
+        # ── Input card ────────────────────────────────────────────────
+        input_card, input_vbox = self._card()
+        layout.addWidget(input_card)
+
+        self._card_row(input_vbox, "Link bài báo", self._av_url_field(), last=False)
+        self._card_row(input_vbox, "Hoặc paste text", self._av_text_field(), last=True)
+
+        # ── Status / log ──────────────────────────────────────────────
+        self._av_status = QLabel("Nhập link hoặc paste nội dung rồi nhấn Generate")
+        self._av_status.setStyleSheet(
+            f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
+        )
+        self._av_status.setWordWrap(True)
+        layout.addWidget(self._av_status)
+
+        self._av_log = QTextEdit()
+        self._av_log.setReadOnly(True)
+        self._av_log.setFixedHeight(120)
+        self._av_log.setStyleSheet(
+            f"QTextEdit{{background:#f5f5f7;border:1px solid #e5e5ea;"
+            f"border-radius:8px;color:{TEXT_MUTE};font-size:11px;"
+            f"font-family:Menlo,Monaco,monospace;padding:8px;}}"
+        )
+        self._av_log.setVisible(False)
+        layout.addWidget(self._av_log)
+
+        # ── Progress bar ──────────────────────────────────────────────
+        from PyQt6.QtWidgets import QProgressBar
+        self._av_progress = QProgressBar()
+        self._av_progress.setRange(0, 100)
+        self._av_progress.setValue(0)
+        self._av_progress.setFixedHeight(6)
+        self._av_progress.setTextVisible(False)
+        self._av_progress.setStyleSheet(
+            "QProgressBar{background:#e5e5ea;border:none;border-radius:3px;}"
+            f"QProgressBar::chunk{{background:{ACCENT};border-radius:3px;}}"
+        )
+        self._av_progress.setVisible(False)
+        layout.addWidget(self._av_progress)
+
+        # ── Result card (ẩn lúc đầu) ─────────────────────────────────
+        self._av_result_card, av_result_vbox = self._card()
+        self._av_result_card.setVisible(False)
+        self._av_video_path_lbl = QLabel("—")
+        self._av_video_path_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;background:transparent;"
+        )
+        self._av_video_path_lbl.setWordWrap(True)
+        self._card_row(av_result_vbox, "Video output", self._av_video_path_lbl, last=False)
+
+        self._av_btn_open = QPushButton("📂  Open in Finder")
+        self._av_btn_open.setFixedHeight(32)
+        self._av_btn_open.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
+            f"padding:0 14px;background:white;color:{TEXT};font-size:12px;}}"
+            f"QPushButton:hover{{background:#f5f5f7;}}"
+        )
+        self._av_btn_open.clicked.connect(self._av_open_finder)
+        btn_row_w = QWidget()
+        btn_row_h = QHBoxLayout(btn_row_w)
+        btn_row_h.setContentsMargins(16, 8, 16, 12)
+        btn_row_h.addWidget(self._av_btn_open)
+        btn_row_h.addStretch()
+        av_result_vbox.addWidget(btn_row_w)
+        layout.addWidget(self._av_result_card)
+
+        layout.addStretch()
+
+        # ── Generate button ───────────────────────────────────────────
+        self._av_gen_btn = QPushButton("✨  Generate Video")
+        self._av_gen_btn.setFixedHeight(44)
+        self._av_gen_btn.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border:none;"
+            f"border-radius:10px;font-size:14px;font-weight:700;padding:0 28px;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:#0060cc;}}"
+            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
+        )
+        self._av_gen_btn.clicked.connect(self._av_on_generate)
+        layout.addWidget(self._av_gen_btn)
+
+        # Workers
+        self._av_script_worker = None
+        self._av_engine_worker = None
+
+        return outer
+
+    def _av_url_field(self):
+        self._av_url = QLineEdit()
+        self._av_url.setPlaceholderText("https://vnexpress.net/bai-viet...")
+        self._av_url.returnPressed.connect(self._av_on_generate)
+        return self._av_url
+
+    def _av_text_field(self):
+        self._av_text = QTextEdit()
+        self._av_text.setPlaceholderText(
+            "Paste nội dung bài báo vào đây…\n"
+            "AI sẽ tự tóm tắt và tạo script video."
+        )
+        self._av_text.setFixedHeight(100)
+        return self._av_text
+
+    def _av_on_generate(self):
+        url  = self._av_url.text().strip()
+        text = self._av_text.toPlainText().strip()
+        inp  = url or text
+        if not inp:
+            self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True)
+            return
+
+        # Check API key
+        if not self.settings.get("claude_api_key", "").strip():
+            self._av_set_status("Chưa có Claude API Key — vào Settings để nhập.", error=True)
+            return
+
+        self._av_gen_btn.setEnabled(False)
+        self._av_gen_btn.setText("⏳  Đang tạo…")
+        self._av_log.clear()
+        self._av_log.setVisible(True)
+        self._av_progress.setValue(0)
+        self._av_progress.setVisible(True)
+        self._av_result_card.setVisible(False)
+
+        self._av_script_worker = AutoScriptWorker(inp)
+        self._av_script_worker.progress.connect(self._av_set_status)
+        self._av_script_worker.finished.connect(self._av_on_script_done)
+        self._av_script_worker.error.connect(self._av_on_error)
+        self._av_script_worker.start()
+
+    def _av_on_script_done(self, script_path: str):
+        self._av_set_status("Script xong — đang render video…")
+        self._av_engine_worker = AutoVideoEngineWorker(script_path)
+        self._av_engine_worker.log_line.connect(self._av_append_log)
+        self._av_engine_worker.progress.connect(self._av_progress.setValue)
+        self._av_engine_worker.finished.connect(self._av_on_video_done)
+        self._av_engine_worker.error.connect(self._av_on_error)
+        self._av_engine_worker.start()
+
+    def _av_on_video_done(self, video_path: str):
+        self._av_gen_btn.setEnabled(True)
+        self._av_gen_btn.setText("✨  Generate Video")
+        self._av_progress.setValue(100)
+        self._av_set_status("✅  Hoàn thành!")
+        self._av_video_path = video_path
+        self._av_video_path_lbl.setText(video_path or "Không tìm thấy video.mp4")
+        self._av_result_card.setVisible(True)
+
+    def _av_on_error(self, msg: str):
+        self._av_gen_btn.setEnabled(True)
+        self._av_gen_btn.setText("✨  Generate Video")
+        self._av_progress.setVisible(False)
+        self._av_set_status(f"❌  {msg}", error=True)
+
+    def _av_set_status(self, msg: str, error: bool = False):
+        color = "#e0303a" if error else TEXT_MUTE
+        self._av_status.setText(msg)
+        self._av_status.setStyleSheet(
+            f"color:{color}; font-size:12px; background:transparent;"
+        )
+
+    def _av_append_log(self, line: str):
+        self._av_log.append(line)
+
+    def _av_open_finder(self):
+        import subprocess, os
+        path = getattr(self, "_av_video_path", "")
+        if path:
+            folder = os.path.dirname(path)
+            subprocess.run(["open", folder], check=False)
+
     def update_settings(self, settings: dict):
         self.settings = settings
         self._refresh_credits()
+
+    # ── Tab: Auto Video ─────────────────────────────────────────────────
+
+    def _build_auto_video_tab(self) -> QWidget:
+        outer = QWidget()
+        outer.setStyleSheet(f"background:{BG};")
+        layout = QVBoxLayout(outer)
+        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setSpacing(12)
+
+        input_card, input_vbox = self._card()
+        layout.addWidget(input_card)
+        self._card_row(input_vbox, "Link bài báo", self._av_url_field(), last=False)
+        self._card_row(input_vbox, "Hoặc paste text", self._av_text_field(), last=True)
+
+        self._av_status = QLabel("Nhập link hoặc paste nội dung rồi nhấn Generate")
+        self._av_status.setStyleSheet(f"color:{TEXT_MUTE};font-size:12px;background:transparent;")
+        self._av_status.setWordWrap(True)
+        layout.addWidget(self._av_status)
+
+        self._av_log = QTextEdit()
+        self._av_log.setReadOnly(True)
+        self._av_log.setFixedHeight(120)
+        self._av_log.setStyleSheet(
+            "QTextEdit{background:#f5f5f7;border:1px solid #e5e5ea;"
+            "border-radius:8px;font-size:11px;font-family:Menlo,monospace;padding:8px;}")
+        self._av_log.setVisible(False)
+        layout.addWidget(self._av_log)
+
+        from PyQt6.QtWidgets import QProgressBar
+        self._av_progress = QProgressBar()
+        self._av_progress.setRange(0, 100)
+        self._av_progress.setValue(0)
+        self._av_progress.setFixedHeight(6)
+        self._av_progress.setTextVisible(False)
+        self._av_progress.setStyleSheet(
+            "QProgressBar{background:#e5e5ea;border:none;border-radius:3px;}"
+            f"QProgressBar::chunk{{background:{ACCENT};border-radius:3px;}}")
+        self._av_progress.setVisible(False)
+        layout.addWidget(self._av_progress)
+
+        self._av_result_card, av_result_vbox = self._card()
+        self._av_result_card.setVisible(False)
+        self._av_video_path_lbl = QLabel("—")
+        self._av_video_path_lbl.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;background:transparent;")
+        self._av_video_path_lbl.setWordWrap(True)
+        self._card_row(av_result_vbox, "Video output", self._av_video_path_lbl, last=False)
+        self._av_btn_open = QPushButton("📂  Open in Finder")
+        self._av_btn_open.setFixedHeight(32)
+        self._av_btn_open.setStyleSheet(
+            f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
+            f"padding:0 14px;background:white;color:{TEXT};font-size:12px;}}"
+            f"QPushButton:hover{{background:#f5f5f7;}}")
+        self._av_btn_open.clicked.connect(self._av_open_finder)
+        btn_w = QWidget(); btn_h = QHBoxLayout(btn_w)
+        btn_h.setContentsMargins(16,8,16,12)
+        btn_h.addWidget(self._av_btn_open); btn_h.addStretch()
+        av_result_vbox.addWidget(btn_w)
+        layout.addWidget(self._av_result_card)
+        layout.addStretch()
+
+        self._av_gen_btn = QPushButton("✨  Generate Video")
+        self._av_gen_btn.setFixedHeight(44)
+        self._av_gen_btn.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border:none;"
+            f"border-radius:10px;font-size:14px;font-weight:700;padding:0 28px;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:#0060cc;}}"
+            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}")
+        self._av_gen_btn.clicked.connect(self._av_on_generate)
+        layout.addWidget(self._av_gen_btn)
+
+        self._av_script_worker = None
+        self._av_engine_worker = None
+        return outer
+
+    def _av_url_field(self):
+        self._av_url = QLineEdit()
+        self._av_url.setPlaceholderText("https://vnexpress.net/bai-viet...")
+        self._av_url.returnPressed.connect(self._av_on_generate)
+        return self._av_url
+
+    def _av_text_field(self):
+        self._av_text = QTextEdit()
+        self._av_text.setPlaceholderText("Paste nội dung bài báo vào đây…\nAI sẽ tự tóm tắt và tạo script.")
+        self._av_text.setFixedHeight(100)
+        return self._av_text
+
+    def _av_on_generate(self):
+        url  = self._av_url.text().strip()
+        text = self._av_text.toPlainText().strip()
+        inp  = url or text
+        if not inp:
+            self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True); return
+        if not self.settings.get("claude_api_key","").strip():
+            self._av_set_status("Chưa có Claude API Key — vào Settings.", error=True); return
+        self._av_gen_btn.setEnabled(False)
+        self._av_gen_btn.setText("⏳  Đang tạo…")
+        self._av_log.clear(); self._av_log.setVisible(True)
+        self._av_progress.setValue(0); self._av_progress.setVisible(True)
+        self._av_result_card.setVisible(False)
+        self._av_script_worker = AutoScriptWorker(inp)
+        self._av_script_worker.progress.connect(self._av_set_status)
+        self._av_script_worker.finished.connect(self._av_on_script_done)
+        self._av_script_worker.error.connect(self._av_on_error)
+        self._av_script_worker.start()
+
+    def _av_on_script_done(self, script_path: str):
+        self._av_set_status("Script xong — đang render video…")
+        self._av_engine_worker = AutoVideoEngineWorker(script_path)
+        self._av_engine_worker.log_line.connect(self._av_append_log)
+        self._av_engine_worker.progress.connect(self._av_progress.setValue)
+        self._av_engine_worker.finished.connect(self._av_on_video_done)
+        self._av_engine_worker.error.connect(self._av_on_error)
+        self._av_engine_worker.start()
+
+    def _av_on_video_done(self, video_path: str):
+        self._av_gen_btn.setEnabled(True); self._av_gen_btn.setText("✨  Generate Video")
+        self._av_progress.setValue(100); self._av_set_status("✅  Hoàn thành!")
+        self._av_video_path = video_path
+        self._av_video_path_lbl.setText(video_path or "Không tìm thấy video.mp4")
+        self._av_result_card.setVisible(True)
+
+    def _av_on_error(self, msg: str):
+        self._av_gen_btn.setEnabled(True); self._av_gen_btn.setText("✨  Generate Video")
+        self._av_progress.setVisible(False); self._av_set_status(f"❌  {msg}", error=True)
+
+    def _av_set_status(self, msg: str, error: bool = False):
+        color = "#e0303a" if error else TEXT_MUTE
+        self._av_status.setText(msg)
+        self._av_status.setStyleSheet(f"color:{color};font-size:12px;background:transparent;")
+
+    def _av_append_log(self, line: str):
+        self._av_log.append(line)
+
+    def _av_open_finder(self):
+        import os
+        path = getattr(self, "_av_video_path", "")
+        if path:
+            subprocess.run(["open", os.path.dirname(path)], check=False)
 
 
