@@ -78,7 +78,7 @@ class AutoScriptWorker(QThread):
     error    = pyqtSignal(str)
 
     # Engine output dir — chỉnh lại nếu cần
-    ENGINE_OUTPUT = Path.home() / "hedra-short" / "auto-create-video" / "output"
+    ENGINE_OUTPUT = Path("/Users/admin/Auto-Create-Video/output")
 
     def __init__(self, url_or_text: str, parent=None):
         super().__init__(parent)
@@ -299,7 +299,7 @@ class AutoVideoEngineWorker(QThread):
     finished = pyqtSignal(str)   # video path
     error    = pyqtSignal(str)
 
-    ENGINE_DIR = Path.home() / "hedra-short" / "auto-create-video"
+    ENGINE_DIR = Path("/Users/admin/Auto-Create-Video")
 
     def __init__(self, script_path: str, parent=None):
         super().__init__(parent)
@@ -308,7 +308,14 @@ class AutoVideoEngineWorker(QThread):
 
     def run(self):
         import subprocess
-        cmd = ["npm", "run", "pipeline", "--", self.script_path]
+        tsx_bin = self.ENGINE_DIR / "node_modules" / ".bin" / "tsx"
+        if not tsx_bin.exists():
+            self.error.emit(
+                f"Không tìm thấy tsx.\n"
+                f"Chạy: cd /Users/admin/Auto-Create-Video && npm install"
+            )
+            return
+        cmd = [str(tsx_bin), "src/cli.ts", self.script_path]
         try:
             proc = subprocess.Popen(
                 cmd, cwd=str(self.ENGINE_DIR),
