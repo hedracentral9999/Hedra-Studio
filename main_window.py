@@ -1682,27 +1682,35 @@ rm -f "$DMG" 2>/dev/null
         gm_h.setSpacing(8)
         self._av_gm_combo = QComboBox()
         self._av_gm_combo.setMinimumWidth(200)
+        self._av_gm_combo.setFixedHeight(28)
         self._av_gm_combo.setStyleSheet(
-            f"QComboBox{{background:white;border:1px solid {BORDER};"
-            f"border-radius:6px;padding:4px 8px;color:{TEXT};font-size:12px;}}")
+            f"QComboBox{{background:white;border:1.5px solid {BORDER};"
+            f"border-radius:6px;padding:0 10px;color:{TEXT};font-size:12px;}}"
+            f"QComboBox:hover{{border-color:#a0aec0;}}"
+            f"QComboBox:focus{{border-color:{ACCENT};}}"
+            f"QComboBox::drop-down{{border:none;width:20px;}}"
+            f"QComboBox::down-arrow{{width:10px;height:10px;}}"
+            f"QComboBox QAbstractItemView{{background:white;border:1px solid {BORDER};"
+            f"border-radius:6px;selection-background-color:#eff6ff;"
+            f"selection-color:{TEXT};font-size:12px;padding:4px;}}")
         self._av_gm_combo.currentIndexChanged.connect(self._av_on_voice_change)
         gm_h.addWidget(self._av_gm_combo)
 
-        btn_add = QPushButton("+")
-        btn_add.setFixedSize(28, 28)
+        btn_add = QPushButton("＋ Thêm giọng")
+        btn_add.setFixedHeight(28)
         btn_add.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:6px;font-size:16px;font-weight:700;}}"
+            f"border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;}}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}")
         btn_add.clicked.connect(self._av_add_voice)
         gm_h.addWidget(btn_add)
 
-        btn_del = QPushButton("−")
-        btn_del.setFixedSize(28, 28)
+        btn_del = QPushButton("Xoá")
+        btn_del.setFixedHeight(28)
         btn_del.setStyleSheet(
-            f"QPushButton{{background:#e0303a;color:white;border:none;"
-            f"border-radius:6px;font-size:16px;font-weight:700;}}"
-            f"QPushButton:hover{{background:#c5202a;}}")
+            f"QPushButton{{background:white;color:#e0303a;border:1px solid #e0303a;"
+            f"border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;}}"
+            f"QPushButton:hover{{background:#fff0f0;}}")
         btn_del.clicked.connect(self._av_del_voice)
         gm_h.addWidget(btn_del)
         gm_h.addStretch()
@@ -1730,19 +1738,41 @@ rm -f "$DMG" 2>/dev/null
         self._av_log.setVisible(False)
         layout.addWidget(self._av_log)
 
-        # ── Progress bar ──────────────────────────────────────────────
+        # ── Progress section ──────────────────────────────────────────
         from PyQt6.QtWidgets import QProgressBar
+        # Step label (ví dụ: "Bước 3/8 — Fetch og:image")
+        self._av_step_label = QLabel("")
+        self._av_step_label.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;background:transparent;")
+        self._av_step_label.setVisible(False)
+        layout.addWidget(self._av_step_label)
+
+        # Progress bar + % label cạnh nhau
+        prog_row = QWidget()
+        prog_h = QHBoxLayout(prog_row)
+        prog_h.setContentsMargins(0, 0, 0, 0)
+        prog_h.setSpacing(8)
+
         self._av_progress = QProgressBar()
         self._av_progress.setRange(0, 100)
         self._av_progress.setValue(0)
-        self._av_progress.setFixedHeight(6)
+        self._av_progress.setFixedHeight(10)
         self._av_progress.setTextVisible(False)
         self._av_progress.setStyleSheet(
-            "QProgressBar{background:#e5e5ea;border:none;border-radius:3px;}"
-            f"QProgressBar::chunk{{background:{ACCENT};border-radius:3px;}}"
-        )
-        self._av_progress.setVisible(False)
-        layout.addWidget(self._av_progress)
+            "QProgressBar{background:#e5e5ea;border:none;border-radius:5px;}"
+            f"QProgressBar::chunk{{background:{ACCENT};border-radius:5px;}}")
+        prog_h.addWidget(self._av_progress)
+
+        self._av_pct_label = QLabel("0%")
+        self._av_pct_label.setFixedWidth(36)
+        self._av_pct_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._av_pct_label.setStyleSheet(
+            f"color:{TEXT_MUTE};font-size:11px;font-weight:600;background:transparent;")
+        prog_h.addWidget(self._av_pct_label)
+
+        prog_row.setVisible(False)
+        self._av_prog_row = prog_row
+        layout.addWidget(prog_row)
 
         # ── Result card (ẩn lúc đầu) ─────────────────────────────────
         self._av_result_card, av_result_vbox = self._card()
@@ -1828,8 +1858,11 @@ rm -f "$DMG" 2>/dev/null
         self._av_gen_btn.setText("⏳  Đang tạo…")
         self._av_log.clear()
         self._av_log.setVisible(True)
+        self._av_step_label.setText("Đang khởi động…")
+        self._av_step_label.setVisible(True)
+        self._av_prog_row.setVisible(True)
         self._av_progress.setValue(0)
-        self._av_progress.setVisible(True)
+        self._av_pct_label.setText("0%")
         self._av_result_card.setVisible(False)
 
         self._av_script_worker = AutoScriptWorker(inp)
@@ -1842,7 +1875,7 @@ rm -f "$DMG" 2>/dev/null
         self._av_set_status("Script xong — đang render video…")
         self._av_engine_worker = AutoVideoEngineWorker(script_path)
         self._av_engine_worker.log_line.connect(self._av_append_log)
-        self._av_engine_worker.progress.connect(self._av_progress.setValue)
+        self._av_engine_worker.progress.connect(self._av_on_progress)
         self._av_engine_worker.finished.connect(self._av_on_video_done)
         self._av_engine_worker.error.connect(self._av_on_error)
         self._av_engine_worker.start()
@@ -1850,7 +1883,9 @@ rm -f "$DMG" 2>/dev/null
     def _av_on_video_done(self, video_path: str):
         self._av_gen_btn.setEnabled(True)
         self._av_gen_btn.setText("✨  Generate Video")
-        self._av_progress.setValue(100)
+        self._av_on_progress(100)
+        self._av_prog_row.setVisible(False)
+        self._av_step_label.setVisible(False)
         self._av_set_status("✅  Hoàn thành!")
         self._av_video_path = video_path
         self._av_video_path_lbl.setText(video_path or "Không tìm thấy video.mp4")
@@ -1859,7 +1894,8 @@ rm -f "$DMG" 2>/dev/null
     def _av_on_error(self, msg: str):
         self._av_gen_btn.setEnabled(True)
         self._av_gen_btn.setText("✨  Generate Video")
-        self._av_progress.setVisible(False)
+        self._av_prog_row.setVisible(False)
+        self._av_step_label.setVisible(False)
         self._av_set_status(f"❌  {msg}", error=True)
 
     def _av_set_status(self, msg: str, error: bool = False):
@@ -1871,6 +1907,12 @@ rm -f "$DMG" 2>/dev/null
 
     def _av_append_log(self, line: str):
         self._av_log.append(line)
+        import re
+        m = re.search(r"\[(\d+)/(\d+)\]\s*(.*)", line)
+        if m:
+            n, t, desc = int(m.group(1)), int(m.group(2)), m.group(3).strip()
+            short = desc.split("(")[0].strip()
+            self._av_step_label.setText(f"Bước {n}/{t} — {short}")
 
     def _av_open_finder(self):
         import subprocess, os
@@ -1948,85 +1990,13 @@ rm -f "$DMG" 2>/dev/null
         save_settings(self.settings)
         self._av_refresh_voice_combo()
 
+    def _av_on_progress(self, val: int):
+        self._av_progress.setValue(val)
+        self._av_pct_label.setText(f"{val}%")
+
     def update_settings(self, settings: dict):
         self.settings = settings
         self._refresh_credits()
-
-    # ── Tab: Auto Video ─────────────────────────────────────────────────
-
-    def _build_auto_video_tab(self) -> QWidget:
-        outer = QWidget()
-        outer.setStyleSheet(f"background:{BG};")
-        layout = QVBoxLayout(outer)
-        layout.setContentsMargins(20, 16, 20, 20)
-        layout.setSpacing(12)
-
-        input_card, input_vbox = self._card()
-        layout.addWidget(input_card)
-        self._card_row(input_vbox, "Link bài báo", self._av_url_field(), last=False)
-        self._card_row(input_vbox, "Hoặc paste text", self._av_text_field(), last=True)
-
-        self._av_status = QLabel("Nhập link hoặc paste nội dung rồi nhấn Generate")
-        self._av_status.setStyleSheet(f"color:{TEXT_MUTE};font-size:12px;background:transparent;")
-        self._av_status.setWordWrap(True)
-        layout.addWidget(self._av_status)
-
-        self._av_log = QTextEdit()
-        self._av_log.setReadOnly(True)
-        self._av_log.setFixedHeight(120)
-        self._av_log.setStyleSheet(
-            "QTextEdit{background:#f5f5f7;border:1px solid #e5e5ea;"
-            "border-radius:8px;font-size:11px;font-family:Menlo,monospace;padding:8px;}")
-        self._av_log.setVisible(False)
-        layout.addWidget(self._av_log)
-
-        from PyQt6.QtWidgets import QProgressBar
-        self._av_progress = QProgressBar()
-        self._av_progress.setRange(0, 100)
-        self._av_progress.setValue(0)
-        self._av_progress.setFixedHeight(6)
-        self._av_progress.setTextVisible(False)
-        self._av_progress.setStyleSheet(
-            "QProgressBar{background:#e5e5ea;border:none;border-radius:3px;}"
-            f"QProgressBar::chunk{{background:{ACCENT};border-radius:3px;}}")
-        self._av_progress.setVisible(False)
-        layout.addWidget(self._av_progress)
-
-        self._av_result_card, av_result_vbox = self._card()
-        self._av_result_card.setVisible(False)
-        self._av_video_path_lbl = QLabel("—")
-        self._av_video_path_lbl.setStyleSheet(
-            f"color:{TEXT_MUTE};font-size:11px;background:transparent;")
-        self._av_video_path_lbl.setWordWrap(True)
-        self._card_row(av_result_vbox, "Video output", self._av_video_path_lbl, last=False)
-        self._av_btn_open = QPushButton("📂  Open in Finder")
-        self._av_btn_open.setFixedHeight(32)
-        self._av_btn_open.setStyleSheet(
-            f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
-            f"padding:0 14px;background:white;color:{TEXT};font-size:12px;}}"
-            f"QPushButton:hover{{background:#f5f5f7;}}")
-        self._av_btn_open.clicked.connect(self._av_open_finder)
-        btn_w = QWidget(); btn_h = QHBoxLayout(btn_w)
-        btn_h.setContentsMargins(16,8,16,12)
-        btn_h.addWidget(self._av_btn_open); btn_h.addStretch()
-        av_result_vbox.addWidget(btn_w)
-        layout.addWidget(self._av_result_card)
-        layout.addStretch()
-
-        self._av_gen_btn = QPushButton("✨  Generate Video")
-        self._av_gen_btn.setFixedHeight(44)
-        self._av_gen_btn.setStyleSheet(
-            f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:10px;font-size:14px;font-weight:700;padding:0 28px;}}"
-            f"QPushButton:hover{{background:{ACCENT_HV};}}"
-            f"QPushButton:pressed{{background:#0060cc;}}"
-            f"QPushButton:disabled{{background:#a8d0fb;color:white;}}")
-        self._av_gen_btn.clicked.connect(self._av_on_generate)
-        layout.addWidget(self._av_gen_btn)
-
-        self._av_script_worker = None
-        self._av_engine_worker = None
-        return outer
 
     def _av_url_field(self):
         self._av_url = QLineEdit()
