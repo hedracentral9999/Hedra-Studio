@@ -1601,13 +1601,19 @@ rm -f "$DMG" 2>/dev/null
         dlg = SettingsDialog(self.settings, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.settings = dlg.get_settings()
-            save_settings(self.settings)
-            self._refresh_credits()
-            self._rebuild_style_buttons()
-            self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
-            self._voice_name_lbl.setText(
-                self.settings.get("selected_voice_name", "Adam")
-            )
+            try:
+                save_settings(self.settings)
+            except Exception as e:
+                QMessageBox.warning(self, "Lỗi lưu cài đặt", str(e))
+            try:
+                self._refresh_credits()
+                self._rebuild_style_buttons()
+                self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
+                self._voice_name_lbl.setText(
+                    self.settings.get("selected_voice_name", "Adam")
+                )
+            except Exception:
+                pass  # Không crash app nếu refresh lỗi
 
     def update_settings(self, settings: dict):
         self.settings = settings
