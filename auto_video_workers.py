@@ -42,29 +42,54 @@ def _make_slug(title: str) -> str:
 
 # ── AI Script Generation Prompt ───────────────────────────────────────────
 
-SCRIPT_SYSTEM_PROMPT = """Bạn là AI chuyên tạo script video ngắn TikTok từ bài báo/content.
+SCRIPT_SYSTEM_PROMPT = """Bạn là AI chuyên tạo script video ngắn TikTok từ bài báo.
+Tạo script JSON cho video ~60-90 giây, đúng 6-7 scenes: 1 hook + 4-5 body + 1 outro.
 
-Nhiệm vụ: Đọc bài báo → tạo script JSON cho video ~60-90 giây.
-
-QUY TẮC CỨNG:
-- Đúng 6 scenes: hook + 4 body + outro
-- Scene 1 PHẢI template "hook", scene cuối PHẢI "outro"
-- voiceText: tiếng Việt tự nhiên, 15-30 từ mỗi scene
+QUY TẮC NỘI DUNG:
+- voiceText: tiếng Việt tự nhiên, 20-40 từ/scene
 - Hook bắt đầu bằng số, câu hỏi hoặc thông tin gây tò mò
 - KHÔNG dùng "Xin chào", "Hôm nay chúng ta"
 
-OUTPUT: Chỉ JSON thuần, không có text thêm.
+QUY TẮC FORMAT — QUAN TRỌNG, tuân thủ tuyệt đối:
+- hook.headline: tối đa 40 ký tự
+- hook.subhead: tối đa 40 ký tự
+- stat-hero.value: tối đa 20 ký tự, label: tối đa 40 ký tự
+- feature-list.title: tối đa 40 ký tự, mỗi bullet: tối đa 50 ký tự, tối đa 4 bullets
+- callout.statement: tối đa 80 ký tự, tag: tối đa 20 ký tự
+- outro.ctaTop: tối đa 30 ký tự, channelName: tối đa 30 ký tự, source: tối đa 40 ký tự
+- comparison.left và right PHẢI có đủ 3 field: label (max30), value (max20), color ("cyan" hoặc "purple")
 
-FORMAT:
+OUTPUT: Chỉ JSON thuần, không markdown, không giải thích.
+
+FORMAT CHUẨN (copy chính xác cấu trúc này):
 {
-  "title": "tên video ngắn",
+  "version": "1.0",
+  "metadata": {
+    "title": "tên video ngắn",
+    "source": {"url": "{{URL}}", "domain": "{{DOMAIN}}", "image": null},
+    "channel": "{{CHANNEL}}"
+  },
+  "voice": {"provider": "lucylab", "voiceId": "${VIETNAMESE_VOICEID}", "speed": 1.0},
   "scenes": [
-    {"template":"hook","voiceText":"...","fields":{"headline":"TIÊU ĐỀ","subhead":"phụ đề","kenBurns":"zoom-in"}},
-    {"template":"stat-hero","voiceText":"...","fields":{"value":"99%","label":"mô tả","context":"ngữ cảnh"}},
-    {"template":"comparison","voiceText":"...","fields":{"leftLabel":"A","leftValue":"x","rightLabel":"B","rightValue":"y","winner":true}},
-    {"template":"feature-list","voiceText":"...","fields":{"ftTitle":"Nổi bật","bullets":["điểm 1","điểm 2","điểm 3"]}},
-    {"template":"callout","voiceText":"...","fields":{"statement":"Quote quan trọng","tag":"hashtag"}},
-    {"template":"outro","voiceText":"...","fields":{"ctaTop":"Theo dõi ngay","channelName":"{{CHANNEL}}","source":"{{DOMAIN}}"}}
+    {"id":"hook","type":"hook","voiceText":"câu hook hấp dẫn 20-40 từ",
+     "templateData":{"template":"hook","headline":"TIÊU ĐỀ NGẮN <40KÝ","subhead":"phụ đề <40 ký","kenBurns":"zoom-in"}},
+
+    {"id":"body-1","type":"body","voiceText":"nội dung scene 1",
+     "templateData":{"template":"stat-hero","value":"99%","label":"mô tả <40 ký","context":"ngữ cảnh <50 ký"}},
+
+    {"id":"body-2","type":"body","voiceText":"nội dung scene 2",
+     "templateData":{"template":"comparison",
+       "left":{"label":"Trước <30ký","value":"x <20ký","color":"cyan"},
+       "right":{"label":"Sau <30ký","value":"y <20ký","color":"purple","winner":true}}},
+
+    {"id":"body-3","type":"body","voiceText":"nội dung scene 3",
+     "templateData":{"template":"feature-list","title":"Tiêu đề <40ký","bullets":["điểm 1 <50ký","điểm 2","điểm 3"]}},
+
+    {"id":"body-4","type":"body","voiceText":"nội dung scene 4",
+     "templateData":{"template":"callout","statement":"quote quan trọng <80 ký tự","tag":"hashtag<20ký"}},
+
+    {"id":"outro","type":"outro","voiceText":"lời kết kêu gọi follow",
+     "templateData":{"template":"outro","ctaTop":"Theo dõi ngay","channelName":"{{CHANNEL}}","source":"{{DOMAIN}}"}}
   ]
 }"""
 
@@ -197,9 +222,11 @@ class AutoScriptWorker(QThread):
     def _generate_claude(self, article: dict, settings: dict, api_key: str) -> dict:
         import anthropic
         channel = settings.get("channel_name", "Hedra Central")
-        system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
-        system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
-        client  = anthropic.Anthropic(api_key=api_key)
+        system = (SCRIPT_SYSTEM_PROMPT
+                  .replace("{{URL}}", article.get("url", ""))
+                  .replace("{{DOMAIN}}", article.get("domain", ""))
+                  .replace("{{CHANNEL}}", channel))
+        client = anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(
             model=settings.get("claude_model", "claude-3-5-haiku-20241022"),
             max_tokens=2048, system=system,
@@ -210,8 +237,10 @@ class AutoScriptWorker(QThread):
 
     def _generate_deepseek(self, article: dict, api_key: str) -> dict:
         channel = "Hedra Central"
-        system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
-        system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
+        system = (SCRIPT_SYSTEM_PROMPT
+                  .replace("{{URL}}", article.get("url", ""))
+                  .replace("{{DOMAIN}}", article.get("domain", ""))
+                  .replace("{{CHANNEL}}", channel))
         payload = {
             "model": "deepseek-chat",
             "max_tokens": 2048,
@@ -231,8 +260,10 @@ class AutoScriptWorker(QThread):
 
     def _generate_gemini(self, article: dict, api_key: str) -> dict:
         channel = "Hedra Central"
-        system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
-        system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
+        system = (SCRIPT_SYSTEM_PROMPT
+                  .replace("{{URL}}", article.get("url", ""))
+                  .replace("{{DOMAIN}}", article.get("domain", ""))
+                  .replace("{{CHANNEL}}", channel))
         prompt  = (f"{system}\n\n"
                    f"Tiêu đề: {article['title']}\n\nNội dung:\n{article['text'][:4000]}\n\nTạo script video.")
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -254,32 +285,26 @@ class AutoScriptWorker(QThread):
         return json.loads(raw.strip())
 
     def _build_script(self, raw: dict, article: dict, settings: dict) -> dict:
-        provider = settings.get("tts_provider", "genmax")
-        voice_id = settings.get("voice_id") or settings.get("genmax_voice_id", "")
-        channel  = settings.get("channel_name", "Hedra Central")
+        # Fix image: chỉ giữ nếu là https:// URL hợp lệ
+        img = article.get("image")
+        if img and not re.match(r'^https?://', img or ''):
+            img = None
 
-        scenes_out = []
-        raw_scenes = raw.get("scenes", [])
-        for i, s in enumerate(raw_scenes):
-            tpl    = s.get("template", "callout")
-            fields = s.get("fields", {})
-            scenes_out.append({
-                "id":           tpl if i == 0 or tpl == "outro" else f"body-{i}",
-                "type":         "hook" if i == 0 else ("outro" if i == len(raw_scenes)-1 else "body"),
-                "voiceText":    s.get("voiceText", "").strip(),
-                "templateData": {**{"template": tpl}, **fields},
-            })
+        # Fix voice (đảm bảo đúng dù AI có generate sai)
+        if "voice" in raw:
+            raw["voice"]["provider"] = "lucylab"
+            raw["voice"]["voiceId"] = "${VIETNAMESE_VOICEID}"
+        else:
+            raw["voice"] = {"provider": "lucylab", "voiceId": "${VIETNAMESE_VOICEID}", "speed": 1.0}
 
-        return {
-            "version": "1.0",
-            "metadata": {
-                "title":  raw.get("title", article.get("title", "")),
-                "source": {"url": article["url"], "domain": article["domain"], "image": article.get("image")},
-                "channel": channel,
-            },
-            "voice":  {"provider": provider, "voiceId": voice_id, "speed": 1.0},
-            "scenes": scenes_out,
-        }
+        # Fix metadata.source.image
+        if "metadata" not in raw:
+            raw["metadata"] = {}
+        if "source" not in raw["metadata"]:
+            raw["metadata"]["source"] = {}
+        raw["metadata"]["source"]["image"] = img
+
+        return raw
 
     def _write_script(self, script: dict, title: str) -> str:
         slug    = _make_slug(title)
