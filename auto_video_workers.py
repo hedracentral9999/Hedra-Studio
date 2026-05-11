@@ -154,25 +154,99 @@ class AutoScriptWorker(QThread):
                 "text": body[:6000], "image": image}
 
     def _generate(self, article: dict, settings: dict) -> dict:
-        import anthropic
-        api_key = settings.get("claude_api_key", "").strip()
-        if not api_key:
+        """Try Claude → DeepSeek → Gemini. Raise ValueError nếu tất cả fail."""
+        errors = []
+
+        # ── 1. Claude ────────────────────────────────────────────────────
+        claude_key = settings.get("claude_api_key", "").strip()
+        if claude_key:
+            try:
+                self.progress.emit("AI đang viết script… (Claude)")
+                return self._generate_claude(article, settings, claude_key)
+            except Exception as e:
+                errors.append(f"Claude: {e}")
+                self.progress.emit("Claude lỗi — thử DeepSeek…")
+
+        # ── 2. DeepSeek ──────────────────────────────────────────────────
+        ds_key = settings.get("ds_api_key", "").strip()
+        if ds_key:
+            try:
+                self.progress.emit("AI đang viết script… (DeepSeek)")
+                return self._generate_deepseek(article, ds_key)
+            except Exception as e:
+                errors.append(f"DeepSeek: {e}")
+                self.progress.emit("DeepSeek lỗi — thử Gemini…")
+
+        # ── 3. Gemini ────────────────────────────────────────────────────
+        gemini_key = settings.get("gemini_api_key", "").strip()
+        if gemini_key:
+            try:
+                self.progress.emit("AI đang viết script… (Gemini)")
+                return self._generate_gemini(article, gemini_key)
+            except Exception as e:
+                errors.append(f"Gemini: {e}")
+
+        # ── Tất cả fail ──────────────────────────────────────────────────
+        if not errors:
             raise ValueError(
-                "Chưa có Claude API Key.\\nVào Settings → API Keys để nhập."
+                "Chưa có API key nào.\n"
+                "Vào Settings → API Keys → nhập Claude / DeepSeek / Gemini key."
             )
+        raise ValueError("Tất cả AI providers đều lỗi:\n" + "\n".join(errors))
+
+    def _generate_claude(self, article: dict, settings: dict, api_key: str) -> dict:
+        import anthropic
         channel = settings.get("channel_name", "Hedra Central")
         system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
         system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
-
-        client = anthropic.Anthropic(api_key=api_key)
+        client  = anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(
             model=settings.get("claude_model", "claude-3-5-haiku-20241022"),
-            max_tokens=2048,
-            system=system,
+            max_tokens=2048, system=system,
             messages=[{"role": "user", "content":
-                f"Tiêu đề: {article['title']}\\n\\nNội dung:\\n{article['text'][:4000]}\\n\\nTạo script video."}],
+                f"Tiêu đề: {article['title']}\n\nNội dung:\n{article['text'][:4000]}\n\nTạo script video."}],
         )
-        raw = resp.content[0].text.strip()
+        return self._parse_json(resp.content[0].text.strip())
+
+    def _generate_deepseek(self, article: dict, api_key: str) -> dict:
+        channel = "Hedra Central"
+        system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
+        system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
+        payload = {
+            "model": "deepseek-chat",
+            "max_tokens": 2048,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content":
+                    f"Tiêu đề: {article['title']}\n\nNội dung:\n{article['text'][:4000]}\n\nTạo script video."},
+            ],
+        }
+        resp = requests.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload, timeout=60,
+        )
+        resp.raise_for_status()
+        return self._parse_json(resp.json()["choices"][0]["message"]["content"].strip())
+
+    def _generate_gemini(self, article: dict, api_key: str) -> dict:
+        channel = "Hedra Central"
+        system  = SCRIPT_SYSTEM_PROMPT.replace("{{CHANNEL}}", channel)
+        system  = system.replace("{{DOMAIN}}", article.get("domain", ""))
+        prompt  = (f"{system}\n\n"
+                   f"Tiêu đề: {article['title']}\n\nNội dung:\n{article['text'][:4000]}\n\nTạo script video.")
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        resp = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+            f"?key={api_key}",
+            headers={"Content-Type": "application/json"},
+            json=payload, timeout=60,
+        )
+        resp.raise_for_status()
+        return self._parse_json(resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip())
+
+    def _parse_json(self, raw: str) -> dict:
+        """Parse JSON từ response — handle markdown code block."""
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
