@@ -282,71 +282,48 @@ OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, pause...).
 # Slider chỉ kiểm soát 1 thứ: có được THÊM NỘI DUNG MỚI hay không.
 def get_creativity_guide(temperature: float) -> str:
-    """Trả về hướng dẫn: X% = nâng cấp kịch bản lên X% hay hơn bản gốc."""
+    """Trả về hướng dẫn chính xác theo %: X% câu × X% độ sâu."""
     pct = int(temperature * 100)
+    keep_pct = 100 - pct
     if pct <= 0:
         return """
 
 ## 🔒 SÁNG TẠO: 0%
 
-Chỉ làm những việc sau, KHÔNG làm gì khác:
-- Sửa chính tả, mở rộng viết tắt (a→anh, k→không, dc→được...)
-- Thêm tags cảm xúc [happy], [curious]...
-- Viết hoa từ quan trọng, thêm pause (...), kéo dài âm (nhaaa)
-- GIỮ NGUYÊN từng chữ, từng câu — KHÔNG thêm bớt gì"""
+GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
+- Sửa chính tả, mở rộng viết tắt (a→anh, k→không...)
+- Thêm tags [happy], [curious]...
+- Thêm CAPS, pause (...), kéo dài âm (nhaaa)
+- KHÔNG thêm từ mới, KHÔNG đổi câu, KHÔNG đảo ý
+- Output = input, chỉ khác format"""
+
+    # Độ sâu dựa trên %
     if pct <= 20:
-        return f"""
+        depth = "thêm 1-2 từ đệm (ạ, nha, nhé), giữ nguyên cấu trúc câu"
+    elif pct <= 45:
+        depth = "thêm từ đệm + đảo nhẹ cấu trúc, thêm 1-2 từ cảm thán"
+    elif pct <= 70:
+        depth = "diễn đạt lại câu cho mượt, thêm câu dẫn ngắn, thêm cảm xúc"
+    elif pct <= 90:
+        depth = "viết lại câu tự nhiên như nói chuyện, thêm bình luận, câu dẫn"
+    else:
+        depth = "viết lại hoàn toàn như content writer, thêm câu mới, sáng tạo tối đa"
 
-## 🌱 SÁNG TẠO: {pct}% — Rất nhẹ
+    count = pct // 10  # số câu trên 10 câu mẫu
 
-Đọc kịch bản gốc. Làm cho nó tự nhiên hơn MỘT CHÚT:
-- Sửa chính tả, viết tắt → đầy đủ
-- Thêm 1-2 từ đệm (ạ, nha, nhé) vào chỗ phù hợp
-- Thêm tags cảm xúc, CAPS, pause, kéo dài âm
-- Hầu như giữ nguyên cấu trúc câu — chỉ làm mượt hơn"""
-    if pct <= 45:
-        return f"""
-
-## 🌿 SÁNG TẠO: {pct}% — Nhẹ nhàng
-
-Đọc kịch bản gốc. Làm cho nó có hồn hơn:
-- Sửa chính tả, viết tắt → đầy đủ
-- Thêm từ đệm tự nhiên, thêm 1-2 câu cảm thán ngắn nếu thiếu
-- Được đảo cấu trúc câu cho mượt hơn
-- Thêm tags cảm xúc, CAPS, pause, kéo dài âm phong phú
-- Vẫn bám sát nội dung gốc, không thêm ý mới"""
-    if pct <= 70:
-        return f"""
-
-## 🍃 SÁNG TẠO: {pct}% — Vừa phải
-
-Đọc kịch bản gốc. Làm cho nó sinh động và cuốn hút hơn:
-- Sửa chính tả, viết tắt → đầy đủ
-- Thêm câu dẫn, câu cảm thán, bình luận tự nhiên
-- Diễn đạt lại các câu cho tự nhiên, mượt mà
-- Thêm tags, CAPS, pause, kéo dài âm đa dạng
-- Có thể thêm 1-2 câu ngắn để dẫn dắt, nhưng không bịa ý"""
-    if pct <= 90:
-        return f"""
-
-## 🍂 SÁNG TẠO: {pct}% — Khá cao
-
-Đọc kịch bản gốc. Biến nó thành cuộc trò chuyện thật sự:
-- Sửa chính tả, viết tắt → đầy đủ
-- Thoải mái thêm câu dẫn, bình luận, từ đệm, cảm thán
-- Viết lại câu cho thật tự nhiên, như đang nói chuyện
-- Thêm tags, CAPS, pause, kéo dài âm — càng nhiều càng tốt
-- Không bịa thông tin sai, nhưng được làm cho hấp dẫn hơn hẳn"""
     return f"""
 
-## 🔥 SÁNG TẠO: {pct}% — Tối đa
+## 🎚 SÁNG TẠO: {pct}% — GHI ĐÈ TẤT CẢ QUY TẮC KHÁC
 
-Đọc kịch bản gốc. Thổi hồn vào nó — biến thành content đỉnh cao:
-- Sửa chính tả, viết tắt → đầy đủ
-- TỰ DO sáng tạo: thêm câu, đảo ý, diễn giải, ví von, hài hước
-- Viết như content writer chuyên nghiệp — lôi cuốn, cảm xúc, đậm cá tính
-- Tags, CAPS, pause, kéo dài âm — dùng tối đa, không giới hạn
-- KHÔNG bịa thông tin sai — nhưng mọi thứ khác là tự do"""
+QUY TẮC CHÍNH XÁC THEO %:
+- Chọn {pct}% số câu trong input để LÀM MỚI (khoảng {count}/10 câu)
+- {keep_pct}% số câu còn lại: GIỮ NGUYÊN TỪNG CHỮ, chỉ format
+- Mỗi câu được chọn → làm mới ở độ sâu {pct}%: {depth}
+
+LUẬT CỨNG:
+- Sửa chính tả + viết tắt → đầy đủ (áp dụng 100% câu)
+- KHÔNG bịa thông tin sai, KHÔNG thêm ý không có trong input
+- Format: tags, CAPS, pause, kéo dài âm"""
 
 # Giữ lại để backward compat
 CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
