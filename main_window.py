@@ -1738,6 +1738,39 @@ rm -f "$DMG" 2>/dev/null
         self._av_log.setVisible(False)
         layout.addWidget(self._av_log)
 
+        # ── Kịch bản (ẩn mặc định) ───────────────────────────────────
+        self._av_script_card, av_sc_vbox = self._card()
+        self._av_script_card.setVisible(False)
+
+        sc_header = QWidget()
+        sc_hbox = QHBoxLayout(sc_header)
+        sc_hbox.setContentsMargins(16, 10, 16, 10)
+        sc_hbox.setSpacing(0)
+        sc_title = QLabel("📋  Kịch bản")
+        sc_title.setStyleSheet(
+            f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;")
+        self._av_script_toggle = QPushButton("▾ Thu gọn")
+        self._av_script_toggle.setFixedHeight(22)
+        self._av_script_toggle.setStyleSheet(
+            f"QPushButton{{border:none;background:transparent;color:{TEXT_MUTE};"
+            f"font-size:11px;padding:0 4px;}}"
+            f"QPushButton:hover{{color:{TEXT};}}")
+        self._av_script_toggle.clicked.connect(self._av_toggle_script)
+        sc_hbox.addWidget(sc_title)
+        sc_hbox.addStretch()
+        sc_hbox.addWidget(self._av_script_toggle)
+        av_sc_vbox.addWidget(sc_header)
+
+        self._av_script_view = QTextEdit()
+        self._av_script_view.setReadOnly(True)
+        self._av_script_view.setFixedHeight(180)
+        self._av_script_view.setStyleSheet(
+            f"QTextEdit{{background:#f9fafb;border:none;border-top:1px solid {BORDER};"
+            f"border-radius:0 0 10px 10px;color:{TEXT};font-size:12px;line-height:1.5;"
+            f"padding:10px 14px;}}")
+        av_sc_vbox.addWidget(self._av_script_view)
+        layout.addWidget(self._av_script_card)
+
         # ── Progress section ──────────────────────────────────────────
         from PyQt6.QtWidgets import QProgressBar
         # Step label (ví dụ: "Bước 3/8 — Fetch og:image")
@@ -1856,6 +1889,7 @@ rm -f "$DMG" 2>/dev/null
 
         self._av_gen_btn.setEnabled(False)
         self._av_gen_btn.setText("⏳  Đang tạo…")
+        self._av_script_card.setVisible(False)
         self._av_log.clear()
         self._av_log.setVisible(True)
         self._av_step_label.setText("Đang khởi động…")
@@ -1872,6 +1906,7 @@ rm -f "$DMG" 2>/dev/null
         self._av_script_worker.start()
 
     def _av_on_script_done(self, script_path: str):
+        self._av_show_script(script_path)
         self._av_set_status("Script xong — đang render video…")
         self._av_engine_worker = AutoVideoEngineWorker(script_path)
         self._av_engine_worker.log_line.connect(self._av_append_log)
@@ -1993,6 +2028,31 @@ rm -f "$DMG" 2>/dev/null
     def _av_on_progress(self, val: int):
         self._av_progress.setValue(val)
         self._av_pct_label.setText(f"{val}%")
+
+    def _av_toggle_script(self):
+        visible = self._av_script_view.isVisible()
+        self._av_script_view.setVisible(not visible)
+        self._av_script_toggle.setText("▸ Mở rộng" if visible else "▾ Thu gọn")
+
+    def _av_show_script(self, script_path: str):
+        """Đọc script.json và hiện voiceText từng scene."""
+        import json as _json
+        try:
+            with open(script_path, encoding="utf-8") as f:
+                data = _json.load(f)
+            scenes = data.get("scenes", [])
+            lines = []
+            for s in scenes:
+                sid = s.get("id", "")
+                vt  = s.get("voiceText", "").strip()
+                if vt:
+                    lines.append(f"[{sid}]\n{vt}")
+            self._av_script_view.setPlainText("\n\n".join(lines))
+            self._av_script_toggle.setText("▾ Thu gọn")
+            self._av_script_view.setVisible(True)
+            self._av_script_card.setVisible(True)
+        except Exception:
+            pass  # không hiện card nếu lỗi đọc file
 
     def update_settings(self, settings: dict):
         self.settings = settings
