@@ -1655,6 +1655,62 @@ rm -f "$DMG" 2>/dev/null
         self._card_row(input_vbox, "Link bài báo", self._av_url_field(), last=False)
         self._card_row(input_vbox, "Hoặc paste text", self._av_text_field(), last=True)
 
+        # ── Voice provider row ──────────────────────────────────────────
+        voice_card, voice_vbox = self._card()
+        layout.addWidget(voice_card)
+
+        from PyQt6.QtWidgets import QButtonGroup, QRadioButton
+        prov_widget = QWidget()
+        prov_h = QHBoxLayout(prov_widget)
+        prov_h.setContentsMargins(16, 10, 16, 10)
+        prov_h.setSpacing(16)
+        self._av_prov_group = QButtonGroup(self)
+        for i, label in enumerate(["LucyLab", "GenMax"]):
+            rb = QRadioButton(label)
+            rb.setStyleSheet(f"color:{TEXT};background:transparent;font-size:13px;")
+            self._av_prov_group.addButton(rb, i)
+            prov_h.addWidget(rb)
+        prov_h.addStretch()
+        cur_prov = self.settings.get("av_tts_provider", "lucylab")
+        self._av_prov_group.button(0 if cur_prov == "lucylab" else 1).setChecked(True)
+        self._av_prov_group.idToggled.connect(self._av_on_provider_change)
+        self._card_row(voice_vbox, "TTS Provider", prov_widget, last=False)
+
+        self._av_gm_widget = QWidget()
+        gm_h = QHBoxLayout(self._av_gm_widget)
+        gm_h.setContentsMargins(0, 0, 0, 0)
+        gm_h.setSpacing(8)
+        self._av_gm_combo = QComboBox()
+        self._av_gm_combo.setMinimumWidth(200)
+        self._av_gm_combo.setStyleSheet(
+            f"QComboBox{{background:white;border:1px solid {BORDER};"
+            f"border-radius:6px;padding:4px 8px;color:{TEXT};font-size:12px;}}")
+        self._av_gm_combo.currentIndexChanged.connect(self._av_on_voice_change)
+        gm_h.addWidget(self._av_gm_combo)
+
+        btn_add = QPushButton("+")
+        btn_add.setFixedSize(28, 28)
+        btn_add.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border:none;"
+            f"border-radius:6px;font-size:16px;font-weight:700;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}")
+        btn_add.clicked.connect(self._av_add_voice)
+        gm_h.addWidget(btn_add)
+
+        btn_del = QPushButton("−")
+        btn_del.setFixedSize(28, 28)
+        btn_del.setStyleSheet(
+            f"QPushButton{{background:#e0303a;color:white;border:none;"
+            f"border-radius:6px;font-size:16px;font-weight:700;}}"
+            f"QPushButton:hover{{background:#c5202a;}}")
+        btn_del.clicked.connect(self._av_del_voice)
+        gm_h.addWidget(btn_del)
+        gm_h.addStretch()
+
+        self._card_row(voice_vbox, "Giọng GenMax", self._av_gm_widget, last=True)
+        self._av_refresh_voice_combo()
+        self._av_gm_widget.setVisible(cur_prov == "genmax")
+
         # ── Status / log ──────────────────────────────────────────────
         self._av_status = QLabel("Nhập link hoặc paste nội dung rồi nhấn Generate")
         self._av_status.setStyleSheet(
@@ -1758,9 +1814,14 @@ rm -f "$DMG" 2>/dev/null
             self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True)
             return
 
-        # Check API key
-        if not self.settings.get("claude_api_key", "").strip():
-            self._av_set_status("Chưa có Claude API Key — vào Settings để nhập.", error=True)
+        # Check có ít nhất 1 API key (Claude / DeepSeek / Gemini)
+        has_key = any([
+            self.settings.get("claude_api_key", "").strip(),
+            self.settings.get("ds_api_key", "").strip(),
+            self.settings.get("gemini_api_key", "").strip(),
+        ])
+        if not has_key:
+            self._av_set_status("Chưa có API key — vào Settings nhập Claude / DeepSeek / Gemini.", error=True)
             return
 
         self._av_gen_btn.setEnabled(False)
@@ -1817,6 +1878,75 @@ rm -f "$DMG" 2>/dev/null
         if path:
             folder = os.path.dirname(path)
             subprocess.run(["open", folder], check=False)
+
+    def _av_on_provider_change(self, btn_id: int, checked: bool):
+        if not checked:
+            return
+        prov = "lucylab" if btn_id == 0 else "genmax"
+        self.settings["av_tts_provider"] = prov
+        save_settings(self.settings)
+        self._av_gm_widget.setVisible(prov == "genmax")
+
+    def _av_refresh_voice_combo(self):
+        self._av_gm_combo.blockSignals(True)
+        self._av_gm_combo.clear()
+        voices = self.settings.get("av_genmax_voices", [])
+        for v in voices:
+            self._av_gm_combo.addItem(v["name"], v["id"])
+        sel = self.settings.get("av_genmax_voice_id", "")
+        for i in range(self._av_gm_combo.count()):
+            if self._av_gm_combo.itemData(i) == sel:
+                self._av_gm_combo.setCurrentIndex(i)
+                break
+        self._av_gm_combo.blockSignals(False)
+
+    def _av_on_voice_change(self, idx: int):
+        voice_id = self._av_gm_combo.itemData(idx) or ""
+        self.settings["av_genmax_voice_id"] = voice_id
+        save_settings(self.settings)
+
+    def _av_add_voice(self):
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Thêm giọng GenMax")
+        dlg.setMinimumWidth(320)
+        form = QFormLayout(dlg)
+        id_edit = QLineEdit()
+        id_edit.setPlaceholderText("Voice ID từ GenMax")
+        name_edit = QLineEdit()
+        name_edit.setPlaceholderText("Tên hiển thị")
+        form.addRow("Voice ID:", id_edit)
+        form.addRow("Tên giọng:", name_edit)
+        btns = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            vid = id_edit.text().strip()
+            name = name_edit.text().strip() or vid
+            if vid:
+                voices = self.settings.get("av_genmax_voices", [])
+                if not any(v["id"] == vid for v in voices):
+                    voices.append({"id": vid, "name": name})
+                    self.settings["av_genmax_voices"] = voices
+                    self.settings["av_genmax_voice_id"] = vid
+                    save_settings(self.settings)
+                    self._av_refresh_voice_combo()
+
+    def _av_del_voice(self):
+        idx = self._av_gm_combo.currentIndex()
+        if idx < 0:
+            return
+        vid = self._av_gm_combo.itemData(idx)
+        voices = [v for v in self.settings.get("av_genmax_voices", []) if v["id"] != vid]
+        self.settings["av_genmax_voices"] = voices
+        if self.settings.get("av_genmax_voice_id") == vid:
+            self.settings["av_genmax_voice_id"] = voices[0]["id"] if voices else ""
+        save_settings(self.settings)
+        self._av_refresh_voice_combo()
 
     def update_settings(self, settings: dict):
         self.settings = settings
@@ -1916,8 +2046,13 @@ rm -f "$DMG" 2>/dev/null
         inp  = url or text
         if not inp:
             self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True); return
-        if not self.settings.get("claude_api_key","").strip():
-            self._av_set_status("Chưa có Claude API Key — vào Settings.", error=True); return
+        has_key = any([
+            self.settings.get("claude_api_key", "").strip(),
+            self.settings.get("ds_api_key", "").strip(),
+            self.settings.get("gemini_api_key", "").strip(),
+        ])
+        if not has_key:
+            self._av_set_status("Chưa có API key — vào Settings nhập Claude / DeepSeek / Gemini.", error=True); return
         self._av_gen_btn.setEnabled(False)
         self._av_gen_btn.setText("⏳  Đang tạo…")
         self._av_log.clear(); self._av_log.setVisible(True)

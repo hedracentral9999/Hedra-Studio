@@ -291,11 +291,20 @@ class AutoScriptWorker(QThread):
             img = None
 
         # Fix voice (đảm bảo đúng dù AI có generate sai)
-        if "voice" in raw:
-            raw["voice"]["provider"] = "lucylab"
-            raw["voice"]["voiceId"] = "${VIETNAMESE_VOICEID}"
+        provider = settings.get("av_tts_provider", "lucylab")
+        if provider == "genmax":
+            voice_id = settings.get("av_genmax_voice_id", "")
+            if not voice_id:
+                raise ValueError("Chưa chọn giọng GenMax.\nVào Auto Video → Giọng GenMax → nhấn + để thêm.")
         else:
-            raw["voice"] = {"provider": "lucylab", "voiceId": "${VIETNAMESE_VOICEID}", "speed": 1.0}
+            voice_id = "${VIETNAMESE_VOICEID}"
+            provider = "lucylab"
+
+        if "voice" in raw:
+            raw["voice"]["provider"] = provider
+            raw["voice"]["voiceId"] = voice_id
+        else:
+            raw["voice"] = {"provider": provider, "voiceId": voice_id, "speed": 1.0}
 
         # Fix metadata.source.image
         if "metadata" not in raw:
@@ -332,6 +341,7 @@ class AutoVideoEngineWorker(QThread):
         self._cancelled  = False
 
     def run(self):
+        import os
         import subprocess
         tsx_bin = self.ENGINE_DIR / "node_modules" / ".bin" / "tsx"
         if not tsx_bin.exists():
@@ -341,11 +351,28 @@ class AutoVideoEngineWorker(QThread):
             )
             return
         cmd = [str(tsx_bin), "src/cli.ts", self.script_path]
+
+        settings = load_settings()
+        extra_env = {}
+        if settings.get("av_tts_provider") == "genmax":
+            gm_key = settings.get("genmax_api_key", "").strip()
+            gm_vid = settings.get("av_genmax_voice_id", "").strip()
+            if not gm_key:
+                self.error.emit("Chưa có GenMax API Key — vào Settings → API Keys."); return
+            if not gm_vid:
+                self.error.emit("Chưa chọn giọng GenMax."); return
+            extra_env = {
+                "TTS_PROVIDER": "genmax",
+                "GENMAX_API_KEY": gm_key,
+                "GENMAX_VOICE_ID": gm_vid,
+            }
+
+        run_env = {**os.environ, **extra_env}
         try:
             proc = subprocess.Popen(
                 cmd, cwd=str(self.ENGINE_DIR),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1,
+                text=True, bufsize=1, env=run_env,
             )
             for line in proc.stdout:
                 if self._cancelled:
