@@ -2,6 +2,8 @@ import os
 import sys
 import subprocess
 import webbrowser
+import shlex
+import re
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
@@ -16,8 +18,9 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app_constants import (
     VOICE_ID, MODEL, EL_OUTPUT_FORMAT, PROMPTS, PROMPT_TEMPLATES,
-    VERSION, DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY,
-    BG, SURFACE, BORDER, TEXT, TEXT_MUTE, ACCENT, ACCENT_HV, SEG_BG, STYLE,
+    VERSION, DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY, GEMINI_CHAT_PROMPT,
+    BG, SURFACE, SURFACE_2, BORDER, BORDER_SOFT, TEXT, TEXT_MUTE, TEXT_FAINT,
+    ACCENT, ACCENT_HV, ACCENT_DN, SEG_BG, CONTROL_BG, CONTROL_HV, CONTROL_DN, STYLE,
     get_creativity_guide,
 )
 from app_utils import load_settings, save_settings, reveal_file, DEFAULT_OUT, DATA_DIR
@@ -27,7 +30,8 @@ from app_workers import (
     SpeechToTextWorker, words_to_srt,
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
-from settings_dialog import SettingsDialog
+from app_icons import icon_size, ui_icon
+from settings_dialog import SettingsDialog, _read_env_local, _write_env_local
 from auto_video_workers import AutoScriptWorker, AutoVideoEngineWorker
 
 # ── Telegram config ────────────────────────────────────────────────
@@ -53,9 +57,9 @@ class MainWindow(QWidget):
         self._output_player = QMediaPlayer()
         self._output_player.setAudioOutput(self._output_audio)
         self._output_player.playbackStateChanged.connect(self._on_output_playback_state)
-        self.setWindowTitle(f"🎙  Hedra Studio  v{VERSION}")
-        self.setMinimumSize(540, 640)
-        self.resize(580, 740)
+        self.setWindowTitle(f"Hedra Studio  v{VERSION}")
+        self.setMinimumSize(860, 640)
+        self.resize(1160, 760)
         self.setStyleSheet(STYLE)
         # App icon
         try:
@@ -73,8 +77,8 @@ class MainWindow(QWidget):
         """Section label — small caps, muted, Apple System Settings style."""
         lbl = QLabel(text.upper())
         lbl.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; font-weight:600;"
-            "padding:16px 0 6px 0;"
+            f"color:{TEXT_MUTE}; font-size:11px; font-weight:700;"
+            "letter-spacing:0.4px; padding:18px 0 7px 0;"
             "background:transparent; border:none;"
         )
         return lbl
@@ -85,8 +89,8 @@ class MainWindow(QWidget):
         outer = QWidget()
         outer.setStyleSheet(
             f"QWidget{{background:{SURFACE};"
-            "border:none;"
-            "border-radius:10px;}}"
+            f"border:1px solid {BORDER_SOFT};"
+            "border-radius:12px;}"
         )
         vbox = QVBoxLayout(outer)
         vbox.setContentsMargins(0, 0, 0, 0)
@@ -98,14 +102,15 @@ class MainWindow(QWidget):
         """Form row trong card — 48px height, inset separator."""
         row_w = QWidget()
         row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
+        row_w.setMinimumHeight(58)
         h = QHBoxLayout(row_w)
-        h.setContentsMargins(16, 13, 16, 13)
-        h.setSpacing(12)
+        h.setContentsMargins(18, 12, 18, 12)
+        h.setSpacing(14)
 
         lbl = QLabel(label)
-        lbl.setFixedWidth(116)
+        lbl.setFixedWidth(126)
         lbl.setStyleSheet(
-            f"QLabel{{font-size:13px;color:{TEXT};"
+            f"QLabel{{font-size:13px;color:{TEXT};font-weight:500;"
             "background:transparent;border:none;}"
         )
         h.addWidget(lbl)
@@ -116,7 +121,7 @@ class MainWindow(QWidget):
         if note:
             n = QLabel(note)
             n.setStyleSheet(
-                f"QLabel{{font-size:11px;color:{TEXT_MUTE};"
+                f"QLabel{{font-size:11px;color:{TEXT_FAINT};"
                 "background:transparent;border:none;}"
             )
             n.setWordWrap(True)
@@ -134,87 +139,127 @@ class MainWindow(QWidget):
             sep_h.setSpacing(0)
             sep_line = QWidget()
             sep_line.setFixedHeight(1)
-            sep_line.setStyleSheet("background:#e5e5ea;border:none;")
+            sep_line.setStyleSheet(f"background:{BORDER_SOFT};border:none;")
             sep_h.addWidget(sep_line)
             container_vbox.addWidget(sep_wrap)
 
     def _build(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(0)
-        layout.setContentsMargins(20, 18, 20, 18)
+        root = QHBoxLayout(self)
+        root.setSpacing(0)
+        root.setContentsMargins(0, 0, 0, 0)
 
-        # ── Header ─────────────────────────────────────────────────
-        header_row = QHBoxLayout()
-        header_row.setSpacing(0)
+        sidebar = QWidget()
+        sidebar.setFixedWidth(190)
+        sidebar.setStyleSheet(f"QWidget{{background:#f7f7f8;border-right:1px solid {BORDER_SOFT};}}")
+        sb = QVBoxLayout(sidebar)
+        sb.setContentsMargins(12, 16, 12, 12)
+        sb.setSpacing(4)
 
-        title_col = QVBoxLayout()
-        title_col.setSpacing(2)
-        title_lbl = QLabel("🎙  Hedra Studio")
-        title_lbl.setFont(QFont("", 16, QFont.Weight.Bold))
-        title_lbl.setStyleSheet(f"color:{TEXT}; background:transparent;")
+        brand_row = QWidget()
+        brand_row.setStyleSheet("background:transparent;border:none;")
+        brand_lay = QHBoxLayout(brand_row)
+        brand_lay.setContentsMargins(8, 2, 8, 8)
+        brand_lay.setSpacing(8)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(ui_icon("video", 16).pixmap(icon_size(16)))
+        brand_icon.setStyleSheet("background:transparent;border:none;")
+        brand = QLabel("Hedra Studio")
+        brand.setFont(QFont("", 14, QFont.Weight.Bold))
+        brand.setStyleSheet(f"color:{TEXT};background:transparent;border:none;")
+        brand_lay.addWidget(brand_icon)
+        brand_lay.addWidget(brand, 1)
+        sb.addWidget(brand_row)
         self.credits_lbl = QLabel("Credits: đang tải...")
-        self.credits_lbl.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
-        )
-        title_col.addWidget(title_lbl)
-        title_col.addWidget(self.credits_lbl)
-        header_row.addLayout(title_col)
-        header_row.addStretch()
+        self.credits_lbl.setStyleSheet(f"color:{TEXT_FAINT};font-size:10px;padding:4px 8px;background:transparent;border:none;")
+        self.credits_lbl.setWordWrap(True)
+        sb.addSpacing(10)
 
+        nav_items = [
+            ("script", "Kịch bản"),
+            ("tts", "TTS"),
+            ("stt", "STT"),
+            ("video", "Auto Video"),
+        ]
+        self._main_nav_btns: list[QPushButton] = []
+        for idx, (icon, label) in enumerate(nav_items):
+            btn = QPushButton(label)
+            btn.setIcon(ui_icon(icon, 16))
+            btn.setIconSize(icon_size(16))
+            btn.setCheckable(True)
+            btn.setFixedHeight(34)
+            btn.setStyleSheet(
+                "QPushButton{text-align:left;border:none;border-radius:8px;"
+                "padding:0 10px;font-size:13px;font-weight:500;"
+                f"color:{TEXT};background:transparent;"
+                "}"
+                f"QPushButton:hover{{background:{CONTROL_HV};}}"
+                f"QPushButton:pressed{{background:{CONTROL_DN};}}"
+                f"QPushButton:checked{{background:{ACCENT};color:white;font-weight:700;}}"
+            )
+            btn.clicked.connect(lambda checked, i=idx: self._switch_main_tab(i))
+            self._main_nav_btns.append(btn)
+            sb.addWidget(btn)
+        sb.addStretch()
+        sb.addWidget(self.credits_lbl)
         ver_lbl = QLabel(f"v{VERSION}")
-        ver_lbl.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; background:transparent; padding-right:8px;"
-        )
-        header_row.addWidget(ver_lbl)
+        ver_lbl.setStyleSheet(f"color:{TEXT_FAINT};font-size:11px;padding:4px 8px;background:transparent;border:none;")
+        sb.addWidget(ver_lbl)
+        root.addWidget(sidebar)
 
-        btn_feedback = QPushButton("Feedback")
-        btn_feedback.setFixedHeight(28)
-        btn_feedback.setToolTip("Gửi phản hồi / Báo lỗi")
-        btn_feedback.setStyleSheet(
-            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
-            f"padding:3px 14px;background:{SURFACE};color:{TEXT_MUTE};font-size:12px;}}"
-            f"QPushButton:hover{{background:#ebebf0;color:{TEXT};}}"
-            f"QPushButton:pressed{{background:{SEG_BG};}}"
-        )
+        content = QWidget()
+        content.setStyleSheet(f"QWidget{{background:{SURFACE};}}")
+        layout = QVBoxLayout(content)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        toolbar = QWidget()
+        toolbar.setFixedHeight(52)
+        toolbar.setStyleSheet(f"QWidget{{background:{SURFACE};border-bottom:1px solid {BORDER_SOFT};}}")
+        toolbar_row = QHBoxLayout(toolbar)
+        toolbar_row.setContentsMargins(20, 8, 14, 8)
+        toolbar_row.setSpacing(8)
+        self._page_title = QLabel("TTS")
+        self._page_title.setFont(QFont("", 13, QFont.Weight.Bold))
+        self._page_title.setStyleSheet(f"color:{TEXT};background:transparent;border:none;")
+        toolbar_row.addWidget(self._page_title)
+        toolbar_row.addStretch()
+
+        def toolbar_button(text: str, tip: str = "", icon: str = "") -> QPushButton:
+            b = QPushButton(text)
+            b.setFixedHeight(30)
+            b.setToolTip(tip)
+            if icon:
+                b.setIcon(ui_icon(icon, 15))
+                b.setIconSize(icon_size(15))
+            b.setStyleSheet(
+                f"QPushButton{{border:1px solid {BORDER_SOFT};border-radius:15px;"
+                f"padding:0 13px;background:{SURFACE};color:{TEXT};font-size:12px;}}"
+                f"QPushButton:hover{{background:{CONTROL_HV};}}"
+                f"QPushButton:pressed{{background:{CONTROL_DN};}}"
+                f"QPushButton:disabled{{color:{TEXT_FAINT};background:{CONTROL_BG};}}"
+            )
+            return b
+
+        btn_feedback = toolbar_button("Feedback", "Gửi phản hồi / Báo lỗi", "message")
         btn_feedback.clicked.connect(self._open_feedback)
-        header_row.addWidget(btn_feedback)
-        header_row.addSpacing(6)
+        toolbar_row.addWidget(btn_feedback)
 
-        self._btn_check_update = QPushButton("Update")
-        self._btn_check_update.setFixedHeight(28)
-        self._btn_check_update.setToolTip("Kiểm tra và tải bản mới nhất")
-        self._btn_check_update.setStyleSheet(
-            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
-            f"padding:3px 14px;background:{SURFACE};color:{TEXT_MUTE};font-size:12px;}}"
-            f"QPushButton:hover{{background:#ebebf0;color:{TEXT};}}"
-            f"QPushButton:pressed{{background:{SEG_BG};}}"
-            "QPushButton:disabled{color:#aeaeb2;background:#f5f5f7;}"
-        )
+        self._btn_check_update = toolbar_button("Update", "Kiểm tra và tải bản mới nhất", "download")
         self._btn_check_update.clicked.connect(self._manual_check_update)
-        header_row.addWidget(self._btn_check_update)
-        header_row.addSpacing(6)
+        toolbar_row.addWidget(self._btn_check_update)
 
-        btn_settings = QPushButton("Settings")
-        btn_settings.setFixedHeight(28)
-        btn_settings.setStyleSheet(
-            f"QPushButton{{border:1px solid {BORDER};border-radius:14px;"
-            f"padding:3px 14px;background:{SURFACE};color:{TEXT};font-size:12px;}}"
-            f"QPushButton:hover{{background:#ebebf0;}}"
-            f"QPushButton:pressed{{background:{SEG_BG};}}"
-        )
+        btn_settings = toolbar_button("Settings", "Mở cài đặt", "settings")
         btn_settings.clicked.connect(self.open_settings)
-        header_row.addWidget(btn_settings)
-        layout.addLayout(header_row)
-        layout.addSpacing(12)
+        toolbar_row.addWidget(btn_settings)
+        layout.addWidget(toolbar)
 
-        # ── Update banner ──────────────────────────────────────────
         self.update_banner = QFrame()
         self.update_banner.setVisible(False)
         self.update_banner.setStyleSheet(
-            "QFrame{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}"
+            "QFrame{background:#f0f7ff;border:none;border-bottom:1px solid #bfdbfe;}"
         )
         banner_row = QHBoxLayout(self.update_banner)
-        banner_row.setContentsMargins(12, 8, 8, 8)
+        banner_row.setContentsMargins(20, 8, 14, 8)
         banner_row.setSpacing(8)
         badge = QLabel("NEW")
         badge.setStyleSheet(
@@ -223,9 +268,7 @@ class MainWindow(QWidget):
         )
         badge.setFixedHeight(18)
         self._banner_text = QLabel()
-        self._banner_text.setStyleSheet(
-            "color:#004499;font-size:12px;background:transparent;border:none;"
-        )
+        self._banner_text.setStyleSheet("color:#004499;font-size:12px;background:transparent;border:none;")
         self._btn_dl = QPushButton("Cập nhật ngay")
         self._btn_dl.setFixedHeight(28)
         self._btn_dl.setStyleSheet(
@@ -241,19 +284,122 @@ class MainWindow(QWidget):
         layout.addWidget(self.update_banner)
         self._update_url = ""
 
-        # ── Separator ──────────────────────────────────────────────
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(sep)
-        layout.addSpacing(4)
-
-        # ── Tab widget ─────────────────────────────────────────────
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_chat_tab(), "💬  Chat → Kịch Bản")
-        self.tabs.addTab(self._build_tts_tab(),  "🎙  TTS")
-        self.tabs.addTab(self._build_stt_tab(),  "📝  STT")
-        self.tabs.addTab(self._build_auto_video_tab(), "🎬  Auto Video")
-        self.tabs.setCurrentIndex(1)  # TTS mặc định
+        self.tabs = QStackedWidget()
+        self.tabs.addWidget(self._build_chat_tab())
+        self.tabs.addWidget(self._build_tts_tab())
+        self.tabs.addWidget(self._build_stt_tab())
+        self.tabs.addWidget(self._build_auto_video_tab())
+        self.tabs.currentChanged.connect(self._sync_main_nav)
         layout.addWidget(self.tabs)
+        root.addWidget(content, 1)
+        self._switch_main_tab(1)  # TTS mặc định
+
+    def _switch_main_tab(self, idx: int):
+        if hasattr(self, "tabs"):
+            self.tabs.setCurrentIndex(idx)
+        self._sync_main_nav(idx)
+
+    def _sync_main_nav(self, idx: int):
+        titles = ["Chat → Kịch Bản", "TTS", "STT", "Auto Video"]
+        if hasattr(self, "_page_title") and 0 <= idx < len(titles):
+            self._page_title.setText(titles[idx])
+        for i, btn in enumerate(getattr(self, "_main_nav_btns", [])):
+            btn.setChecked(i == idx)
+
+    def _student_page(self) -> tuple[QWidget, QVBoxLayout]:
+        page = QWidget()
+        page.setStyleSheet(f"QWidget{{background:{SURFACE};}}")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 16, 32, 22)
+        layout.setSpacing(12)
+        return page, layout
+
+    def _pane_heading(self, title: str, subtitle: str = "") -> QWidget:
+        wrap = QWidget()
+        wrap.setStyleSheet("background:transparent;border:none;")
+        lay = QVBoxLayout(wrap)
+        lay.setContentsMargins(0, 0, 0, 6)
+        lay.setSpacing(3)
+        t = QLabel(title)
+        t.setStyleSheet(f"font-size:13px;font-weight:700;color:{TEXT};background:transparent;border:none;")
+        lay.addWidget(t)
+        if subtitle:
+            s = QLabel(subtitle)
+            s.setWordWrap(True)
+            s.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+            lay.addWidget(s)
+        return wrap
+
+    def _v_divider(self) -> QFrame:
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.VLine)
+        div.setStyleSheet(f"color:{BORDER_SOFT};")
+        return div
+
+    def _strip_widget(self) -> tuple[QWidget, QHBoxLayout]:
+        strip = QWidget()
+        strip.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        lay = QHBoxLayout(strip)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(8)
+        return strip, lay
+
+    def _empty_state(self, icon: str, title: str, detail: str) -> QWidget:
+        box = QWidget()
+        box.setStyleSheet("background:transparent;border:none;")
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.setSpacing(8)
+        lay.addStretch()
+        icon_name = "audio" if icon in {"◉", "audio"} else icon
+        i = QLabel()
+        i.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if icon_name in {"audio", "script", "stt", "video", "image"}:
+            i.setPixmap(ui_icon(icon_name, 34, TEXT_FAINT).pixmap(icon_size(34)))
+        else:
+            i.setText(icon)
+            i.setStyleSheet(f"font-size:32px;color:{TEXT_FAINT};background:transparent;border:none;")
+        lay.addWidget(i)
+        t = QLabel(title)
+        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet(f"font-size:22px;font-weight:700;color:{TEXT_FAINT};background:transparent;border:none;")
+        lay.addWidget(t)
+        d = QLabel(detail)
+        d.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        d.setWordWrap(True)
+        d.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        lay.addWidget(d)
+        lay.addStretch()
+        return box
+
+    def _compact_primary_style(self) -> str:
+        return (
+            f"QPushButton{{background:{ACCENT};color:white;border:none;border-radius:9px;"
+            "font-size:13px;font-weight:700;padding:0 18px;min-height:32px;}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:pressed{{background:{ACCENT_DN};}}"
+            "QPushButton:disabled{background:#a8d0fb;color:white;}"
+        )
+
+    def _compact_secondary_style(self) -> str:
+        return (
+            f"QPushButton{{background:{CONTROL_BG};color:{TEXT};border:1px solid {BORDER_SOFT};"
+            "border-radius:9px;font-size:13px;font-weight:500;padding:0 14px;min-height:32px;}"
+            f"QPushButton:hover{{background:{CONTROL_HV};}}"
+            f"QPushButton:pressed{{background:{CONTROL_DN};}}"
+        )
+
+    def _editor_style(self, bordered: bool = False) -> str:
+        if bordered:
+            return (
+                f"QTextEdit{{background:{SURFACE};border:1px solid {BORDER_SOFT};"
+                f"border-radius:10px;color:{TEXT};font-size:14px;padding:12px;}}"
+                f"QTextEdit:focus{{border-color:{ACCENT};}}"
+            )
+        return (
+            f"QTextEdit{{background:transparent;border:none;color:{TEXT};"
+            "font-size:14px;padding:8px 0;}"
+        )
 
     # ── Tab 1: TTS ─────────────────────────────────────────────────
     def _build_tts_tab(self) -> QWidget:
@@ -293,8 +439,8 @@ class MainWindow(QWidget):
         self._btn_preview.setFixedHeight(30)
         self._btn_preview.setStyleSheet(
             f"QPushButton{{background:#f0f6ff;color:{ACCENT};"
-            "border:1.5px solid #c5d9f8;border-radius:8px;"
-            "font-size:12px;font-weight:600;padding:0 14px;}}"
+            "border:1px solid #c5d9f8;border-radius:8px;"
+            "font-size:12px;font-weight:600;padding:0 14px;}"
             f"QPushButton:hover{{background:#dce9fd;border-color:{ACCENT};}}"
             "QPushButton:pressed{background:#cfe0fc;}"
             "QPushButton:disabled{background:#f5f5f7;color:#aeaeb2;border-color:#e5e5ea;}"
@@ -307,10 +453,10 @@ class MainWindow(QWidget):
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
         self.text_input.setMinimumHeight(210)
         self.text_input.setStyleSheet(
-            f"QTextEdit{{border:1.5px solid #e5e5ea;border-radius:10px;"
+            f"QTextEdit{{border:1px solid #e5e5ea;border-radius:10px;"
             f"background:{SURFACE};color:{TEXT};padding:12px 14px;"
             f"font-size:14px;}}"
-            f"QTextEdit:focus{{border:1.5px solid {ACCENT};}}"
+            f"QTextEdit:focus{{border:1px solid {ACCENT};}}"
         )
         # Khi user sửa kịch bản gốc → xóa preview cũ (tránh gen sai)
         self.text_input.textChanged.connect(self._on_script_changed)
@@ -345,9 +491,9 @@ class MainWindow(QWidget):
         self.preview_text.setPlaceholderText("Nhấn \"✨ Xem kịch bản\" để xem kịch bản sau khi AI xử lý...")
         self.preview_text.setMinimumHeight(160)
         self.preview_text.setStyleSheet(
-            "QTextEdit{border:1.5px solid #c5d9f8;border-radius:10px;"
+            "QTextEdit{border:1px solid #c5d9f8;border-radius:10px;"
             "background:#f0f6ff;color:#1d1d1f;padding:12px 14px;font-size:13px;}"
-            f"QTextEdit:focus{{border:1.5px solid {ACCENT};}}"
+            f"QTextEdit:focus{{border:1px solid {ACCENT};}}"
         )
         pv_lay.addWidget(self.preview_text)
 
@@ -455,9 +601,9 @@ class MainWindow(QWidget):
             if active:
                 return (
                     f"QPushButton{{background:#e8f0fd;color:{ACCENT};"
-                    f"border:1.5px solid {ACCENT};border-radius:14px;"
+                    f"border:1px solid {ACCENT};border-radius:14px;"
                     "min-height:28px;padding:0 10px 0 12px;"
-                    "font-size:12px;font-weight:600;}}"
+                    "font-size:12px;font-weight:600;}"
                     "QPushButton:hover{background:#dce9fd;}"
                     "QPushButton:pressed{background:#cfe0fc;}"
                 )
@@ -547,7 +693,6 @@ class MainWindow(QWidget):
         btn_change_voice.setStyleSheet(
             f"QPushButton{{font-size:12px;color:{ACCENT};background:transparent;"
             "border:none;padding:0 4px;}"
-            "QPushButton:hover{text-decoration:underline;}"
             "QPushButton:pressed{color:#005bb5;}"
         )
         btn_change_voice.clicked.connect(self._open_voices_settings)
@@ -708,6 +853,241 @@ class MainWindow(QWidget):
         outer_lay.addWidget(scroll)
         return outer
 
+    def _build_tts_tab(self) -> QWidget:
+        page, layout = self._student_page()
+
+        strip, strip_lay = self._strip_widget()
+        style_lbl = QLabel("Phong cách")
+        style_lbl.setStyleSheet(f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;border:none;")
+        strip_lay.addWidget(style_lbl)
+
+        seg_frame = QFrame()
+        seg_frame.setFixedHeight(30)
+        seg_frame.setStyleSheet(f"QFrame{{background:{SEG_BG};border-radius:8px;border:none;}}")
+        seg_layout = QHBoxLayout(seg_frame)
+        seg_layout.setContentsMargins(3, 3, 3, 3)
+        seg_layout.setSpacing(2)
+        self._prompt_btns = {}
+        self._seg_layout = seg_layout
+        self._seg_frame = seg_frame
+        active_name = self._find_active_style_name(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
+        self._build_style_buttons(seg_layout, active_name)
+        strip_lay.addWidget(seg_frame)
+
+        btn_add_style = QPushButton("+")
+        btn_add_style.setFixedSize(30, 30)
+        btn_add_style.setToolTip("Thêm phong cách")
+        btn_add_style.setStyleSheet(
+            f"QPushButton{{background:{CONTROL_BG};color:{TEXT};border:1px solid {BORDER_SOFT};"
+            "border-radius:9px;font-size:16px;font-weight:500;padding:0;}"
+            f"QPushButton:hover{{background:{CONTROL_HV};}}"
+        )
+        btn_add_style.clicked.connect(self._quick_add_style)
+        strip_lay.addWidget(btn_add_style)
+        strip_lay.addStretch()
+
+        voice_lbl = QLabel(self.settings.get("selected_voice_name", "Adam"))
+        voice_lbl.setStyleSheet(f"font-size:12px;color:{TEXT};background:transparent;border:none;")
+        self._voice_name_lbl = voice_lbl
+        strip_lay.addWidget(voice_lbl)
+
+        self._lang_code = self.settings.get("tts_language_code", "")
+        self._lang_combo = QComboBox()
+        lang_items = [("Tự động", ""), ("Tiếng Việt", "vi"), ("English", "en"), ("日本語", "ja"), ("한국어", "ko"), ("中文", "zh")]
+        for label, code in lang_items:
+            self._lang_combo.addItem(label, code)
+        idx = next((i for i, (_, code) in enumerate(lang_items) if code == self._lang_code), 0)
+        self._lang_combo.setCurrentIndex(idx)
+        self._lang_combo.setFixedHeight(30)
+        self._lang_combo.currentIndexChanged.connect(
+            lambda _: (
+                self.settings.__setitem__("tts_language_code", self._lang_combo.currentData() or ""),
+                save_settings(self.settings),
+            )
+        )
+        strip_lay.addWidget(self._lang_combo)
+
+        btn_change_voice = QPushButton("Đổi giọng")
+        btn_change_voice.setFixedHeight(30)
+        btn_change_voice.setStyleSheet(self._compact_secondary_style())
+        btn_change_voice.clicked.connect(self._open_voices_settings)
+        strip_lay.addWidget(btn_change_voice)
+
+        strip_lay.addSpacing(6)
+        self._btn_preview = QPushButton("Xem kịch bản")
+        self._btn_preview.setFixedHeight(30)
+        self._btn_preview.setStyleSheet(self._compact_secondary_style())
+        self._btn_preview.clicked.connect(self._do_preview)
+        strip_lay.addWidget(self._btn_preview)
+
+        self.btn_gen = QPushButton("Tạo audio")
+        self.btn_gen.setFixedHeight(30)
+        self.btn_gen.setStyleSheet(self._compact_primary_style())
+        self.btn_gen.clicked.connect(self._generate)
+        strip_lay.addWidget(self.btn_gen)
+        layout.addWidget(strip)
+
+        body = QWidget()
+        body.setStyleSheet("background:transparent;border:none;")
+        body_h = QHBoxLayout(body)
+        body_h.setContentsMargins(0, 0, 0, 0)
+        body_h.setSpacing(18)
+
+        left = QWidget()
+        left.setStyleSheet("background:transparent;border:none;")
+        left_l = QVBoxLayout(left)
+        left_l.setContentsMargins(0, 0, 0, 0)
+        left_l.setSpacing(8)
+        left_l.addWidget(self._pane_heading("Kịch bản", "Paste hoặc chỉnh nội dung trước khi tạo giọng."))
+        self.text_input = QTextEdit()
+        self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
+        self.text_input.setStyleSheet(self._editor_style())
+        self.text_input.textChanged.connect(self._on_script_changed)
+        left_l.addWidget(self.text_input, 1)
+
+        self._preview_box = QWidget()
+        self._preview_box.setVisible(False)
+        self._preview_box.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        pv_lay = QVBoxLayout(self._preview_box)
+        pv_lay.setContentsMargins(12, 10, 12, 12)
+        pv_lay.setSpacing(6)
+        pv_lay.addWidget(self._pane_heading("Bản đã xử lý", "Có thể chỉnh trước khi tạo audio."))
+        self.preview_text = QTextEdit()
+        self.preview_text.setPlaceholderText("Bản sau khi AI xử lý sẽ hiện ở đây...")
+        self.preview_text.setMinimumHeight(130)
+        self.preview_text.setStyleSheet(self._editor_style(True))
+        pv_lay.addWidget(self.preview_text)
+        self._preview_status = QLabel("")
+        self._preview_status.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
+        pv_lay.addWidget(self._preview_status)
+        left_l.addWidget(self._preview_box)
+        self._enhanced_cache = ""
+        body_h.addWidget(left, 7)
+
+        body_h.addWidget(self._v_divider())
+
+        right = QWidget()
+        right.setStyleSheet("background:transparent;border:none;")
+        right_l = QVBoxLayout(right)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(12)
+        right_l.addWidget(self._pane_heading("Audio", "Tạo file đọc và nghe lại ngay trong app."))
+
+        self.tts_status_lbl = QLabel("Chưa có audio")
+        self.tts_status_lbl.setStyleSheet(f"color:{TEXT_MUTE};font-size:12px;background:transparent;border:none;")
+
+        audio_panel = QWidget()
+        audio_panel.setObjectName("audioPanel")
+        audio_panel.setStyleSheet(f"#audioPanel{{background:transparent;border:1px solid {BORDER_SOFT};border-radius:12px;}}")
+        audio_panel_l = QVBoxLayout(audio_panel)
+        audio_panel_l.setContentsMargins(16, 16, 16, 14)
+        audio_panel_l.setSpacing(10)
+        audio_panel_l.addStretch()
+
+        self._audio_icon_lbl = QLabel()
+        self._audio_icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
+        self._audio_icon_lbl.setStyleSheet("background:transparent;border:none;")
+        audio_panel_l.addWidget(self._audio_icon_lbl)
+
+        self._audio_title_lbl = QLabel("Chưa có audio")
+        self._audio_title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._audio_title_lbl.setStyleSheet(f"font-size:22px;font-weight:700;color:{TEXT_FAINT};background:transparent;border:none;")
+        audio_panel_l.addWidget(self._audio_title_lbl)
+
+        self._audio_detail_lbl = QLabel("Nhập kịch bản rồi nhấn Tạo audio.")
+        self._audio_detail_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._audio_detail_lbl.setWordWrap(True)
+        self._audio_detail_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        audio_panel_l.addWidget(self._audio_detail_lbl)
+        audio_panel_l.addStretch()
+
+        player_bar = QWidget()
+        player_bar.setObjectName("audioPlayerBar")
+        player_bar.setStyleSheet(f"#audioPlayerBar{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        player_l = QHBoxLayout(player_bar)
+        player_l.setContentsMargins(10, 8, 10, 8)
+        player_l.setSpacing(8)
+        player_l.addWidget(self.tts_status_lbl, 1)
+
+        self._btn_play_audio = QPushButton("Nghe lại")
+        self._btn_play_audio.setFixedHeight(32)
+        self._btn_play_audio.setEnabled(False)
+        self._btn_play_audio.setStyleSheet(self._compact_secondary_style())
+        self._btn_play_audio.clicked.connect(self._toggle_last_audio)
+        player_l.addWidget(self._btn_play_audio)
+
+        self._btn_open_folder = QPushButton("Mở trong Finder")
+        self._btn_open_folder.setFixedHeight(32)
+        self._btn_open_folder.setEnabled(False)
+        self._btn_open_folder.setStyleSheet(self._compact_secondary_style())
+        player_l.addWidget(self._btn_open_folder)
+        audio_panel_l.addWidget(player_bar)
+
+        right_l.addWidget(audio_panel, 1)
+
+        settings_box = QWidget()
+        settings_box.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        sb = QVBoxLayout(settings_box)
+        sb.setContentsMargins(12, 10, 12, 12)
+        sb.setSpacing(8)
+
+        speed_row = QHBoxLayout()
+        speed_row.setSpacing(8)
+        speed_row.addWidget(QLabel("Tốc độ"))
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setMinimum(7)
+        self.slider.setMaximum(12)
+        self.slider.setValue(int(self.settings.get("default_speed", 1.0) * 10))
+        speed_row.addWidget(self.slider, 1)
+        self.speed_val = QLabel(f"{self.slider.value()/10:.1f}×")
+        self.speed_val.setFixedWidth(36)
+        self.speed_val.setStyleSheet(f"color:{ACCENT};font-weight:700;background:transparent;border:none;")
+        self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}×"))
+        speed_row.addWidget(self.speed_val)
+        sb.addLayout(speed_row)
+
+        creative_row = QHBoxLayout()
+        creative_row.setSpacing(8)
+        creative_row.addWidget(QLabel("Sáng tạo"))
+        self.creativity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.creativity_slider.setRange(0, 100)
+        cur_temp = self.settings.get("enhance_style_temperature", 0.3)
+        self.creativity_slider.setValue(int(cur_temp * 100))
+        creative_row.addWidget(self.creativity_slider, 1)
+        self.creativity_val = QLabel(f"{cur_temp:.2f}")
+        self.creativity_val.setFixedWidth(36)
+        self.creativity_val.setStyleSheet(f"color:{ACCENT};font-weight:700;background:transparent;border:none;")
+        creative_row.addWidget(self.creativity_val)
+        self.creativity_tier = QLabel(self._tier_label(cur_temp))
+        self.creativity_tier.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
+        creative_row.addWidget(self.creativity_tier)
+        sb.addLayout(creative_row)
+
+        self._creativity_detail = QLabel(self._creativity_detail_text(cur_temp))
+        self._creativity_detail.setWordWrap(True)
+        self._creativity_detail.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
+        sb.addWidget(self._creativity_detail)
+
+        def _on_creativity_changed(value: int):
+            t = value / 100.0
+            self.creativity_val.setText(f"{t:.2f}")
+            self.creativity_tier.setText(self._tier_label(t))
+            self._creativity_detail.setText(self._creativity_detail_text(t))
+            self.settings["enhance_style_temperature"] = t
+            self.settings["enhance_style_creative"] = t >= 0.5
+        self.creativity_slider.valueChanged.connect(_on_creativity_changed)
+
+        self.filename_input = QLineEdit()
+        self.filename_input.setPlaceholderText("box_650k_quang_cao")
+        sb.addWidget(self.filename_input)
+        right_l.addWidget(settings_box)
+        self._last_audio_path = ""
+
+        body_h.addWidget(right, 5)
+        layout.addWidget(body, 1)
+        return page
+
     # ── Tab 3: Speech-to-Text ────────────────────────────────────
     def _build_stt_tab(self) -> QWidget:
         outer = QWidget()
@@ -730,10 +1110,15 @@ class MainWindow(QWidget):
 
         # ═══ Drop zone / Chọn file ═══
         layout.addWidget(self._section_lbl("FILE AUDIO"))
-        self._stt_drop = DropZone()
+        self._stt_drop = DropZone(
+            label="🎧  Kéo thả file audio vào đây",
+            dialog_title="Chọn file audio",
+            file_filter="Audio (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.webm)",
+            extensions=(".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm"),
+        )
         self._stt_drop.files_added.connect(self._stt_file_selected)
         self._stt_drop.setStyleSheet(
-            "QFrame{border:1.5px dashed #c7c7cc;border-radius:10px;background:#ffffff;}"
+            "QFrame{border:1px dashed #c7c7cc;border-radius:10px;background:#ffffff;}"
             "QFrame:hover{border-color:#0071e3;}"
         )
         layout.addWidget(self._stt_drop)
@@ -771,7 +1156,7 @@ class MainWindow(QWidget):
         self._stt_text.setPlaceholderText("Nội dung nhận diện sẽ hiện ở đây...")
         self._stt_text.setMinimumHeight(160)
         self._stt_text.setStyleSheet(
-            f"QTextEdit{{border:1.5px solid #e5e5ea;border-radius:10px;"
+            f"QTextEdit{{border:1px solid #e5e5ea;border-radius:10px;"
             f"background:{SURFACE};color:{TEXT};padding:12px 14px;font-size:14px;}}"
         )
         layout.addWidget(self._stt_text)
@@ -783,7 +1168,7 @@ class MainWindow(QWidget):
         self._stt_export_btn.setFixedHeight(32)
         self._stt_export_btn.setStyleSheet(
             f"QPushButton{{background:#f0f6ff;color:{ACCENT};border:1px solid #c5d9f8;"
-            "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}}"
+            "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}"
             f"QPushButton:hover{{background:#dbeafe;}}"
             "QPushButton:disabled{background:#f5f5f7;color:#aeaeb2;border-color:#e5e5ea;}"
         )
@@ -798,10 +1183,84 @@ class MainWindow(QWidget):
         outer_lay.addWidget(scroll)
         return outer
 
+    def _build_stt_tab(self) -> QWidget:
+        page, layout = self._student_page()
+        body = QWidget()
+        body.setStyleSheet("background:transparent;border:none;")
+        h = QHBoxLayout(body)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(18)
+
+        left = QWidget()
+        left.setStyleSheet("background:transparent;border:none;")
+        left_l = QVBoxLayout(left)
+        left_l.setContentsMargins(0, 0, 0, 0)
+        left_l.setSpacing(10)
+        left_l.addWidget(self._pane_heading("File audio", "Kéo thả hoặc bấm để chọn file cần nhận diện."))
+        self._stt_drop = DropZone(
+            label="♬  Kéo thả file audio vào đây",
+            dialog_title="Chọn file audio",
+            file_filter="Audio (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.webm)",
+            extensions=(".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm"),
+        )
+        self._stt_drop.setFixedHeight(72)
+        self._stt_drop.files_added.connect(self._stt_file_selected)
+        self._stt_drop.setStyleSheet(
+            f"QFrame{{border:1px dashed {BORDER};border-radius:10px;background:{SURFACE_2};}}"
+            f"QFrame:hover{{border-color:{ACCENT};background:#f7fbff;}}"
+        )
+        left_l.addWidget(self._stt_drop)
+        self._stt_file_lbl = QLabel("Chưa chọn file")
+        self._stt_file_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        left_l.addWidget(self._stt_file_lbl)
+        self._stt_path = ""
+        left_l.addStretch()
+        self._stt_btn = QPushButton("Nhận diện")
+        self._stt_btn.setFixedHeight(34)
+        self._stt_btn.setStyleSheet(self._compact_primary_style())
+        self._stt_btn.clicked.connect(self._do_stt)
+        stt_action = QHBoxLayout()
+        stt_action.addStretch()
+        self._stt_btn.setFixedWidth(140)
+        stt_action.addWidget(self._stt_btn)
+        left_l.addLayout(stt_action)
+        self._stt_status = QLabel("")
+        self._stt_status.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        left_l.addWidget(self._stt_status)
+        h.addWidget(left, 5)
+
+        h.addWidget(self._v_divider())
+
+        right = QWidget()
+        right.setStyleSheet("background:transparent;border:none;")
+        right_l = QVBoxLayout(right)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(10)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(self._pane_heading("Kết quả", "Transcript sẽ hiện ở đây."))
+        header.addStretch()
+        self._stt_export_btn = QPushButton("Xuất SRT")
+        self._stt_export_btn.setFixedHeight(32)
+        self._stt_export_btn.setStyleSheet(self._compact_secondary_style())
+        self._stt_export_btn.clicked.connect(self._export_srt)
+        self._stt_export_btn.setVisible(False)
+        header.addWidget(self._stt_export_btn)
+        right_l.addLayout(header)
+        self._stt_text = QTextEdit()
+        self._stt_text.setPlaceholderText("Chưa có bản nhận diện")
+        self._stt_text.setStyleSheet(self._editor_style())
+        right_l.addWidget(self._stt_text, 1)
+        self._stt_words = []
+        h.addWidget(right, 7)
+
+        layout.addWidget(body, 1)
+        return page
+
     def _stt_file_selected(self, paths: list):
         if paths:
             self._stt_path = paths[0]
-            self._stt_file_lbl.setText(f"📁 {os.path.basename(paths[0])}")
+            self._stt_file_lbl.setText(os.path.basename(paths[0]))
 
     def _do_stt(self):
         if not self._stt_path:
@@ -810,10 +1269,10 @@ class MainWindow(QWidget):
         gm_key = self.settings.get("genmax_api_key", "").strip()
         if not gm_key:
             QMessageBox.warning(self, "Thiếu GenMax API Key",
-                                "Cần GenMax API Key để dùng Speech-to-Text.\nVào Settings → API Keys để thêm.")
+                                "Cần GenMax API Key để dùng Speech-to-Text.\nVào Settings → API để thêm.")
             return
         self._stt_btn.setEnabled(False)
-        self._stt_status.setText("⏳ Đang nhận diện...")
+        self._stt_status.setText("Đang nhận diện...")
         self._stt_worker = SpeechToTextWorker(self._stt_path, gm_key)
         self._stt_worker.status.connect(self._stt_status.setText)
         self._stt_worker.done.connect(self._on_stt_done)
@@ -823,13 +1282,13 @@ class MainWindow(QWidget):
     def _on_stt_done(self, text: str, words: list):
         self._stt_btn.setEnabled(True)
         self._stt_text.setPlainText(text)
-        self._stt_status.setText("✅ Nhận diện xong!")
+        self._stt_status.setText("Nhận diện xong")
         self._stt_words = words
         self._stt_export_btn.setVisible(True)
 
     def _on_stt_error(self, msg: str):
         self._stt_btn.setEnabled(True)
-        self._stt_status.setText(f"❌ {msg[:80]}")
+        self._stt_status.setText(msg[:80])
 
     def _export_srt(self):
         if not self._stt_words:
@@ -841,7 +1300,7 @@ class MainWindow(QWidget):
         if path:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(srt)
-            self._stt_status.setText(f"✅ Đã lưu: {os.path.basename(path)}")
+            self._stt_status.setText(f"Đã lưu: {os.path.basename(path)}")
             reveal_file(path)
 
     # ── Tab 2: Chat → Kịch Bản ────────────────────────────────────
@@ -883,7 +1342,7 @@ class MainWindow(QWidget):
         self.drop_zone.files_added.connect(self._add_images)
         # Override style để hoà vào card
         self.drop_zone.setStyleSheet(
-            "QFrame{border:1.5px dashed #c7c7cc;border-radius:8px;"
+            "QFrame{border:1px dashed #c7c7cc;border-radius:8px;"
             "background:#f9f9fb;}"
             "QFrame:hover{border-color:#0071e3;background:#f0f7ff;}"
         )
@@ -1008,12 +1467,122 @@ class MainWindow(QWidget):
         outer_lay.addWidget(scroll)
         return outer
 
+    def _build_chat_tab(self) -> QWidget:
+        page, layout = self._student_page()
+        body = QWidget()
+        body.setStyleSheet("background:transparent;border:none;")
+        h = QHBoxLayout(body)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(18)
+
+        left = QWidget()
+        left.setStyleSheet("background:transparent;border:none;")
+        left_l = QVBoxLayout(left)
+        left_l.setContentsMargins(0, 0, 0, 0)
+        left_l.setSpacing(10)
+        left_l.addWidget(self._pane_heading("Ảnh chat", "Thả ảnh hội thoại để AI viết lại thành kịch bản."))
+        pronoun_row = QHBoxLayout()
+        pronoun_row.setContentsMargins(0, 0, 0, 0)
+        pronoun_row.setSpacing(8)
+        pronoun_lbl = QLabel("Xưng hô")
+        pronoun_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        pronoun_row.addWidget(pronoun_lbl)
+        self.chat_pronoun_combo = QComboBox()
+        self.chat_pronoun_combo.addItem("Auto theo chat", "auto")
+        self.chat_pronoun_combo.addItem("Cố định anh/em", "fixed_anh_em")
+        self.chat_pronoun_combo.addItem("Giữ nguyên chat", "keep_original")
+        current_pronoun = self.settings.get("chat_pronoun_mode", "auto")
+        for i in range(self.chat_pronoun_combo.count()):
+            if self.chat_pronoun_combo.itemData(i) == current_pronoun:
+                self.chat_pronoun_combo.setCurrentIndex(i)
+                break
+        self.chat_pronoun_combo.setFixedHeight(30)
+        self.chat_pronoun_combo.setStyleSheet(
+            f"QComboBox{{background:{CONTROL_BG};border:none;border-radius:9px;"
+            f"padding:3px 24px 3px 10px;font-size:12px;color:{TEXT};}}"
+            f"QComboBox:hover{{background:{CONTROL_HV};}}"
+            "QComboBox::drop-down{border:none;}"
+        )
+        pronoun_row.addWidget(self.chat_pronoun_combo, 1)
+        left_l.addLayout(pronoun_row)
+        self.drop_zone = DropZone(label="▧  Kéo thả ảnh vào đây")
+        self.drop_zone.files_added.connect(self._add_images)
+        self.drop_zone.setFixedHeight(72)
+        self.drop_zone.setStyleSheet(
+            f"QFrame{{border:1px dashed {BORDER};border-radius:10px;background:{SURFACE_2};}}"
+            f"QFrame:hover{{border-color:{ACCENT};background:#f7fbff;}}"
+        )
+        left_l.addWidget(self.drop_zone)
+        list_row = QHBoxLayout()
+        self.img_count_lbl = QLabel("0 ảnh đã chọn")
+        self.img_count_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        list_row.addWidget(self.img_count_lbl)
+        list_row.addStretch()
+        btn_clear_imgs = QPushButton("Xóa")
+        btn_clear_imgs.setFixedHeight(30)
+        btn_clear_imgs.setStyleSheet(self._compact_secondary_style())
+        btn_clear_imgs.clicked.connect(self._clear_images)
+        list_row.addWidget(btn_clear_imgs)
+        left_l.addLayout(list_row)
+        self.img_list = QListWidget()
+        self.img_list.setStyleSheet(
+            f"QListWidget{{border:none;background:{CONTROL_BG};border-radius:10px;padding:6px;}}"
+            f"QListWidget::item{{padding:5px 7px;border-radius:7px;color:{TEXT};}}"
+            f"QListWidget::item:selected{{background:#e8f2ff;color:{TEXT};}}"
+        )
+        left_l.addWidget(self.img_list, 1)
+        self.btn_gen_script = QPushButton("Tạo kịch bản")
+        self.btn_gen_script.setFixedHeight(34)
+        self.btn_gen_script.setStyleSheet(self._compact_primary_style())
+        self.btn_gen_script.clicked.connect(self._generate_script)
+        gen_row = QHBoxLayout()
+        gen_row.addStretch()
+        self.btn_gen_script.setFixedWidth(160)
+        gen_row.addWidget(self.btn_gen_script)
+        left_l.addLayout(gen_row)
+        self.chat_status_lbl = QLabel("Sẵn sàng")
+        self.chat_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chat_status_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        left_l.addWidget(self.chat_status_lbl)
+        h.addWidget(left, 5)
+
+        h.addWidget(self._v_divider())
+
+        right = QWidget()
+        right.setStyleSheet("background:transparent;border:none;")
+        right_l = QVBoxLayout(right)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(10)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(self._pane_heading("Kịch bản", "Kết quả có thể dùng ngay cho TTS."))
+        header.addStretch()
+        btn_copy = QPushButton("Copy")
+        btn_copy.setFixedHeight(32)
+        btn_copy.setStyleSheet(self._compact_secondary_style())
+        btn_copy.clicked.connect(self._copy_script)
+        header.addWidget(btn_copy)
+        btn_use_tts = QPushButton("Dùng cho TTS")
+        btn_use_tts.setFixedHeight(32)
+        btn_use_tts.setStyleSheet(self._compact_secondary_style())
+        btn_use_tts.clicked.connect(self._use_for_tts)
+        header.addWidget(btn_use_tts)
+        right_l.addLayout(header)
+        self.script_output = QTextEdit()
+        self.script_output.setPlaceholderText("Chưa có kịch bản")
+        self.script_output.setStyleSheet(self._editor_style())
+        right_l.addWidget(self.script_output, 1)
+        h.addWidget(right, 7)
+
+        layout.addWidget(body, 1)
+        return page
+
     # ── Chat tab handlers ──────────────────────────────────────────
     def _add_images(self, paths: list):
         for p in paths:
             if p not in self.image_paths:
                 self.image_paths.append(p)
-                item = QListWidgetItem(f"🖼  {os.path.basename(p)}")
+                item = QListWidgetItem(os.path.basename(p))
                 item.setData(Qt.ItemDataRole.UserRole, p)
                 self.img_list.addItem(item)
         self.img_count_lbl.setText(f"{len(self.image_paths)} ảnh đã chọn")
@@ -1030,12 +1599,19 @@ class MainWindow(QWidget):
         api_key = self.settings.get("gemini_api_key", "").strip()
         if not api_key:
             QMessageBox.warning(self, "Thiếu Gemini API Key",
-                                "Vào Settings → tab API Keys\nnhập Gemini API Key trước nhé!")
+                                "Vào Settings → API để nhập Gemini API Key trước nhé!")
             return
 
         self.btn_gen_script.setEnabled(False)
+        pronoun_mode = (
+            self.chat_pronoun_combo.currentData()
+            if hasattr(getattr(self, "chat_pronoun_combo", None), "currentData")
+            else "auto"
+        ) or "auto"
+        self.settings["chat_pronoun_mode"] = pronoun_mode
+        save_settings(self.settings)
         gemini_prompt = self.settings.get("gemini_chat_prompt", "").strip() or GEMINI_CHAT_PROMPT
-        self.gemini_worker = GeminiWorker(self.image_paths, api_key, gemini_prompt)
+        self.gemini_worker = GeminiWorker(self.image_paths, api_key, gemini_prompt, pronoun_mode)
         self.gemini_worker.status.connect(self._on_chat_status)
         self.gemini_worker.done.connect(self._on_script_done)
         self.gemini_worker.error.connect(self._on_script_error)
@@ -1050,7 +1626,7 @@ class MainWindow(QWidget):
     def _on_script_done(self, text: str):
         self.btn_gen_script.setEnabled(True)
         self.script_output.setPlainText(text)
-        self.chat_status_lbl.setText("✅  Tạo kịch bản thành công!")
+        self.chat_status_lbl.setText("Tạo kịch bản thành công")
         self.chat_status_lbl.setStyleSheet(
             "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
         )
@@ -1074,7 +1650,7 @@ class MainWindow(QWidget):
         text = self.script_output.toPlainText().strip()
         if text:
             QApplication.clipboard().setText(text)
-            self.chat_status_lbl.setText("✅  Đã copy!")
+            self.chat_status_lbl.setText("Đã copy")
             self.chat_status_lbl.setStyleSheet(
                 "color:#15803d; font-size:11px; background:transparent;"
             )
@@ -1090,8 +1666,8 @@ class MainWindow(QWidget):
     def _all_styles(self) -> list[dict]:
         """Trả về toàn bộ styles: built-in + custom."""
         built = [
-            {"name": "🎯  Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
-            {"name": "😄  Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
+            {"name": "Nghiêm túc", "prompt": DEFAULT_PROMPT,       "creative": False, "temperature": 0.3},
+            {"name": "Hài hước",   "prompt": DEFAULT_PROMPT_FUNNY,  "creative": True,  "temperature": 0.7},
         ]
         custom = []
         for s in self.settings.get("custom_styles", []):
@@ -1100,8 +1676,9 @@ class MainWindow(QWidget):
             prompt = s.get("prompt", "")
             if not name or not prompt:
                 continue  # bỏ qua entry hỏng
+            display_name = re.sub(r"^[^\wÀ-ỹ]+", "", name).strip() or name
             custom.append({
-                "name": f"{icon}  {name}" if icon else name,
+                "name": display_name,
                 "prompt": prompt,
                 "creative": s.get("creative", False),
                 "temperature": s.get(
@@ -1114,7 +1691,7 @@ class MainWindow(QWidget):
         for s in self._all_styles():
             if s["prompt"] == current_prompt:
                 return s["name"]
-        return "🎯  Nghiêm túc"
+        return "Nghiêm túc"
 
     def _build_style_buttons(self, layout: QHBoxLayout, active_name: str):
         """Xây (hoặc rebuild) các nút phong cách — built-in + custom."""
@@ -1178,7 +1755,7 @@ class MainWindow(QWidget):
     def _tier_label(temperature: float) -> str:
         """Trả về nhãn mức độ sáng tạo: chỉ báo khi khóa nội dung."""
         if temperature <= 0.0:
-            return "🔒 Khóa nội dung"
+            return "Khóa nội dung"
         return ""
 
     @staticmethod
@@ -1242,6 +1819,9 @@ class MainWindow(QWidget):
         self._updater.start()
 
     def _manual_check_update(self):
+        if not getattr(sys, "frozen", False):
+            self._restart_local_source_app()
+            return
         self._btn_check_update.setEnabled(False)
         self._btn_check_update.setText("Checking...")
         self._manual_updater = UpdateChecker()
@@ -1254,6 +1834,63 @@ class MainWindow(QWidget):
     def _reset_update_button(self):
         self._btn_check_update.setEnabled(True)
         self._btn_check_update.setText("Update")
+
+    def _restart_local_source_app(self):
+        """Relaunch local source build so newly edited code is loaded."""
+        self._btn_check_update.setEnabled(False)
+        self._btn_check_update.setText("Restarting...")
+        app_root = os.path.dirname(os.path.abspath(__file__))
+        local_app = os.path.join(app_root, "Hedra Studio Local.app")
+        run_command = os.path.join(app_root, "run.command")
+        current_pid = os.getpid()
+        script = f"""#!/bin/bash
+APP_PID={current_pid}
+APP_ROOT={shlex.quote(app_root)}
+LOCAL_APP={shlex.quote(local_app)}
+RUN_COMMAND={shlex.quote(run_command)}
+LOG="/tmp/hedra_local_restart.log"
+
+echo "$(date): Restart local Hedra Studio" > "$LOG"
+echo "App root: $APP_ROOT" >> "$LOG"
+echo "Waiting for PID $APP_PID to exit..." >> "$LOG"
+
+for i in $(seq 1 20); do
+    if ! kill -0 $APP_PID 2>/dev/null; then
+        echo "$(date): App exited after ${{i}}s" >> "$LOG"
+        break
+    fi
+    sleep 0.5
+done
+
+if kill -0 $APP_PID 2>/dev/null; then
+    echo "$(date): Force killing PID $APP_PID" >> "$LOG"
+    kill -9 $APP_PID 2>/dev/null || true
+    sleep 1
+fi
+
+if [ -d "$LOCAL_APP" ]; then
+    echo "$(date): Opening local app bundle" >> "$LOG"
+    open -n "$LOCAL_APP" >> "$LOG" 2>&1 || true
+elif [ -f "$RUN_COMMAND" ]; then
+    echo "$(date): Opening run.command fallback" >> "$LOG"
+    open "$RUN_COMMAND" >> "$LOG" 2>&1 || true
+else
+    echo "$(date): Running python fallback" >> "$LOG"
+    cd "$APP_ROOT" && nohup "$APP_ROOT/venv/bin/python3" "$APP_ROOT/tts_app.py" >> "$LOG" 2>&1 &
+fi
+"""
+        import tempfile
+        fd, script_path = tempfile.mkstemp(suffix=".sh", prefix="hedra_restart_")
+        with os.fdopen(fd, "w") as f:
+            f.write(script)
+        os.chmod(script_path, 0o700)
+        subprocess.Popen(
+            ["/bin/bash", script_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        QApplication.instance().quit()
 
     def _on_manual_update_found(self, version: str, url: str):
         self._on_update_found(version, url)
@@ -1275,7 +1912,7 @@ class MainWindow(QWidget):
 
     def _on_update_found(self, version: str, url: str):
         self._update_url = url
-        self._banner_text.setText(f"Có bản cập nhật v{version} — nhấn để tải về")
+        self._banner_text.setText(f"Có bản cập nhật v{version} — nhấn để tải, cài và tự mở lại")
         self.update_banner.setVisible(True)
 
     def _do_update(self):
@@ -1318,18 +1955,22 @@ class MainWindow(QWidget):
                 app_dest = "/Applications/Hedra Studio.app"
 
             current_pid = os.getpid()
+            source_run_command = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run.command")
 
             script = f"""#!/bin/bash
-# Hedra Studio auto-update script v3
-DMG="{file_path}"
-APP_DEST="{app_dest}"
+# Hedra Studio auto-update script v4
+DMG={shlex.quote(file_path)}
+APP_DEST={shlex.quote(app_dest)}
 APP_PID={current_pid}
+RUN_COMMAND={shlex.quote(source_run_command)}
+BUNDLE_ID="com.hedracentral.hedrastudio"
 MNT="/tmp/hedrastudio_mnt"
 LOG="/tmp/hedra_update.log"
 
-echo "$(date): Starting update v3" > "$LOG"
+echo "$(date): Starting update v4" > "$LOG"
 echo "DMG: $DMG" >> "$LOG"
 echo "Dest: $APP_DEST" >> "$LOG"
+echo "Fallback run.command: $RUN_COMMAND" >> "$LOG"
 echo "Waiting for PID $APP_PID to exit..." >> "$LOG"
 
 # Chờ app cũ thoát — poll PID thay vì sleep cố định (max 30s)
@@ -1403,10 +2044,37 @@ xattr -cr "$APP_DEST" 2>>"$LOG" || true
 # Đăng ký lại với Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_DEST" >> "$LOG" 2>&1 || true
 
-# Mở app mới — dùng open -n để force launch instance mới (không reuse cached)
+# Mở app mới. Thử bằng bundle id trước để Launch Services dùng bản vừa đăng ký,
+# sau đó fallback mở trực tiếp app path. Nếu vẫn không thấy process, mở lại
+# run.command để người dùng không phải tự bấm thủ công.
 echo "$(date): Launching new app..." >> "$LOG"
-open -n "$APP_DEST"
-sleep 2
+LAUNCH_OK=0
+for attempt in 1 2 3; do
+    echo "$(date): Launch attempt $attempt via bundle id" >> "$LOG"
+    open -n -b "$BUNDLE_ID" >> "$LOG" 2>&1 || true
+    sleep 2
+    if pgrep -f "HedraStudio|Hedra Studio|tts_app.py" >/dev/null 2>&1; then
+        LAUNCH_OK=1
+        echo "$(date): App launch detected after bundle id attempt $attempt" >> "$LOG"
+        break
+    fi
+
+    echo "$(date): Launch attempt $attempt via app path" >> "$LOG"
+    open -n "$APP_DEST" >> "$LOG" 2>&1 || true
+    sleep 2
+    if pgrep -f "HedraStudio|Hedra Studio|tts_app.py" >/dev/null 2>&1; then
+        LAUNCH_OK=1
+        echo "$(date): App launch detected after app path attempt $attempt" >> "$LOG"
+        break
+    fi
+done
+
+if [ "$LAUNCH_OK" -ne 1 ] && [ -f "$RUN_COMMAND" ]; then
+    echo "$(date): App launch not detected, opening fallback run.command" >> "$LOG"
+    open "$RUN_COMMAND" >> "$LOG" 2>&1 || true
+    sleep 2
+fi
+
 echo "$(date): Done ✅" >> "$LOG"
 
 # Dọn DMG tạm
@@ -1433,7 +2101,7 @@ rm -f "$DMG" 2>/dev/null
         has_el  = bool(el_keys)
         has_gm  = bool(genmax_key)
         if not has_el and not has_gm:
-            self.credits_lbl.setText("⚠️  Chưa có TTS API key — vào Settings")
+            self.credits_lbl.setText("⚠️  Chưa có TTS API key — vào Settings → API")
             return
         self.credits_lbl.setText("Credits: đang tải...")
         self._credits_worker = _CreditsChecker(el_keys, genmax_key)
@@ -1451,10 +2119,10 @@ rm -f "$DMG" 2>/dev/null
         if not has_tts:
             QMessageBox.warning(self, "Thiếu TTS API Key",
                                 "Cần ít nhất một TTS API Key:\n\n"
-                                "🎙 GenMax API Key (rẻ hơn, khuyến nghị)\n"
+                                "GenMax API Key (rẻ hơn, khuyến nghị)\n"
                                 "  hoặc\n"
-                                "🔑 ElevenLabs API Key\n\n"
-                                "📌 Vào Settings → tab API Keys để thêm.")
+                                "ElevenLabs API Key\n\n"
+                                "Vào Settings → API để thêm.")
             return
 
         filename = self.filename_input.text().strip()
@@ -1469,6 +2137,19 @@ rm -f "$DMG" 2>/dev/null
             self.settings["enhance_style_creative"] = t >= 0.5
             save_settings(self.settings)
         self.btn_gen.setEnabled(False)
+        if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._output_player.stop()
+        if hasattr(self, "_audio_icon_lbl"):
+            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
+            self._audio_title_lbl.setText("Đang tạo audio")
+            self._audio_title_lbl.setStyleSheet(
+                f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
+            )
+            self._audio_detail_lbl.setText("Tool đang xử lý kịch bản và tạo file đọc.")
+        self.tts_status_lbl.setText("Đang khởi động")
+        self.tts_status_lbl.setStyleSheet("color:#b45309;font-size:12px;background:transparent;border:none;")
+        self._btn_play_audio.setEnabled(False)
+        self._btn_open_folder.setEnabled(False)
 
         # Nếu đã có preview text (user đã xem trước) → dùng luôn, không enhance lại
         preview_text = getattr(self, "_enhanced_cache", "").strip()
@@ -1494,13 +2175,13 @@ rm -f "$DMG" 2>/dev/null
         if not has_ai:
             QMessageBox.warning(self, "Thiếu AI Key",
                                 "Cần API key AI để xử lý kịch bản:\n\n"
-                                "🆓 Gemini API Key (miễn phí — khuyến nghị)\n"
+                                "Gemini API Key (miễn phí — khuyến nghị)\n"
                                 "   hoặc\n"
-                                "🤖 DeepSeek API Key\n\n"
-                                "📌 Vào Settings → tab API Keys để thêm.")
+                                "DeepSeek API Key\n\n"
+                                "Vào Settings → API để thêm.")
             return
         self._btn_preview.setEnabled(False)
-        self._btn_preview.setText("⏳  Đang xử lý...")
+        self._btn_preview.setText("Đang xử lý...")
         self._enhanced_cache = ""
         self._preview_box.setVisible(True)
         self.preview_text.setPlainText("")
@@ -1517,12 +2198,12 @@ rm -f "$DMG" 2>/dev/null
     def _on_preview_done(self, enhanced: str):
         self._enhanced_cache = enhanced
         self.preview_text.setPlainText(enhanced)
-        self._preview_status.setText("✅  Xem xong — chỉnh sửa nếu cần rồi nhấn Tạo Giọng Đọc")
+        self._preview_status.setText("Đã xử lý xong. Chỉnh nếu cần rồi nhấn Tạo audio.")
         self._preview_status.setStyleSheet(
             "font-size:11px;color:#15803d;background:transparent;border:none;"
         )
         self._btn_preview.setEnabled(True)
-        self._btn_preview.setText("✨  Xem kịch bản")
+        self._btn_preview.setText("Xem kịch bản")
         # Khi user chỉnh sửa preview → cập nhật cache
         try:
             self.preview_text.textChanged.disconnect()
@@ -1533,19 +2214,19 @@ rm -f "$DMG" 2>/dev/null
         )
 
     def _on_preview_error_msg(self, msg: str):
-        self._preview_status.setText(f"❌  {msg}")
+        self._preview_status.setText(msg)
         self._preview_status.setStyleSheet(
             "font-size:11px;color:#dc2626;background:transparent;border:none;"
         )
         self._btn_preview.setEnabled(True)
-        self._btn_preview.setText("✨  Xem kịch bản")
+        self._btn_preview.setText("Xem kịch bản")
 
     def _on_script_changed(self):
         """Khi sửa kịch bản gốc → reset preview để tránh gen sai."""
         if getattr(self, "_enhanced_cache", ""):
             self._enhanced_cache = ""
             self.preview_text.setPlainText("")
-            self._preview_status.setText("⚠️  Kịch bản đã thay đổi — nhấn lại \"Xem kịch bản\" để cập nhật")
+            self._preview_status.setText("Kịch bản đã thay đổi. Nhấn lại Xem kịch bản để cập nhật.")
             self._preview_status.setStyleSheet(
                 "font-size:11px;color:#b45309;background:transparent;border:none;"
             )
@@ -1555,17 +2236,35 @@ rm -f "$DMG" 2>/dev/null
         self.tts_status_lbl.setStyleSheet(
             "color:#b45309; font-size:11px; background:transparent;"
         )
+        if hasattr(self, "_audio_title_lbl") and not getattr(self, "_last_audio_path", ""):
+            self._audio_title_lbl.setText("Đang tạo audio")
+            self._audio_title_lbl.setStyleSheet(
+                f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
+            )
+            self._audio_detail_lbl.setText(msg)
 
     def _on_done(self, path: str):
         self.btn_gen.setEnabled(True)
-        self.tts_status_lbl.setText("✅  Tạo audio thành công!")
+        self.tts_status_lbl.setText("Tạo audio thành công")
         self.tts_status_lbl.setStyleSheet(
-            "color:#15803d; font-size:14px; font-weight:600; background:transparent;"
+            "color:#15803d; font-size:12px; font-weight:600; background:transparent;"
         )
-        # Lưu path và hiện nút 📂 — user chủ động mở thư mục nếu muốn
         self._last_audio_path = path
-        self._btn_play_audio.setVisible(True)
-        self._btn_open_folder.setVisible(True)
+        filename = os.path.basename(path)
+        folder = os.path.dirname(path)
+        if hasattr(self, "_audio_icon_lbl"):
+            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, ACCENT).pixmap(icon_size(34)))
+            self._audio_title_lbl.setText(filename or "Audio đã tạo")
+            self._audio_title_lbl.setStyleSheet(
+                f"font-size:18px;font-weight:700;color:{TEXT};background:transparent;border:none;"
+            )
+            self._audio_detail_lbl.setText(folder)
+            self._audio_detail_lbl.setStyleSheet(
+                f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;"
+            )
+        self._btn_play_audio.setEnabled(True)
+        self._btn_open_folder.setEnabled(True)
+        self._btn_play_audio.setText("Nghe lại")
         # Disconnect cũ an toàn — tránh TypeError nếu chưa có connection nào
         try:
             self._btn_open_folder.clicked.disconnect()
@@ -1585,29 +2284,44 @@ rm -f "$DMG" 2>/dev/null
         self._output_player.setSource(QUrl.fromLocalFile(self._last_audio_path))
         self._output_player.play()
         self._btn_play_audio.setText("Dừng")
-        self.tts_status_lbl.setText("Đang phát audio...")
+        self.tts_status_lbl.setText("Đang phát")
         self.tts_status_lbl.setStyleSheet(
-            "color:#15803d; font-size:11px; background:transparent;"
+            "color:#15803d; font-size:12px; font-weight:600; background:transparent;"
         )
 
     def _on_output_playback_state(self, state):
         if state == QMediaPlayer.PlaybackState.StoppedState and hasattr(self, "_btn_play_audio"):
-            self._btn_play_audio.setText("Phát")
+            self._btn_play_audio.setText("Nghe lại")
+            if getattr(self, "_last_audio_path", ""):
+                self.tts_status_lbl.setText("Sẵn sàng nghe lại")
+                self.tts_status_lbl.setStyleSheet(
+                    f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
+                )
 
     def _reset_tts_status(self):
         if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             return
-        self.tts_status_lbl.setText("Sẵn sàng")
+        self.tts_status_lbl.setText("Sẵn sàng nghe lại" if getattr(self, "_last_audio_path", "") else "Chưa có audio")
         self.tts_status_lbl.setStyleSheet(
-            f"color:{TEXT_MUTE}; font-size:11px; background:transparent;"
+            f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
         )
 
     def _on_error(self, msg: str):
         self.btn_gen.setEnabled(True)
         self.tts_status_lbl.setText("Có lỗi xảy ra")
         self.tts_status_lbl.setStyleSheet(
-            "color:#dc2626; font-size:11px; background:transparent;"
+            "color:#dc2626; font-size:12px; font-weight:600; background:transparent;"
         )
+        if hasattr(self, "_audio_icon_lbl"):
+            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
+            self._audio_title_lbl.setText("Tạo audio lỗi")
+            self._audio_title_lbl.setStyleSheet(
+                f"font-size:22px;font-weight:700;color:#dc2626;background:transparent;border:none;"
+            )
+            self._audio_detail_lbl.setText("Kiểm tra API key, provider hoặc thử tạo lại.")
+        has_old_audio = bool(getattr(self, "_last_audio_path", "") and os.path.exists(self._last_audio_path))
+        self._btn_play_audio.setEnabled(has_old_audio)
+        self._btn_open_folder.setEnabled(has_old_audio)
         QMessageBox.critical(self, "Lỗi", msg)
 
     def _open_feedback(self):
@@ -1636,6 +2350,9 @@ rm -f "$DMG" 2>/dev/null
                 self._voice_name_lbl.setText(
                     self.settings.get("selected_voice_name", "Adam")
                 )
+                if hasattr(self, "_av_config_lbl"):
+                    self._av_sync_quick_presets()
+                    self._av_refresh_config_summary()
             except Exception:
                 pass  # Không crash app nếu refresh lỗi
 
@@ -1655,69 +2372,66 @@ rm -f "$DMG" 2>/dev/null
         self._card_row(input_vbox, "Link bài báo", self._av_url_field(), last=False)
         self._card_row(input_vbox, "Hoặc paste text", self._av_text_field(), last=True)
 
-        # ── Voice provider row ──────────────────────────────────────────
-        voice_card, voice_vbox = self._card()
-        layout.addWidget(voice_card)
+        # ── Engine config summary ─────────────────────────────────────
+        config_card, config_vbox = self._card()
+        layout.addWidget(config_card)
+        env = _read_env_local()
 
-        from PyQt6.QtWidgets import QButtonGroup, QRadioButton
-        prov_widget = QWidget()
-        prov_h = QHBoxLayout(prov_widget)
-        prov_h.setContentsMargins(16, 10, 16, 10)
-        prov_h.setSpacing(16)
-        self._av_prov_group = QButtonGroup(self)
-        for i, label in enumerate(["LucyLab", "GenMax"]):
-            rb = QRadioButton(label)
-            rb.setStyleSheet(f"color:{TEXT};background:transparent;font-size:13px;")
-            self._av_prov_group.addButton(rb, i)
-            prov_h.addWidget(rb)
-        prov_h.addStretch()
-        cur_prov = self.settings.get("av_tts_provider", "lucylab")
-        self._av_prov_group.button(0 if cur_prov == "lucylab" else 1).setChecked(True)
-        self._av_prov_group.idToggled.connect(self._av_on_provider_change)
-        self._card_row(voice_vbox, "TTS Provider", prov_widget, last=False)
+        self._av_script_preset = self._av_quick_combo(
+            ["ai_news_fast", "github_repo_story", "research_explainer", "classic"],
+            env.get("AUTO_VIDEO_SCRIPT_PRESET", "ai_news_fast"),
+        )
+        self._av_script_preset.currentIndexChanged.connect(self._av_save_quick_presets)
+        self._card_row(
+            config_vbox,
+            "Preset nội dung",
+            self._av_script_preset,
+            "AI News nhanh, GitHub repo, research hoặc prompt classic.",
+            last=False,
+        )
 
-        self._av_gm_widget = QWidget()
-        gm_h = QHBoxLayout(self._av_gm_widget)
-        gm_h.setContentsMargins(0, 0, 0, 0)
-        gm_h.setSpacing(8)
-        self._av_gm_combo = QComboBox()
-        self._av_gm_combo.setMinimumWidth(200)
-        self._av_gm_combo.setFixedHeight(28)
-        self._av_gm_combo.setStyleSheet(
-            f"QComboBox{{background:white;border:1.5px solid {BORDER};"
-            f"border-radius:6px;padding:0 10px;color:{TEXT};font-size:12px;}}"
-            f"QComboBox:hover{{border-color:#a0aec0;}}"
-            f"QComboBox:focus{{border-color:{ACCENT};}}"
-            f"QComboBox::drop-down{{border:none;width:20px;}}"
-            f"QComboBox::down-arrow{{width:10px;height:10px;}}"
-            f"QComboBox QAbstractItemView{{background:white;border:1px solid {BORDER};"
-            f"border-radius:6px;selection-background-color:#eff6ff;"
-            f"selection-color:{TEXT};font-size:12px;padding:4px;}}")
-        self._av_gm_combo.currentIndexChanged.connect(self._av_on_voice_change)
-        gm_h.addWidget(self._av_gm_combo)
+        self._av_visual_preset = self._av_quick_combo(
+            ["ai_news_dark", "cream_editorial", "classic"],
+            env.get("AUTO_VIDEO_VISUAL_PRESET", "ai_news_dark"),
+        )
+        self._av_visual_preset.currentIndexChanged.connect(self._av_save_quick_presets)
+        self._card_row(
+            config_vbox,
+            "Giao diện",
+            self._av_visual_preset,
+            "Đổi nhanh visual trước khi render.",
+            last=False,
+        )
 
-        btn_add = QPushButton("＋ Thêm giọng")
-        btn_add.setFixedHeight(28)
-        btn_add.setStyleSheet(
-            f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;}}"
-            f"QPushButton:hover{{background:{ACCENT_HV};}}")
-        btn_add.clicked.connect(self._av_add_voice)
-        gm_h.addWidget(btn_add)
+        config_row = QWidget()
+        config_h = QHBoxLayout(config_row)
+        config_h.setContentsMargins(0, 0, 0, 0)
+        config_h.setSpacing(8)
 
-        btn_del = QPushButton("Xoá")
-        btn_del.setFixedHeight(28)
-        btn_del.setStyleSheet(
-            f"QPushButton{{background:white;color:#e0303a;border:1px solid #e0303a;"
-            f"border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;}}"
-            f"QPushButton:hover{{background:#fff0f0;}}")
-        btn_del.clicked.connect(self._av_del_voice)
-        gm_h.addWidget(btn_del)
-        gm_h.addStretch()
+        self._av_config_lbl = QLabel("")
+        self._av_config_lbl.setStyleSheet(
+            f"color:{TEXT};font-size:13px;background:transparent;"
+        )
+        self._av_config_lbl.setWordWrap(True)
+        config_h.addWidget(self._av_config_lbl)
 
-        self._card_row(voice_vbox, "Giọng GenMax", self._av_gm_widget, last=True)
-        self._av_refresh_voice_combo()
-        self._av_gm_widget.setVisible(cur_prov == "genmax")
+        btn_settings = QPushButton("Settings")
+        btn_settings.setFixedHeight(28)
+        btn_settings.setStyleSheet(
+            f"QPushButton{{background:#f5f5f7;border:1px solid {BORDER};"
+            f"border-radius:7px;color:{TEXT};font-size:12px;padding:0 12px;}}"
+            "QPushButton:hover{background:#e5e5ea;}"
+        )
+        btn_settings.clicked.connect(self.open_settings)
+        config_h.addWidget(btn_settings)
+        self._card_row(
+            config_vbox,
+            "Engine config",
+            config_row,
+            "/Users/admin/Auto-Create-Video/.env.local",
+            last=True,
+        )
+        self._av_refresh_config_summary()
 
         # ── Status / log ──────────────────────────────────────────────
         self._av_status = QLabel("Nhập link hoặc paste nội dung rồi nhấn Generate")
@@ -1731,9 +2445,9 @@ rm -f "$DMG" 2>/dev/null
         self._av_log.setReadOnly(True)
         self._av_log.setFixedHeight(120)
         self._av_log.setStyleSheet(
-            f"QTextEdit{{background:#f5f5f7;border:1px solid #e5e5ea;"
-            f"border-radius:8px;color:{TEXT_MUTE};font-size:11px;"
-            f"font-family:Menlo,Monaco,monospace;padding:8px;}}"
+            f"QTextEdit{{background:{SURFACE_2};border:1px solid {BORDER_SOFT};"
+            f"border-radius:10px;color:{TEXT_MUTE};font-size:11px;"
+            f"font-family:Menlo,Monaco,monospace;padding:10px;}}"
         )
         self._av_log.setVisible(False)
         layout.addWidget(self._av_log)
@@ -1792,7 +2506,7 @@ rm -f "$DMG" 2>/dev/null
         self._av_progress.setFixedHeight(10)
         self._av_progress.setTextVisible(False)
         self._av_progress.setStyleSheet(
-            "QProgressBar{background:#e5e5ea;border:none;border-radius:5px;}"
+            f"QProgressBar{{background:{SEG_BG};border:none;border-radius:5px;}}"
             f"QProgressBar::chunk{{background:{ACCENT};border-radius:5px;}}")
         prog_h.addWidget(self._av_progress)
 
@@ -1821,8 +2535,8 @@ rm -f "$DMG" 2>/dev/null
         self._av_btn_open.setFixedHeight(32)
         self._av_btn_open.setStyleSheet(
             f"QPushButton{{border:1px solid {BORDER};border-radius:8px;"
-            f"padding:0 14px;background:white;color:{TEXT};font-size:12px;}}"
-            f"QPushButton:hover{{background:#f5f5f7;}}"
+            f"padding:0 14px;background:{SURFACE};color:{TEXT};font-size:12px;}}"
+            f"QPushButton:hover{{background:{CONTROL_HV};}}"
         )
         self._av_btn_open.clicked.connect(self._av_open_finder)
         btn_row_w = QWidget()
@@ -1840,9 +2554,9 @@ rm -f "$DMG" 2>/dev/null
         self._av_gen_btn.setFixedHeight(44)
         self._av_gen_btn.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;"
-            f"border-radius:10px;font-size:14px;font-weight:700;padding:0 28px;}}"
+            f"border-radius:12px;font-size:14px;font-weight:700;padding:0 28px;}}"
             f"QPushButton:hover{{background:{ACCENT_HV};}}"
-            f"QPushButton:pressed{{background:#0060cc;}}"
+            f"QPushButton:pressed{{background:{ACCENT_DN};}}"
             f"QPushButton:disabled{{background:#a8d0fb;color:white;}}"
         )
         self._av_gen_btn.clicked.connect(self._av_on_generate)
@@ -1853,6 +2567,173 @@ rm -f "$DMG" 2>/dev/null
         self._av_engine_worker = None
 
         return outer
+
+    def _build_auto_video_tab(self) -> QWidget:
+        page, layout = self._student_page()
+        env = _read_env_local()
+
+        strip, strip_lay = self._strip_widget()
+        strip_lay.addWidget(QLabel("Preset"))
+        self._av_script_preset = self._av_quick_combo(
+            ["ai_news_fast", "github_repo_story", "research_explainer", "classic"],
+            env.get("AUTO_VIDEO_SCRIPT_PRESET", "ai_news_fast"),
+        )
+        self._av_script_preset.currentIndexChanged.connect(self._av_save_quick_presets)
+        strip_lay.addWidget(self._av_script_preset, 1)
+        strip_lay.addWidget(QLabel("Giao diện"))
+        self._av_visual_preset = self._av_quick_combo(
+            ["ai_news_dark", "cream_editorial", "classic"],
+            env.get("AUTO_VIDEO_VISUAL_PRESET", "ai_news_dark"),
+        )
+        self._av_visual_preset.currentIndexChanged.connect(self._av_save_quick_presets)
+        strip_lay.addWidget(self._av_visual_preset, 1)
+        strip_lay.addWidget(QLabel("Sub"))
+        caption_on = str(env.get("AUTO_VIDEO_BURN_CAPTIONS", "false")).strip().lower() in ("1", "true", "yes", "on")
+        self._av_sub_toggle = self._av_quick_choice(
+            [("Tắt", "off"), ("Bật", "on")],
+            "on" if caption_on else "off",
+        )
+        self._av_sub_toggle.currentIndexChanged.connect(self._av_save_quick_presets)
+        strip_lay.addWidget(self._av_sub_toggle)
+        strip_lay.addWidget(QLabel("Nhịp"))
+        self._av_pace = self._av_quick_choice(
+            [("Dynamic", "dynamic"), ("Chuẩn", "standard")],
+            env.get("AUTO_VIDEO_EDITING_PACE", "dynamic"),
+        )
+        self._av_pace.currentIndexChanged.connect(self._av_save_quick_presets)
+        strip_lay.addWidget(self._av_pace)
+        btn_settings = QPushButton("Settings")
+        btn_settings.setFixedHeight(32)
+        btn_settings.setStyleSheet(self._compact_secondary_style())
+        btn_settings.clicked.connect(self.open_settings)
+        strip_lay.addWidget(btn_settings)
+        strip_lay.addSpacing(6)
+        self._av_gen_btn = QPushButton("Generate Video")
+        self._av_gen_btn.setFixedHeight(32)
+        self._av_gen_btn.setFixedWidth(160)
+        self._av_gen_btn.setStyleSheet(self._compact_primary_style())
+        self._av_gen_btn.clicked.connect(self._av_on_generate)
+        strip_lay.addWidget(self._av_gen_btn)
+        layout.addWidget(strip)
+
+        body = QWidget()
+        body.setStyleSheet("background:transparent;border:none;")
+        h = QHBoxLayout(body)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(18)
+
+        left = QWidget()
+        left.setStyleSheet("background:transparent;border:none;")
+        left_l = QVBoxLayout(left)
+        left_l.setContentsMargins(0, 0, 0, 0)
+        left_l.setSpacing(10)
+        left_l.addWidget(self._pane_heading("Nguồn", "Dán link bài báo hoặc paste nội dung gốc."))
+        self._av_url = QLineEdit()
+        self._av_url.setPlaceholderText("https://example.com/article")
+        self._av_url.returnPressed.connect(self._av_on_generate)
+        left_l.addWidget(self._av_url)
+        self._av_text = QTextEdit()
+        self._av_text.setPlaceholderText("Hoặc paste nội dung bài báo vào đây...")
+        self._av_text.setStyleSheet(self._editor_style())
+        left_l.addWidget(self._av_text, 1)
+        self._av_config_lbl = QLabel("")
+        self._av_config_lbl.setWordWrap(True)
+        self._av_config_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        left_l.addWidget(self._av_config_lbl)
+        self._av_refresh_config_summary()
+        h.addWidget(left, 5)
+
+        h.addWidget(self._v_divider())
+
+        right = QWidget()
+        right.setStyleSheet("background:transparent;border:none;")
+        right_l = QVBoxLayout(right)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(10)
+        right_l.addWidget(self._pane_heading("Video", "Script, log và file render sẽ hiện ở đây."))
+        self._av_status = QLabel("Chưa chạy")
+        self._av_status.setWordWrap(True)
+        self._av_status.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        right_l.addWidget(self._av_status)
+
+        self._av_log = QTextEdit()
+        self._av_log.setReadOnly(True)
+        self._av_log.setVisible(False)
+        self._av_log.setFixedHeight(120)
+        self._av_log.setStyleSheet(
+            f"QTextEdit{{background:{CONTROL_BG};border:none;border-radius:10px;"
+            f"color:{TEXT_MUTE};font-size:11px;font-family:Menlo,Monaco,monospace;padding:10px;}}"
+        )
+        right_l.addWidget(self._av_log)
+
+        self._av_script_card = QWidget()
+        self._av_script_card.setVisible(False)
+        self._av_script_card.setStyleSheet("background:transparent;border:none;")
+        sc_l = QVBoxLayout(self._av_script_card)
+        sc_l.setContentsMargins(0, 0, 0, 0)
+        sc_l.setSpacing(6)
+        sc_head = QHBoxLayout()
+        sc_head.addWidget(QLabel("Kịch bản"))
+        sc_head.addStretch()
+        self._av_script_toggle = QPushButton("Thu gọn")
+        self._av_script_toggle.setFixedHeight(28)
+        self._av_script_toggle.setStyleSheet(self._compact_secondary_style())
+        self._av_script_toggle.clicked.connect(self._av_toggle_script)
+        sc_head.addWidget(self._av_script_toggle)
+        sc_l.addLayout(sc_head)
+        self._av_script_view = QTextEdit()
+        self._av_script_view.setReadOnly(True)
+        self._av_script_view.setFixedHeight(160)
+        self._av_script_view.setStyleSheet(self._editor_style(True))
+        sc_l.addWidget(self._av_script_view)
+        right_l.addWidget(self._av_script_card)
+
+        from PyQt6.QtWidgets import QProgressBar
+        self._av_step_label = QLabel("")
+        self._av_step_label.setVisible(False)
+        self._av_step_label.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
+        right_l.addWidget(self._av_step_label)
+        prog_row = QWidget()
+        prog_h = QHBoxLayout(prog_row)
+        prog_h.setContentsMargins(0, 0, 0, 0)
+        prog_h.setSpacing(8)
+        self._av_progress = QProgressBar()
+        self._av_progress.setRange(0, 100)
+        self._av_progress.setValue(0)
+        self._av_progress.setTextVisible(False)
+        self._av_progress.setFixedHeight(8)
+        prog_h.addWidget(self._av_progress)
+        self._av_pct_label = QLabel("0%")
+        self._av_pct_label.setFixedWidth(36)
+        self._av_pct_label.setStyleSheet(f"font-size:11px;font-weight:700;color:{TEXT_MUTE};background:transparent;border:none;")
+        prog_h.addWidget(self._av_pct_label)
+        prog_row.setVisible(False)
+        self._av_prog_row = prog_row
+        right_l.addWidget(prog_row)
+
+        self._av_result_card = QWidget()
+        self._av_result_card.setVisible(False)
+        self._av_result_card.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        res_l = QHBoxLayout(self._av_result_card)
+        res_l.setContentsMargins(12, 10, 12, 10)
+        self._av_video_path_lbl = QLabel("—")
+        self._av_video_path_lbl.setWordWrap(True)
+        self._av_video_path_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        res_l.addWidget(self._av_video_path_lbl, 1)
+        self._av_btn_open = QPushButton("Finder")
+        self._av_btn_open.setFixedHeight(30)
+        self._av_btn_open.setStyleSheet(self._compact_secondary_style())
+        self._av_btn_open.clicked.connect(self._av_open_finder)
+        res_l.addWidget(self._av_btn_open)
+        right_l.addWidget(self._av_result_card)
+        right_l.addStretch()
+
+        h.addWidget(right, 7)
+
+        layout.addWidget(body, 1)
+        self._av_script_worker = None
+        self._av_engine_worker = None
+        return page
 
     def _av_url_field(self):
         self._av_url = QLineEdit()
@@ -1869,6 +2750,87 @@ rm -f "$DMG" 2>/dev/null
         self._av_text.setFixedHeight(100)
         return self._av_text
 
+    def _av_quick_combo(self, options: list[str], current: str) -> QComboBox:
+        combo = QComboBox()
+        for item in options:
+            combo.addItem(item)
+        idx = options.index(current) if current in options else 0
+        combo.setCurrentIndex(idx)
+        combo.setFixedHeight(30)
+        combo.setStyleSheet(
+            f"QComboBox{{background:{CONTROL_BG};border:none;"
+            f"border-radius:8px;padding:3px 28px 3px 10px;font-size:12px;color:{TEXT};}}"
+            f"QComboBox:hover{{background:{CONTROL_HV};}}"
+            f"QComboBox:focus{{background:{CONTROL_HV};}}"
+            "QComboBox::drop-down{border:none;}"
+        )
+        return combo
+
+    def _av_quick_choice(self, options: list[tuple[str, str]], current: str) -> QComboBox:
+        combo = self._av_quick_combo([label for label, _value in options], "")
+        combo.clear()
+        selected = 0
+        for i, (label, value) in enumerate(options):
+            combo.addItem(label, value)
+            if value == current:
+                selected = i
+        combo.setCurrentIndex(selected)
+        return combo
+
+    def _av_save_quick_presets(self):
+        if not hasattr(self, "_av_script_preset") or not hasattr(self, "_av_visual_preset"):
+            return True
+        try:
+            caption_state = (
+                self._av_sub_toggle.currentData()
+                if hasattr(self, "_av_sub_toggle")
+                else "off"
+            )
+            pace = (
+                self._av_pace.currentData()
+                if hasattr(self, "_av_pace")
+                else "dynamic"
+            )
+            _write_env_local({
+                "AUTO_VIDEO_SCRIPT_PRESET": self._av_script_preset.currentText().strip() or "ai_news_fast",
+                "AUTO_VIDEO_VISUAL_PRESET": self._av_visual_preset.currentText().strip() or "ai_news_dark",
+                "AUTO_VIDEO_BURN_CAPTIONS": "true" if caption_state == "on" else "false",
+                "AUTO_VIDEO_EDITING_PACE": pace or "dynamic",
+            })
+            self._av_refresh_config_summary()
+            return True
+        except Exception as e:
+            self._av_set_status(f"Không lưu được preset nhanh: {e}", error=True)
+            return False
+
+    def _av_sync_quick_presets(self):
+        if not hasattr(self, "_av_script_preset") or not hasattr(self, "_av_visual_preset"):
+            return
+        env = _read_env_local()
+        caption_on = str(env.get("AUTO_VIDEO_BURN_CAPTIONS", "false")).strip().lower() in ("1", "true", "yes", "on")
+        pairs = [
+            (self._av_script_preset, env.get("AUTO_VIDEO_SCRIPT_PRESET", "ai_news_fast")),
+            (self._av_visual_preset, env.get("AUTO_VIDEO_VISUAL_PRESET", "ai_news_dark")),
+        ]
+        for combo, value in pairs:
+            idx = combo.findText(value)
+            if idx >= 0 and idx != combo.currentIndex():
+                blocked = combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(blocked)
+        if hasattr(self, "_av_sub_toggle"):
+            idx = self._av_sub_toggle.findData("on" if caption_on else "off")
+            if idx >= 0 and idx != self._av_sub_toggle.currentIndex():
+                blocked = self._av_sub_toggle.blockSignals(True)
+                self._av_sub_toggle.setCurrentIndex(idx)
+                self._av_sub_toggle.blockSignals(blocked)
+        if hasattr(self, "_av_pace"):
+            idx = self._av_pace.findData(env.get("AUTO_VIDEO_EDITING_PACE", "dynamic"))
+            if idx >= 0 and idx != self._av_pace.currentIndex():
+                blocked = self._av_pace.blockSignals(True)
+                self._av_pace.setCurrentIndex(idx)
+                self._av_pace.blockSignals(blocked)
+
     def _av_on_generate(self):
         url  = self._av_url.text().strip()
         text = self._av_text.toPlainText().strip()
@@ -1877,18 +2839,25 @@ rm -f "$DMG" 2>/dev/null
             self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True)
             return
 
-        # Check có ít nhất 1 API key (Claude / DeepSeek / Gemini)
+        if not self._av_save_quick_presets():
+            return
+
+        # Check có ít nhất 1 API key trong Auto Video config (.env.local), fallback settings cũ.
+        env = _read_env_local()
         has_key = any([
+            env.get("CLAUDE_API_KEY", "").strip(),
+            env.get("DEEPSEEK_API_KEY", "").strip(),
+            env.get("GEMINI_API_KEY", "").strip(),
             self.settings.get("claude_api_key", "").strip(),
             self.settings.get("ds_api_key", "").strip(),
             self.settings.get("gemini_api_key", "").strip(),
         ])
         if not has_key:
-            self._av_set_status("Chưa có API key — vào Settings nhập Claude / DeepSeek / Gemini.", error=True)
+            self._av_set_status("Chưa có API key — vào Settings → API để thêm key viết script.", error=True)
             return
 
         self._av_gen_btn.setEnabled(False)
-        self._av_gen_btn.setText("⏳  Đang tạo…")
+        self._av_gen_btn.setText("Đang tạo…")
         self._av_script_card.setVisible(False)
         self._av_log.clear()
         self._av_log.setVisible(True)
@@ -1917,21 +2886,21 @@ rm -f "$DMG" 2>/dev/null
 
     def _av_on_video_done(self, video_path: str):
         self._av_gen_btn.setEnabled(True)
-        self._av_gen_btn.setText("✨  Generate Video")
+        self._av_gen_btn.setText("Generate Video")
         self._av_on_progress(100)
         self._av_prog_row.setVisible(False)
         self._av_step_label.setVisible(False)
-        self._av_set_status("✅  Hoàn thành!")
+        self._av_set_status("Hoàn thành")
         self._av_video_path = video_path
         self._av_video_path_lbl.setText(video_path or "Không tìm thấy video.mp4")
         self._av_result_card.setVisible(True)
 
     def _av_on_error(self, msg: str):
         self._av_gen_btn.setEnabled(True)
-        self._av_gen_btn.setText("✨  Generate Video")
+        self._av_gen_btn.setText("Generate Video")
         self._av_prog_row.setVisible(False)
         self._av_step_label.setVisible(False)
-        self._av_set_status(f"❌  {msg}", error=True)
+        self._av_set_status(msg, error=True)
 
     def _av_set_status(self, msg: str, error: bool = False):
         color = "#e0303a" if error else TEXT_MUTE
@@ -1948,6 +2917,18 @@ rm -f "$DMG" 2>/dev/null
             n, t, desc = int(m.group(1)), int(m.group(2)), m.group(3).strip()
             short = desc.split("(")[0].strip()
             self._av_step_label.setText(f"Bước {n}/{t} — {short}")
+            self._av_on_progress(int(((n - 1) / t) * 100))
+        hf = re.search(r"(\d{1,3})%\s+.*?\bframe\s+(\d+)/(\d+)", line, re.I)
+        if hf:
+            pct = max(0, min(100, int(hf.group(1))))
+            frame = hf.group(2)
+            total = hf.group(3)
+            overall = int(((6 + pct / 100) / 8) * 100)
+            self._av_step_label.setText(
+                f"Bước 7/8 — Render with hyperframes ({pct}% · frame {frame}/{total})"
+            )
+            self._av_set_status(f"Đang render video… {pct}%")
+            self._av_on_progress(overall)
 
     def _av_open_finder(self):
         import subprocess, os
@@ -1956,76 +2937,53 @@ rm -f "$DMG" 2>/dev/null
             folder = os.path.dirname(path)
             subprocess.run(["open", folder], check=False)
 
-    def _av_on_provider_change(self, btn_id: int, checked: bool):
-        if not checked:
-            return
-        prov = "lucylab" if btn_id == 0 else "genmax"
-        self.settings["av_tts_provider"] = prov
-        save_settings(self.settings)
-        self._av_gm_widget.setVisible(prov == "genmax")
-
-    def _av_refresh_voice_combo(self):
-        self._av_gm_combo.blockSignals(True)
-        self._av_gm_combo.clear()
-        voices = self.settings.get("av_genmax_voices", [])
-        for v in voices:
-            self._av_gm_combo.addItem(v["name"], v["id"])
-        sel = self.settings.get("av_genmax_voice_id", "")
-        for i in range(self._av_gm_combo.count()):
-            if self._av_gm_combo.itemData(i) == sel:
-                self._av_gm_combo.setCurrentIndex(i)
-                break
-        self._av_gm_combo.blockSignals(False)
-
-    def _av_on_voice_change(self, idx: int):
-        voice_id = self._av_gm_combo.itemData(idx) or ""
-        self.settings["av_genmax_voice_id"] = voice_id
-        save_settings(self.settings)
-
-    def _av_add_voice(self):
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Thêm giọng GenMax")
-        dlg.setMinimumWidth(320)
-        form = QFormLayout(dlg)
-        id_edit = QLineEdit()
-        id_edit.setPlaceholderText("Voice ID từ GenMax")
-        name_edit = QLineEdit()
-        name_edit.setPlaceholderText("Tên hiển thị")
-        form.addRow("Voice ID:", id_edit)
-        form.addRow("Tên giọng:", name_edit)
-        btns = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel
+    def _av_refresh_config_summary(self):
+        env = _read_env_local()
+        provider = env.get("TTS_PROVIDER", "genmax").strip().lower() or "genmax"
+        voice_key = {
+            "genmax": "GENMAX_VOICE_ID",
+            "ai33": "AI33_VOICE_ID",
+            "elevenlabs": "ELEVENLABS_VOICE_ID",
+            "lucylab": "VIETNAMESE_VOICEID",
+        }.get(provider, "GENMAX_VOICE_ID")
+        voice_id = env.get(voice_key, "")
+        if provider == "ai33" and not voice_id:
+            voice_id = env.get("GENMAX_VOICE_ID", "")
+        voice_hint = voice_id[:8] + "..." if len(voice_id) > 8 else (voice_id or "missing")
+        fallback_on = str(env.get("GENMAX_FALLBACK_TO_AI33", "true")).strip().lower() in ("1", "true", "yes", "on")
+        if provider == "genmax" and fallback_on:
+            tts_hint = "genmax → ai33" if env.get("AI33_API_KEY", "").strip() else "genmax → ai33 missing key"
+        else:
+            tts_hint = provider
+        script_provider = env.get("SCRIPT_AI_PROVIDER", "deepseek").strip().lower() or "deepseek"
+        script_model = {
+            "claude": env.get("CLAUDE_MODEL", "claude-sonnet-4-6"),
+            "gemini": env.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash"),
+            "deepseek": "deepseek-chat",
+        }.get(script_provider, "")
+        script_hint = script_provider if not script_model else f"{script_provider} {script_model}"
+        script_fallback_on = (
+            str(env.get("SCRIPT_AI_FALLBACK", "false")).strip().lower()
+            in ("1", "true", "yes", "on")
         )
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        form.addRow(btns)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            vid = id_edit.text().strip()
-            name = name_edit.text().strip() or vid
-            if vid:
-                voices = self.settings.get("av_genmax_voices", [])
-                if not any(v["id"] == vid for v in voices):
-                    voices.append({"id": vid, "name": name})
-                    self.settings["av_genmax_voices"] = voices
-                    self.settings["av_genmax_voice_id"] = vid
-                    save_settings(self.settings)
-                    self._av_refresh_voice_combo()
-
-    def _av_del_voice(self):
-        idx = self._av_gm_combo.currentIndex()
-        if idx < 0:
-            return
-        vid = self._av_gm_combo.itemData(idx)
-        voices = [v for v in self.settings.get("av_genmax_voices", []) if v["id"] != vid]
-        self.settings["av_genmax_voices"] = voices
-        if self.settings.get("av_genmax_voice_id") == vid:
-            self.settings["av_genmax_voice_id"] = voices[0]["id"] if voices else ""
-        save_settings(self.settings)
-        self._av_refresh_voice_combo()
+        if script_fallback_on:
+            script_hint = f"{script_hint} fallback on"
+        script_preset = env.get("AUTO_VIDEO_SCRIPT_PRESET", "ai_news_fast")
+        visual_preset = env.get("AUTO_VIDEO_VISUAL_PRESET", "ai_news_dark")
+        caption_on = str(env.get("AUTO_VIDEO_BURN_CAPTIONS", "false")).strip().lower() in ("1", "true", "yes", "on")
+        caption_mode = env.get("AUTO_VIDEO_CAPTION_MODE", "word_transcript").strip() or "word_transcript"
+        caption_style = env.get("AUTO_VIDEO_CAPTION_STYLE", "capcut_pop").strip() or "capcut_pop"
+        caption_hint = "Sub off" if (not caption_on or caption_mode == "off") else f"Sub {caption_mode} · {caption_style}"
+        pace_hint = env.get("AUTO_VIDEO_EDITING_PACE", "dynamic").strip() or "dynamic"
+        self._av_config_lbl.setText(
+            f"script {script_hint} · TTS {tts_hint} voice {voice_hint} · {script_preset} · {visual_preset} · Pace {pace_hint} · {caption_hint}"
+        )
 
     def _av_on_progress(self, val: int):
+        val = max(0, min(100, int(val)))
+        current = self._av_progress.value() if hasattr(self, "_av_progress") else 0
+        if val < current and val not in (0, 100):
+            return
         self._av_progress.setValue(val)
         self._av_pct_label.setText(f"{val}%")
 
@@ -2034,8 +2992,50 @@ rm -f "$DMG" 2>/dev/null
         self._av_script_view.setVisible(not visible)
         self._av_script_toggle.setText("▸ Mở rộng" if visible else "▾ Thu gọn")
 
+    @staticmethod
+    def _av_visual_summary_from_voice(voice_text: str, template: str) -> str:
+        import re as _re
+        clean = _re.sub(r"\[[^\]]+\]", "", voice_text or "")
+        clean = _re.sub(r"\s+", " ", clean).strip()
+        if not clean:
+            return ""
+        sentences = [
+            s.strip()
+            for s in _re.findall(r"[^.!?…]+[.!?…]?", clean)
+            if s.strip()
+        ] or [clean]
+
+        def trim(text: str, limit: int = 96) -> str:
+            text = _re.sub(r"\s+", " ", text).strip()
+            if len(text) <= limit:
+                return text
+            cut = text[:limit].rstrip()
+            space = cut.rfind(" ")
+            if space >= 30:
+                cut = cut[:space].rstrip()
+            return cut.rstrip(" ,;:–—-") + "..."
+
+        number = _re.search(
+            r"(?:[$]\s*)?\d+(?:[.,]\d+)?\s*(?:%|triệu|tỷ|nghìn|ngàn|USD|đô|sao|người|nhân viên|năm|tuổi|vụ|lần|x|K|M|B)?(?:\s*(?:USD|đô|sao|người|nhân viên|năm|tuổi|vụ|lần))?",
+            clean,
+            _re.I,
+        )
+        if template == "stat-hero" and number:
+            return trim(f"{number.group(0).strip()} · {sentences[0]}")
+        if template == "feature-list":
+            return trim(" / ".join(sentences[:3]))
+        if template == "comparison":
+            return trim(clean)
+        if template == "callout":
+            risk = next(
+                (s for s in sentences if _re.search(r"rủi ro|cảnh báo|nguy|hack|lộ|không|nhưng|tuy nhiên", s, _re.I)),
+                sentences[0],
+            )
+            return trim(risk)
+        return trim(sentences[0])
+
     def _av_show_script(self, script_path: str):
-        """Đọc script.json và hiện voiceText từng scene."""
+        """Đọc script.json và hiện voiceText + visual summary từng scene."""
         import json as _json
         try:
             with open(script_path, encoding="utf-8") as f:
@@ -2045,8 +3045,11 @@ rm -f "$DMG" 2>/dev/null
             for s in scenes:
                 sid = s.get("id", "")
                 vt  = s.get("voiceText", "").strip()
+                td = s.get("templateData", {}) if isinstance(s.get("templateData", {}), dict) else {}
+                tpl = td.get("template", "")
                 if vt:
-                    lines.append(f"[{sid}]\n{vt}")
+                    visual = self._av_visual_summary_from_voice(vt, tpl)
+                    lines.append(f"[{sid}] {tpl}\nVoice: {vt}\nVisual sync: {visual}")
             self._av_script_view.setPlainText("\n\n".join(lines))
             self._av_script_toggle.setText("▾ Thu gọn")
             self._av_script_view.setVisible(True)
@@ -2057,75 +3060,6 @@ rm -f "$DMG" 2>/dev/null
     def update_settings(self, settings: dict):
         self.settings = settings
         self._refresh_credits()
-
-    def _av_url_field(self):
-        self._av_url = QLineEdit()
-        self._av_url.setPlaceholderText("https://vnexpress.net/bai-viet...")
-        self._av_url.returnPressed.connect(self._av_on_generate)
-        return self._av_url
-
-    def _av_text_field(self):
-        self._av_text = QTextEdit()
-        self._av_text.setPlaceholderText("Paste nội dung bài báo vào đây…\nAI sẽ tự tóm tắt và tạo script.")
-        self._av_text.setFixedHeight(100)
-        return self._av_text
-
-    def _av_on_generate(self):
-        url  = self._av_url.text().strip()
-        text = self._av_text.toPlainText().strip()
-        inp  = url or text
-        if not inp:
-            self._av_set_status("Nhập link hoặc paste nội dung trước.", error=True); return
-        has_key = any([
-            self.settings.get("claude_api_key", "").strip(),
-            self.settings.get("ds_api_key", "").strip(),
-            self.settings.get("gemini_api_key", "").strip(),
-        ])
-        if not has_key:
-            self._av_set_status("Chưa có API key — vào Settings nhập Claude / DeepSeek / Gemini.", error=True); return
-        self._av_gen_btn.setEnabled(False)
-        self._av_gen_btn.setText("⏳  Đang tạo…")
-        self._av_log.clear(); self._av_log.setVisible(True)
-        self._av_progress.setValue(0); self._av_progress.setVisible(True)
-        self._av_result_card.setVisible(False)
-        self._av_script_worker = AutoScriptWorker(inp)
-        self._av_script_worker.progress.connect(self._av_set_status)
-        self._av_script_worker.finished.connect(self._av_on_script_done)
-        self._av_script_worker.error.connect(self._av_on_error)
-        self._av_script_worker.start()
-
-    def _av_on_script_done(self, script_path: str):
-        self._av_set_status("Script xong — đang render video…")
-        self._av_engine_worker = AutoVideoEngineWorker(script_path)
-        self._av_engine_worker.log_line.connect(self._av_append_log)
-        self._av_engine_worker.progress.connect(self._av_progress.setValue)
-        self._av_engine_worker.finished.connect(self._av_on_video_done)
-        self._av_engine_worker.error.connect(self._av_on_error)
-        self._av_engine_worker.start()
-
-    def _av_on_video_done(self, video_path: str):
-        self._av_gen_btn.setEnabled(True); self._av_gen_btn.setText("✨  Generate Video")
-        self._av_progress.setValue(100); self._av_set_status("✅  Hoàn thành!")
-        self._av_video_path = video_path
-        self._av_video_path_lbl.setText(video_path or "Không tìm thấy video.mp4")
-        self._av_result_card.setVisible(True)
-
-    def _av_on_error(self, msg: str):
-        self._av_gen_btn.setEnabled(True); self._av_gen_btn.setText("✨  Generate Video")
-        self._av_progress.setVisible(False); self._av_set_status(f"❌  {msg}", error=True)
-
-    def _av_set_status(self, msg: str, error: bool = False):
-        color = "#e0303a" if error else TEXT_MUTE
-        self._av_status.setText(msg)
-        self._av_status.setStyleSheet(f"color:{color};font-size:12px;background:transparent;")
-
-    def _av_append_log(self, line: str):
-        self._av_log.append(line)
-
-    def _av_open_finder(self):
-        import os
-        path = getattr(self, "_av_video_path", "")
-        if path:
-            subprocess.run(["open", os.path.dirname(path)], check=False)
-
-
+        if hasattr(self, "_av_config_lbl"):
+            self._av_sync_quick_presets()
+            self._av_refresh_config_summary()
