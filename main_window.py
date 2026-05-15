@@ -59,7 +59,7 @@ class MainWindow(QWidget):
         self._output_player.playbackStateChanged.connect(self._on_output_playback_state)
         self.setWindowTitle(f"Hedra Studio  v{VERSION}")
         self.setMinimumSize(860, 640)
-        self.resize(1160, 760)
+        self.resize(1280, 780)
         self.setStyleSheet(STYLE)
         # App icon
         try:
