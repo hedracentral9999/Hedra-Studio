@@ -1237,50 +1237,63 @@ class SettingsDialog(QDialog):
         intro.setStyleSheet(f"font-size:12px;color:{TEXT_FAINT};background:transparent;border:none;padding:0 2px 4px 2px;")
         v.addWidget(intro)
 
-        v.addWidget(self._section_label("API dùng chung"))
-        grp, glay = self._group()
+        # ── NHÓM 1: Giọng đọc (TTS) ────────────────────────────────
+        v.addWidget(self._section_label("🎙  Giọng đọc (TTS)"))
+        grp_tts, glay_tts = self._group()
 
         self.genmax_key = _line_key(api_values["genmax"], "sk_...")
         self._pv_gm_key = self.genmax_key
-        self._row(glay, "GenMax", _field_row(self.genmax_key, "genmax"),
-                  "TTS chính, STT, kiểm tra voice, Auto Video.")
+        self._row(glay_tts, "GenMax", _field_row(self.genmax_key, "genmax"),
+                  "Provider chính — TTS, STT, Auto Video.")
 
         self._pv_ai33_key = _line_key(api_values["ai33"], "sk_...")
-        self._row(glay, "ai33", _field_row(self._pv_ai33_key, None),
-                  "TTS dự phòng/fallback cho GenMax.")
+        self._row(glay_tts, "ai33", _field_row(self._pv_ai33_key, None),
+                  "Fallback tự động khi GenMax lỗi.")
 
         self.el_keys = _line_key(api_values["elevenlabs"], "sk_...")
         self._pv_el_key = self.el_keys
-        self._row(glay, "ElevenLabs", _field_row(self.el_keys, "elevenlabs"),
-                  "TTS trực tiếp hoặc thư viện voice.")
+        self._row(glay_tts, "ElevenLabs", _field_row(self.el_keys, "elevenlabs"),
+                  "Thư viện voice hoặc TTS trực tiếp.")
 
         self._pv_ll_key = _line_key(api_values["lucylab"], "sk_live_...")
-        self._row(glay, "LucyLab", _field_row(self._pv_ll_key, None),
-                  "Provider legacy nếu còn dùng.")
+        self._row(glay_tts, "LucyLab", _field_row(self._pv_ll_key, None),
+                  "Provider tiếng Việt legacy.", last=True)
 
-        self.gemini_key = _line_key(api_values["gemini"], "AIza...")
-        self._pv_script_gemini_key = self.gemini_key
-        self._row(glay, "Gemini", _field_row(self.gemini_key, "gemini"),
-                  "Chat → Kịch Bản, enhance và thumbnail.")
+        v.addWidget(grp_tts)
+
+        # ── NHÓM 2: AI — Script & Enhance ──────────────────────────
+        v.addWidget(self._section_label("🤖  AI — Script & Enhance"))
+        grp_ai, glay_ai = self._group()
 
         self.claude_key = _line_key(api_values["claude"], "sk-ant-...")
         self._pv_claude_key = self.claude_key
-        self._row(glay, "Claude", _field_row(self.claude_key, None),
-                  "Viết script Auto Video.")
+        self._row(glay_ai, "Claude", _field_row(self.claude_key, None),
+                  "Viết script Auto Video (khuyến nghị).")
+
+        self.gemini_key = _line_key(api_values["gemini"], "AIza...")
+        self._pv_script_gemini_key = self.gemini_key
+        self._row(glay_ai, "Gemini", _field_row(self.gemini_key, "gemini"),
+                  "Enhance kịch bản, thumbnail. Miễn phí.")
 
         self.ds_key = _line_key(api_values["deepseek"], "sk-...")
         self._pv_deepseek_key = self.ds_key
-        self._row(glay, "DeepSeek", _field_row(self.ds_key, "deepseek"),
-                  "Enhance hoặc viết script khi chọn DeepSeek.")
+        self._row(glay_ai, "DeepSeek", _field_row(self.ds_key, "deepseek"),
+                  "Enhance hoặc viết script alternative.", last=True)
 
-        self.telegram_bot_token = _line_key(api_values["telegram_bot_token"], "Telegram bot token")
-        self._row(glay, "Telegram bot", self.telegram_bot_token,
-                  "Gửi feedback nếu bạn còn dùng Telegram.")
+        v.addWidget(grp_ai)
+
+        # ── NHÓM 3: Thông báo ───────────────────────────────────────
+        v.addWidget(self._section_label("🔔  Thông báo"))
+        grp_notif, glay_notif = self._group()
+
+        self.telegram_bot_token = _line_key(api_values["telegram_bot_token"], "Bot token")
+        self._row(glay_notif, "Telegram Bot", self.telegram_bot_token)
 
         self.telegram_chat_id = _line_key(api_values["telegram_chat_id"], "Chat ID", password=False)
-        self._row(glay, "Telegram chat", self.telegram_chat_id,
-                  "Chat ID nhận feedback.", last=True)
-        v.addWidget(grp)
+        self._row(glay_notif, "Telegram Chat ID", self.telegram_chat_id,
+                  "Nhận thông báo khi render xong.", last=True)
+
+        v.addWidget(grp_notif)
 
         v.addStretch()
         return page
