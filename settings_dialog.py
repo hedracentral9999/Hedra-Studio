@@ -757,7 +757,7 @@ class SettingsDialog(QDialog):
         self.settings = settings.copy()
         self.setWindowTitle("Settings")
         self.setMinimumSize(900, 660)
-        self.resize(1100, 780)
+        self.resize(1280, 780)
         # Voice selection state (edited in dialog, saved on accept)
         self._sel_voice_id   = self.settings.get("selected_voice_id") or VOICE_ID
         self._sel_voice_name = self.settings.get("selected_voice_name") or "Adam"
