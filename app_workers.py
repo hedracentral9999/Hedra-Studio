@@ -17,6 +17,28 @@ from app_constants import (
 )
 from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE
 
+_EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
+_EL_V3_STYLE_RULES = (
+    ("[warmly]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn)", re.I)),
+    ("[curious]", re.compile(r"(\?|bạn có biết|vì sao|tại sao|liệu|điều gì xảy ra)", re.I)),
+    ("[impressed]", re.compile(r"(đột phá|kỷ lục|ấn tượng|mới nhất|ra mắt|tăng mạnh|vượt trội|thành công)", re.I)),
+    ("[thoughtful]", re.compile(r"(nhưng|tuy nhiên|vấn đề|rủi ro|cảnh báo|sự thật|đáng chú ý|bất ngờ)", re.I)),
+    ("[professional]", re.compile(r"(\d|%|usd|đô|triệu|tỷ|nghìn|benchmark|api|ai|model|mô hình)", re.I)),
+)
+
+def _style_eleven_v3_text(text: str) -> str:
+    trimmed = (text or "").strip()
+    if not trimmed or _EL_V3_TAG_RE.search(trimmed):
+        return text
+    tag = next((t for t, pat in _EL_V3_STYLE_RULES if pat.search(trimmed)), "[thoughtful]")
+    return f"{tag} {trimmed}"
+
+def _eleven_v3_style_enabled(settings: dict) -> bool:
+    value = settings.get("eleven_v3_style_enabled", os.environ.get("ELEVEN_V3_STYLE_ENABLED", "true"))
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in ("0", "false", "no", "off")
+
 class VoiceFetcher(QThread):
     """Fetch danh sách voices — ưu tiên GenMax nếu có key, fallback ElevenLabs."""
     done  = pyqtSignal(list)
@@ -73,7 +95,7 @@ class SharedVoiceFetcher(QThread):
         try:
             params = {"page_size": self.page_size, "sort": "trending"}
             if self.language:
-                params["language"] = self.language
+                params["required_languages"] = self.language
             if self.search:
                 params["search"] = self.search
             if self.genmax_key:
@@ -181,7 +203,7 @@ System prompt phải có đủ các phần:
    [curious] [warmly] [happy] [questioning] [reassuring]
    → Chỉ dùng tags phù hợp với phong cách được mô tả
 5. Quy tắc nhấn mạnh bằng CAPS (tối thiểu 2-3 từ per đoạn nếu phong cách cần)
-6. Quy tắc pause và nhịp (... và —)
+6. Quy tắc nhịp đọc (... và —), không dùng tag dừng/pause dạng ngoặc vuông
 7. Quy tắc output: chỉ trả về kịch bản đã xử lý, không giải thích
 
 Nếu mô tả có trường "Từ ngữ đặc trưng":
@@ -557,19 +579,28 @@ class Worker(QThread):
         if gm_key:
             try:
                 self.status.emit("Đang generate audio [GenMax]...")
+                gm_provider = self.s.get("genmax_provider", "elevenlabs") or "elevenlabs"
+                gm_model = self.s.get("genmax_model_id", MODEL) or MODEL
+                tts_text = (
+                    _style_eleven_v3_text(text)
+                    if _eleven_v3_style_enabled(self.s) and gm_provider == "elevenlabs" and gm_model == "eleven_v3"
+                    else text
+                )
                 tts_body: dict = {
-                    "text":     text,
-                    "model_id": MODEL,
-                    "output_format": EL_OUTPUT_FORMAT,
+                    "text":     tts_text,
+                    "provider": gm_provider,
+                    "model_id": gm_model,
+                    "language_code": (
+                        self.s.get("tts_language_code", "").strip()
+                        or self.s.get("language_code", "").strip()
+                        or "vi"
+                    ),
                     "voice_settings": {
                         "stability":        0.5,
                         "similarity_boost": 0.75,
                         "speed":            self.speed,
                     },
                 }
-                _lang = self.s.get("tts_language_code", "")
-                if _lang:
-                    tts_body["language_code"] = _lang
                 res = requests.post(
                     f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
                     headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
@@ -580,8 +611,8 @@ class Worker(QThread):
                     task_id = res.json().get("id")
                     if not task_id:
                         raise Exception("GenMax không trả về task_id")
-                    # Poll cho đến khi hoàn thành (tối đa 90 giây)
-                    deadline = time.time() + 90
+                    # Poll cho đến khi hoàn thành. GenMax/MiniMax có thể mất >90s.
+                    deadline = time.time() + 300
                     poll_interval = 2
                     while time.time() < deadline:
                         time.sleep(poll_interval)
@@ -608,7 +639,7 @@ class Worker(QThread):
                             raise Exception(f"GenMax render thất bại: {pdata}")
                         # pending/processing — tiếp tục poll
                         poll_interval = min(poll_interval + 1, 5)
-                    raise Exception("GenMax timeout sau 90 giây")
+                    raise Exception("GenMax timeout sau 300 giây")
                 elif res.status_code == 200:
                     # Một số response trả về audio trực tiếp
                     return res.content
@@ -631,9 +662,11 @@ class Worker(QThread):
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
             self.status.emit(f"Đang generate audio ElevenLabs [{label}]...")
+            el_model = MODEL
+            tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and el_model == "eleven_v3" else text
             tts_body = {
-                "text":     text,
-                "model_id": MODEL,
+                "text":     tts_text,
+                "model_id": el_model,
                 "output_format": EL_OUTPUT_FORMAT,
                 "voice_settings": {
                     "stability":        0.5,
@@ -641,7 +674,7 @@ class Worker(QThread):
                     "speed":            self.speed,
                 },
             }
-            _lang = self.s.get("tts_language_code", "")
+            _lang = self.s.get("tts_language_code", "").strip() or self.s.get("language_code", "").strip()
             if _lang:
                 tts_body["language_code"] = _lang
             res = requests.post(
@@ -751,61 +784,185 @@ class GeminiWorker(QThread):
     done   = pyqtSignal(str)
     error  = pyqtSignal(str)
 
-    def __init__(self, image_paths: list, api_key: str, prompt: str = ""):
+    def __init__(self, image_paths: list, api_key: str, prompt: str = "", pronoun_mode: str = "auto"):
         super().__init__()
         self.image_paths = image_paths
         self.api_key     = api_key
         self.prompt      = prompt or GEMINI_CHAT_PROMPT
+        self.pronoun_mode = (pronoun_mode or "auto").strip().lower()
 
     def run(self):
         try:
             self.status.emit("Đang đọc ảnh chat...")
-            parts = [{"text": self.prompt}]
+            image_parts = []
             for path in self.image_paths:
                 with open(path, "rb") as f:
                     data = base64.b64encode(f.read()).decode()
                 ext  = path.lower().rsplit(".", 1)[-1]
                 mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
                         "png": "image/png",  "webp": "image/webp"}.get(ext, "image/jpeg")
-                parts.append({"inline_data": {"mime_type": mime, "data": data}})
+                image_parts.append({"inline_data": {"mime_type": mime, "data": data}})
 
-            self.status.emit("Gemini đang phân tích chat...")
-            # Try gemini-2.5-pro first for best quality, fallback to flash
-            last_err = None
-            for model in ["gemini-2.5-pro", "gemini-2.5-flash"]:
+            self.status.emit("Gemini đang trích hội thoại thật...")
+            transcript = self._call_gemini([{"text": self._extract_prompt()}] + image_parts)
+            transcript_payload = self._normalise_transcript(transcript)
+
+            self.status.emit("Gemini đang đồng bộ xưng hô...")
+            script = self._call_gemini([{"text": self._rewrite_prompt(transcript_payload)}])
+            script = self._clean_final_script(script)
+
+            issues = self._script_issues(script)
+            if issues:
+                self.status.emit("Đang sửa lỗi bảo mật/xưng hô...")
+                script = self._repair_script(script, transcript_payload, issues)
+                script = self._clean_final_script(script)
+
+            self.done.emit(script.strip())
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def _call_gemini(self, parts: list[dict], timeout: int = 90) -> str:
+        last_err = None
+        for model in ["gemini-2.5-pro", "gemini-2.5-flash"]:
+            res = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent?key={self.api_key}",
+                json={"contents": [{"parts": parts}]},
+                timeout=timeout,
+            )
+            if res.status_code == 503:
+                time.sleep(3)
                 res = requests.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model}:generateContent?key={self.api_key}",
                     json={"contents": [{"parts": parts}]},
-                    timeout=90,
+                    timeout=timeout,
                 )
-                if res.status_code == 200:
-                    break
-                if res.status_code in (404, 400):
-                    last_err = Exception(f"Gemini {res.status_code}: {res.text[:200]}")
-                    continue  # try next model
-                if res.status_code == 503:
-                    import time; time.sleep(3)
-                    res = requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/"
-                        f"{model}:generateContent?key={self.api_key}",
-                        json={"contents": [{"parts": parts}]},
-                        timeout=90,
-                    )
-                    if res.status_code == 200:
-                        break
-                last_err = Exception(f"Gemini {res.status_code}: {res.text[:200]}")
-            if res.status_code != 200:
-                raise last_err or Exception(f"Gemini {res.status_code}: {res.text[:300]}")
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    raise Exception("Gemini không trả về kết quả")
+                content_parts = candidates[0].get("content", {}).get("parts", [])
+                text = "\n".join(str(p.get("text", "")) for p in content_parts if p.get("text"))
+                if not text.strip():
+                    raise Exception("Gemini trả về rỗng")
+                return text.strip()
+            if res.status_code in (400, 404):
+                last_err = Exception(f"Gemini {res.status_code}: {res.text[:240]}")
+                continue
+            last_err = Exception(f"Gemini {res.status_code}: {res.text[:240]}")
+        raise last_err or Exception("Gemini lỗi không rõ")
 
-            candidates = res.json().get("candidates", [])
-            if not candidates:
-                raise Exception("Gemini không trả về kết quả")
+    def _extract_prompt(self) -> str:
+        return """Đọc ảnh chat Zalo và trích hội thoại thật thành JSON.
 
-            text = candidates[0]["content"]["parts"][0]["text"]
-            self.done.emit(text.strip())
-        except Exception as e:
-            self.error.emit(str(e))
+Quy tắc role:
+- Bong bóng PHẢI/màu xanh = shop.
+- Bong bóng TRÁI/màu trắng = customer.
+- Nếu crop làm mất màu/vị trí, suy luận bằng ngữ cảnh.
+
+Trả về JSON thuần, không markdown:
+{
+  "pronoun_detected": "mô tả xưng hô thật nếu thấy",
+  "messages": [
+    {"role":"customer|shop", "text":"nguyên văn đọc được", "time":"nếu thấy", "sensitive":false}
+  ],
+  "facts": {
+    "product": "",
+    "price": "",
+    "deposit": "",
+    "payment": "",
+    "shipping_location": "",
+    "notes": []
+  },
+  "privacy_to_remove": ["phone", "bank", "qr", "contact_card", "full_address"]
+}
+
+Không tự viết kịch bản ở bước này. Chỉ trích đúng những gì nhìn thấy."""
+
+    def _rewrite_prompt(self, transcript_payload: str) -> str:
+        mode_hint = {
+            "fixed_anh_em": "BẮT BUỘC dùng shop=anh/em và khách=em/anh, kể cả chat gốc dùng bạn/mình.",
+            "keep_original": "Giữ xưng hô gần chat gốc nhất, chỉ sửa lỗi rõ ràng; vẫn phải tự nhiên và không lộ riêng tư.",
+            "auto": "Tự nhận diện xưng hô, nhưng mặc định đồng bộ shop=anh/em và khách=em/anh nếu chat không có hệ xưng hô rõ hơn.",
+        }.get(self.pronoun_mode, "Tự nhận diện xưng hô, mặc định shop=anh/em và khách=em/anh.")
+        return f"""{self.prompt}
+
+CHẾ ĐỘ XƯNG HÔ:
+{mode_hint}
+
+TRANSCRIPT ĐÃ TRÍCH:
+{transcript_payload}
+
+Hãy viết kịch bản TTS cuối cùng từ transcript trên.
+Ràng buộc bắt buộc:
+- Chỉ dùng dữ kiện có trong transcript hoặc knowledge sản phẩm khi transcript thật sự cần làm rõ.
+- Không nhãn Khách/Shop.
+- Không số điện thoại, STK, tên ngân hàng, QR, contact card, địa chỉ chi tiết.
+- Nếu có địa chỉ, chỉ giữ tỉnh/thành phố.
+- Nếu khách hỏi box không kèm máy, không tự nhắc combo/kèm máy.
+- Với giao dịch mẫu: giữ đúng mạch hỏi box -> giá -> cọc -> COD -> nhận cọc -> xin thông tin nhận hàng -> tỉnh/thành.
+"""
+
+    def _normalise_transcript(self, text: str) -> str:
+        raw = self._strip_fences(text)
+        try:
+            data = json.loads(raw)
+            return json.dumps(data, ensure_ascii=False, indent=2)
+        except Exception:
+            return raw
+
+    def _strip_fences(self, text: str) -> str:
+        stripped = (text or "").strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```(?:json|text)?\s*", "", stripped, flags=re.I)
+            stripped = re.sub(r"\s*```$", "", stripped)
+        return stripped.strip()
+
+    def _clean_final_script(self, text: str) -> str:
+        cleaned = self._strip_fences(text)
+        lines = []
+        for line in cleaned.splitlines():
+            line = re.sub(r"^\s*(khách|customer|shop|cửa hàng)\s*[:：-]\s*", "", line, flags=re.I).strip()
+            lines.append(line)
+        cleaned = "\n".join(lines)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned
+
+    def _script_issues(self, script: str) -> list[str]:
+        text = script or ""
+        issues = []
+        if re.search(r"(?<!\d)(?:0|\+84)\d(?:[\s.\-]?\d){7,10}(?!\d)", text):
+            issues.append("còn số điện thoại")
+        if re.search(r"\b(stk|số tài khoản|ngân hàng|techcombank|vietcombank|vcb|mbbank|bidv|agribank|qr)\b", text, re.I):
+            issues.append("còn thông tin ngân hàng/QR")
+        if re.search(r"\b(contact card|danh thiếp|kết bạn|số nhà|thôn|xã|phường|ấp)\b", text, re.I):
+            issues.append("còn thông tin liên hệ/địa chỉ chi tiết")
+        if re.search(r"\b(em nhận (được )?cọc|anh cọc rồi|anh muốn mua)\b", text, re.I):
+            issues.append("có dấu hiệu lệch vai/xưng hô")
+        if re.search(r"\b(s10|s20|note ?20|n20).{0,20}\b(1\.?7|1\.?9|2\.?4|triệu)\b", text, re.I) and "không kèm máy" in text.lower():
+            issues.append("có thể đã thêm giá combo ngoài chat")
+        return issues
+
+    def _repair_script(self, script: str, transcript_payload: str, issues: list[str]) -> str:
+        repair_prompt = f"""Sửa kịch bản TTS sau. Chỉ trả text thuần, không giải thích.
+
+Lỗi cần sửa: {", ".join(issues)}
+
+TRANSCRIPT GỐC:
+{transcript_payload}
+
+KỊCH BẢN CẦN SỬA:
+{script}
+
+Yêu cầu:
+- Xóa mọi số điện thoại, STK, ngân hàng, QR, contact card, địa chỉ chi tiết.
+- Chỉ giữ tỉnh/thành nếu cần.
+- Đồng bộ xưng hô: shop xưng anh gọi khách em; khách xưng em gọi shop anh.
+- Không thêm dữ kiện ngoài transcript.
+"""
+        return self._call_gemini([{"text": repair_prompt}], timeout=60)
 
 
 
@@ -972,5 +1129,3 @@ class _CreditsChecker(QThread):
                 self.done.emit("  ·  ".join(parts))
         except Exception:
             self.done.emit("Không check được credits")
-
-
