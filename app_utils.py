@@ -91,6 +91,7 @@ def load_settings() -> dict:
             "ds_api_key":               "",
             "gemini_api_key":           "",
             "gemini_chat_prompt":       "",
+            "chat_pronoun_mode":        "auto",
             "telegram_bot_token":       "",
             "telegram_chat_id":         "",
             "output_dir":               DEFAULT_OUT,
@@ -98,11 +99,13 @@ def load_settings() -> dict:
             "default_speed":            1.0,
             "selected_voice_id":        "",
             "selected_voice_name":      "Adam",
+            "av_voice_presets":         {},
             "custom_styles":            [],
             "enhance_style_name":       "🎯  Nghiêm túc",
             "enhance_style_temperature": 0.3,
             "enhance_style_creative":   False,
             "language_code":            "vi",
+            "tts_language_code":        "vi",
         }
         for key, default in _DEFAULTS.items():
             if key not in s:
@@ -114,6 +117,7 @@ def load_settings() -> dict:
         "ds_api_key":               "",
         "gemini_api_key":           "",
         "gemini_chat_prompt":       "",
+        "chat_pronoun_mode":        "auto",
         "telegram_bot_token":       "",
         "telegram_chat_id":         "",
         "output_dir":               DEFAULT_OUT,
@@ -121,11 +125,13 @@ def load_settings() -> dict:
         "default_speed":            1.0,
         "selected_voice_id":        "",
         "selected_voice_name":      "Adam",
+        "av_voice_presets":         {},
         "custom_styles":            [],
         "enhance_style_name":       "🎯  Nghiêm túc",
         "enhance_style_temperature": 0.3,
         "enhance_style_creative":   False,
         "language_code":            "vi",
+        "tts_language_code":        "vi",
     }
 
 def save_settings(s: dict):

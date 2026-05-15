@@ -9,11 +9,14 @@ a = Analysis(
     ['tts_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('build/icon.icns', '.')],
+    datas=[
+        ('build/icon.icns', '.'),
+        ('assets/sf-symbols', 'assets/sf-symbols'),
+    ],
     hiddenimports=[
         'PyQt6.sip', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets',
         'PyQt6.QtMultimedia', 'PyQt6.QtNetwork',
-        'app_constants', 'app_utils', 'app_workers', 'app_dialogs',
+        'app_constants', 'app_icons', 'app_utils', 'app_workers', 'app_dialogs',
         'voice_library', 'settings_dialog', 'main_window', 'version',
         'telegram_config', 'certifi',
         'auto_video_workers',

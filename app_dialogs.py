@@ -47,7 +47,7 @@ class EmojiPickerDialog(QDialog):
             btn = QPushButton(em)
             btn.setFixedSize(52, 52)
             btn.setStyleSheet(
-                "QPushButton{font-size:26px;border:1.5px solid #e5e5ea;"
+                "QPushButton{font-size:26px;border:1px solid #e5e5ea;"
                 "border-radius:10px;background:#ffffff;}"
                 "QPushButton:hover{background:#e8f0fd;border-color:#0071e3;}"
                 "QPushButton:pressed{background:#dce9fd;}"
@@ -518,12 +518,22 @@ class AddStyleDialog(QDialog):
 class DropZone(QFrame):
     files_added = pyqtSignal(list)
 
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        parent=None,
+        label: str = "📷  Kéo thả ảnh vào đây",
+        dialog_title: str = "Chọn ảnh chat",
+        file_filter: str = "Images (*.png *.jpg *.jpeg *.webp)",
+        extensions: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp"),
+    ):
         super().__init__(parent)
+        self._dialog_title = dialog_title
+        self._file_filter = file_filter
+        self._extensions = tuple(ext.lower() for ext in extensions)
         self.setAcceptDrops(True)
         self.setFixedHeight(90)
         self._set_idle_style()
-        lbl = QLabel("📷  Kéo thả ảnh vào đây", self)
+        lbl = QLabel(label, self)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet("color:#6e6e73; font-size:13px; border:none; background:transparent;")
         lay = QVBoxLayout(self)
@@ -544,8 +554,7 @@ class DropZone(QFrame):
 
     def mousePressEvent(self, e):
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Chọn ảnh chat", "",
-            "Images (*.png *.jpg *.jpeg *.webp)"
+            self, self._dialog_title, "", self._file_filter
         )
         if paths:
             self.files_added.emit(paths)
@@ -565,7 +574,7 @@ class DropZone(QFrame):
         files = []
         for url in e.mimeData().urls():
             p = url.toLocalFile()
-            if p.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            if p.lower().endswith(self._extensions):
                 files.append(p)
         if files:
             self.files_added.emit(files)
@@ -1075,5 +1084,4 @@ class FeedbackDialog(QDialog):
         self._btn_send.setEnabled(True)
         self._btn_send.setText("📨  Gửi phản hồi")
         self._status_lbl.setText(f"❌  {err[:60]}")
-
 
