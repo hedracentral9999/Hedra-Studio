@@ -2819,22 +2819,19 @@ class SettingsDialog(QDialog):
         self._row(glay_tts, "Preset nhanh", preset_w,
                   "Danh sách giọng bạn tự lưu trong Hedra Studio; không phải thư viện GenMax.", last=True)
 
+        # Tạo sẵn (gắn vào self để _save() đọc được) — sẽ add vào GenMax setup page bên dưới
         self._pv_eleven_v3_style_enabled = QCheckBox("Bật nhấn nhá Eleven v3")
         self._pv_eleven_v3_style_enabled.setChecked(_env_bool("ELEVEN_V3_STYLE_ENABLED", True))
         self._pv_eleven_v3_style_enabled.setStyleSheet(
             "QCheckBox{background:transparent;border:none;font-size:13px;color:#1d1d1f;}"
             "QCheckBox::indicator{width:16px;height:16px;}"
         )
-        self._row(glay_tts, "Nhấn nhá v3", self._pv_eleven_v3_style_enabled,
-                  "Bật: tự thêm tag cảm xúc nhẹ cho eleven_v3. Tắt: gửi text gốc, không tự thêm tag.", last=True)
         self._pv_genmax_fallback_ai33 = QCheckBox("GenMax lỗi thì tự chuyển sang ai33")
         self._pv_genmax_fallback_ai33.setChecked(_env_bool("GENMAX_FALLBACK_TO_AI33", True))
         self._pv_genmax_fallback_ai33.setStyleSheet(
             "QCheckBox{background:transparent;border:none;font-size:13px;color:#1d1d1f;}"
             "QCheckBox::indicator{width:16px;height:16px;}"
         )
-        self._row(glay_tts, "Fallback ai33", self._pv_genmax_fallback_ai33,
-                  "Chỉ dùng khi TTS provider là genmax và GenMax fail sau retry.", last=True)
         self._pv_seed_selected_elevenlabs_voice()
         self._pv_refresh_voice_presets()
         v.addWidget(grp_tts)
@@ -2911,8 +2908,11 @@ class SettingsDialog(QDialog):
         self._row(glay_gm, "Model TTS", self._pv_gm_model,
                   "Tự điền theo voice nếu GenMax trả về; chỉ sửa khi bạn biết model cần dùng.")
         self._row(glay_gm, "Ngôn ngữ", self._pv_gm_language,
-                  "Mặc định Việt Nam. Danh sách ngôn ngữ GenMax tự tải sẵn nếu có API key.", last=True)
-
+                  "Mặc định Việt Nam. Danh sách ngôn ngữ GenMax tự tải sẵn nếu có API key.")
+        self._row(glay_gm, "Nhấn nhá v3", self._pv_eleven_v3_style_enabled,
+                  "Tự thêm tag cảm xúc nhẹ cho eleven_v3. Áp dụng cả khi fallback sang ai33.")
+        self._row(glay_gm, "Fallback ai33", self._pv_genmax_fallback_ai33,
+                  "Khi GenMax fail sau retry, tự chuyển sang ai33 để không gián đoạn pipeline.")
         self._row(glay_gm, "API key", _api_note("Dùng GenMax key ở tab API để gọi TTS, kiểm tra voice và preview."), last=True)
 
         # ai33 page
