@@ -756,8 +756,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings = settings.copy()
         self.setWindowTitle("Settings")
-        self.setMinimumSize(820, 620)
-        self.resize(980, 720)
+        self.setMinimumSize(900, 660)
+        self.resize(1100, 780)
         # Voice selection state (edited in dialog, saved on accept)
         self._sel_voice_id   = self.settings.get("selected_voice_id") or VOICE_ID
         self._sel_voice_name = self.settings.get("selected_voice_name") or "Adam"
@@ -1327,7 +1327,7 @@ class SettingsDialog(QDialog):
                     "QPushButton:hover{background:#ebebf0;color:#1d1d1f;}"
                     "QPushButton:pressed{background:#d8d8de;color:#1d1d1f;}")
 
-        btn_tab_chat = QPushButton("Chat → Kịch bản")
+        btn_tab_chat = QPushButton("Kịch bản")
         btn_tab_chat.setIcon(ui_icon("script", 14))
         btn_tab_chat.setIconSize(icon_size(14))
         btn_tab_chat.setFixedHeight(36)
@@ -1336,7 +1336,7 @@ class SettingsDialog(QDialog):
             "QPushButton{border-radius:0;border-top-left-radius:8px;"
             "border-bottom-left-radius:8px;border-right:none;}"
         )
-        btn_tab_tts = QPushButton("TTS — Enhance")
+        btn_tab_tts = QPushButton("TTS Enhance")
         btn_tab_tts.setIcon(ui_icon("tts", 14))
         btn_tab_tts.setIconSize(icon_size(14))
         btn_tab_tts.setFixedHeight(36)
@@ -2735,7 +2735,7 @@ class SettingsDialog(QDialog):
             return note
 
         # ── SECTION: GIỌNG ĐỌC (TTS) ───────────────────────────────
-        v.addWidget(self._section_label("Giọng đọc (TTS)"))
+        v.addWidget(self._section_label("🎙  Giọng đọc (TTS)"))
         grp_tts, glay_tts = self._group()
 
         # Provider dropdown
@@ -2837,7 +2837,7 @@ class SettingsDialog(QDialog):
         v.addWidget(grp_tts)
 
         # ── SECTION: PROVIDER SETUP ────────────────────────────────
-        v.addWidget(self._section_label("Setup provider"))
+        v.addWidget(self._section_label("⚙️  Setup provider"))
         self._pv_setup_stack = QStackedWidget()
         self._pv_setup_stack.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
 
@@ -2972,7 +2972,7 @@ class SettingsDialog(QDialog):
         QTimer.singleShot(150, self._pv_load_genmax_languages)
 
         # ── SECTION: AI VIẾT SCRIPT ─────────────────────────────────
-        v.addWidget(self._section_label("AI viết script"))
+        v.addWidget(self._section_label("🤖  AI viết script"))
         grp_ai, glay_ai = self._group()
         _script_providers = ["deepseek", "gemini", "claude"]
         _cur_script_provider = env.get("SCRIPT_AI_PROVIDER", "deepseek").strip().lower()
@@ -3078,7 +3078,7 @@ class SettingsDialog(QDialog):
         v.addWidget(self._pv_script_setup_stack)
 
         # ── SECTION: KÊNH TIKTOK (Outro) ───────────────────────────
-        v.addWidget(self._section_label("Kênh TikTok (Outro)"))
+        v.addWidget(self._section_label("🎬  Kênh TikTok (Outro)"))
         grp_tt, glay_tt = self._group()
 
         self._pv_tt_name      = _lineedit(env.get("TIKTOK_DISPLAY_NAME", ""), "Hedra Central")
@@ -4184,11 +4184,11 @@ class SettingsDialog(QDialog):
         sb_layout.setSpacing(4)
 
         nav_items = [
-            ("api", "API", "API", "Khóa dịch vụ dùng chung cho toàn bộ app."),
-            ("prompts", "Prompts", "Prompts", "Prompt mặc định cho chat và TTS."),
-            ("voices", "Voices", "Voices", "Giọng đọc, provider TTS và preset nhanh."),
-            ("output", "Output", "Output", "Thư mục xuất file và tuỳ chọn tự động."),
-            ("video", "Auto Video", "Auto Video", "Kịch bản, sub, giao diện và render video."),
+            ("api",    "API",        "API",        "Khóa dịch vụ dùng chung cho toàn bộ app."),
+            ("script", "Prompts",    "Prompts",    "Prompt mặc định cho chat và TTS."),
+            ("voices", "Voices",     "Voices",     "Giọng đọc, provider TTS và preset nhanh."),
+            ("output", "Output",     "Output",     "Thư mục xuất file và tuỳ chọn tự động."),
+            ("video",  "Auto Video", "Auto Video", "Kịch bản, sub, giao diện và render video."),
         ]
         self._nav_meta = nav_items
 
