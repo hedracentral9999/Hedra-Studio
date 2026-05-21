@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <b>Desktop TTS app — ElevenLabs + DeepSeek + Gemini</b><br>
-  <i>Viết kịch bản, tối ưu giọng đọc, generate audio — tất cả trong một.</i>
+  <b>Desktop AI voice studio — TTS, STT, script tools and Auto Video</b><br>
+  <i>Source public để audit/minh bạch; dùng thương mại cần license riêng.</i>
 </p>
 
 <p align="center">
@@ -23,9 +23,11 @@
 
 | Tính năng | Mô tả |
 |-----------|-------|
-| **🎙 TTS với ElevenLabs** | Hỗ trợ đa API key, tự động xoay khi hết credit. Model `eleven_v3` |
-| **🤖 Enhance với DeepSeek** | Tối ưu kịch bản trước khi TTS: sửa chính tả, mở rộng viết tắt, thêm tags |
-| **💬 Chat → Kịch bản (Gemini)** | Chụp ảnh chat Zalo → Gemini phân tích → xuất kịch bản TTS |
+| **🎙 TTS** | Tạo audio, nghe lại trong app, mở file và xuất SRT |
+| **📝 STT** | Chuyển audio thành text/SRT |
+| **🤖 TTS Enhance** | Tối ưu văn bản trước khi TTS: sửa chính tả, mở rộng viết tắt, thêm tags |
+| **💬 Kịch bản** | Tính năng Pro: chụp ảnh chat Zalo → Gemini phân tích → xuất kịch bản TTS |
+| **🎬 Auto Video** | Tính năng Pro: link/text → script → TTS → render video |
 | **🎭 2 phong cách Built-in** | `🎯 Nghiêm túc` (temp 0.3) và `😄 Hài hước` (temp 0.7) |
 | **➕ Style Wizard** | AI hỗ trợ tạo style tuỳ chỉnh với 7 câu hỏi |
 | **🌐 Đa ngôn ngữ** | Hỗ trợ 60+ ngôn ngữ — dropdown chọn nhanh + tự động |
@@ -34,7 +36,7 @@
 | **🔄 Auto-update** | Kiểm tra bản mới khi khởi động + tự động cập nhật DMG |
 | **🔔 System Tray** | Thu nhỏ xuống tray, hotkey toàn cục |
 | **💬 In-app Feedback** | Gửi phản hồi trực tiếp đến dev qua Telegram |
-| **🌐 Web TTS (phụ)** | Web app với auth, Supabase, quản lý user |
+| **🔐 License online** | TTS/STT dùng được miễn phí; Kịch bản/Auto Video cần key Pro |
 
 ---
 
@@ -87,12 +89,14 @@ Bạn cần ít nhất 2 API keys:
 4. Nhấn **Generate**
 5. App sẽ: **Enhance với DeepSeek** → **TTS với ElevenLabs** → Lưu file MP3
 
-### 3. Chat → Kịch bản
+### 3. Kịch bản và Auto Video Pro
 
-1. Chụp ảnh màn hình chat Zalo
-2. Kéo thả ảnh vào vùng **Drop Zone**
-3. Nhấn **Generate Script** — Gemini phân tích và xuất kịch bản
-4. Copy kết quả sang tab TTS để generate
+Hai tab này có trong app nhưng cần license key.
+
+1. Mở tab **Kịch bản** hoặc **Auto Video**
+2. Nhập license key đã mua
+3. App xác thực online với license server
+4. Key hợp lệ sẽ mở đúng tính năng được cấp phép
 
 ### 4. Tuỳ chỉnh phong cách
 
@@ -175,8 +179,34 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements_build.txt
 
-# Build EXE (cần Inno Setup)
-pyinstaller TTS.spec --clean --noconfirm
+# Build portable EXE + installer (cần Inno Setup nếu muốn file setup)
+powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
+```
+
+Output chính:
+
+- `dist\Hedra Studio.exe`: bản portable.
+- `Hedra-Studio-<version>-win-setup.exe`: bản cài đặt để gửi người dùng Windows.
+
+### Pro license
+
+Kịch bản và Auto Video là tính năng Pro. App chỉ chứa client xác thực license online; source public không chứa secret ký key hoặc tool tạo key.
+
+License server endpoint mặc định nằm trong `version.py` và có thể override bằng biến môi trường:
+
+```bash
+HEDRA_LICENSE_VERIFY_URL=https://your-domain.com/v1/licenses/verify
+```
+
+Endpoint nhận `POST` JSON gồm `key`, `feature`, `app`, `version`, `device_id`, `platform` và trả về:
+
+```json
+{
+  "valid": true,
+  "features": ["chat_script", "auto_video"],
+  "expires_at": "2026-12-31T23:59:59Z",
+  "message": "License hợp lệ"
+}
 ```
 
 ### GitHub Actions (tự động)
@@ -278,7 +308,9 @@ Nếu bạn lo ngại về bảo mật, hoàn toàn có thể [build từ source
 
 ## 📄 License
 
-MIT License — xem file [LICENSE](LICENSE).
+Source được publish để người dùng kiểm tra/audit và dùng phi thương mại theo [PolyForm Noncommercial 1.0.0](LICENSE).
+
+Mọi dùng thương mại, bán lại, agency workflow, SaaS hoặc bundle sản phẩm cần license riêng. Xem [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) và [TRADEMARKS.md](TRADEMARKS.md).
 
 ---
 

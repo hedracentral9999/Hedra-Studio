@@ -7,6 +7,8 @@ venv/
 
 # Build output
 dist/
+.pyinstaller-cache/
+build/TTS/
 # build/ (keep icon files)
 *.spec.bak
 *.dmg
@@ -17,9 +19,29 @@ rw.*.dmg
 # Data / secrets
 settings.json
 telegram_config.py
+.claude/
+CLAUDE.md
+HANDOFF.md
+DESIGN_PATTERNS.md
+AUDIT_REPORT.md
+apple.md
 tools/telegram_print_bot.env
-web/.env
+tools/
+tests/
+tools/adam_script_bot.env
+tools/adam_script_bot.sqlite3
+tools/adam_script_bot.sqlite3-*
+tools/adam_script_prompt.txt
+tools/make_auto_video_license.py
+tools/private/
+endpoints/
+endpoints 2/
+*.zip
+SHA256SUMS*.txt
+web/
+Hedra Studio Local.app/
 output/
+ouput/
 *.mp3
 
 # OS
@@ -30,6 +52,7 @@ Thumbs.db
 *.log
 *.command
 CONTEXT.md
+tts.py
 test_adam.py
 test_*.py
 

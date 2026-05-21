@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from app_utils import load_settings
+from app_utils import get_auto_video_engine_dir, get_auto_video_env_local, load_settings
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -27,7 +27,6 @@ FETCH_HEADERS = {
     )
 }
 
-ENGINE_ENV_LOCAL = Path("/Users/admin/Auto-Create-Video/.env.local")
 RECOMMENDED_CLAUDE_MODEL = "claude-sonnet-4-6"
 LEGACY_DEFAULT_CLAUDE_MODELS = {
     "",
@@ -36,11 +35,12 @@ LEGACY_DEFAULT_CLAUDE_MODELS = {
 }
 
 
-def _read_engine_env() -> dict:
+def _read_engine_env(settings: dict | None = None) -> dict:
     env = {}
-    if not ENGINE_ENV_LOCAL.exists():
+    env_path = get_auto_video_env_local(settings)
+    if not env_path.exists():
         return env
-    for line in ENGINE_ENV_LOCAL.read_text(encoding="utf-8").splitlines():
+    for line in env_path.read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if not s or s.startswith("#") or "=" not in s:
             continue
@@ -188,7 +188,7 @@ class AutoScriptWorker(QThread):
     error    = pyqtSignal(str)
 
     # Engine output dir — chỉnh lại nếu cần
-    ENGINE_OUTPUT = Path("/Users/admin/Auto-Create-Video/output")
+    ENGINE_OUTPUT = get_auto_video_engine_dir() / "output"
 
     def __init__(self, url_or_text: str, parent=None):
         super().__init__(parent)
@@ -197,6 +197,7 @@ class AutoScriptWorker(QThread):
     def run(self):
         try:
             settings = load_settings()
+            self.ENGINE_OUTPUT = get_auto_video_engine_dir(settings) / "output"
 
             # 1. Fetch article
             if self.input.startswith("http"):
@@ -215,8 +216,8 @@ class AutoScriptWorker(QThread):
                 return
 
             # 2. Generate script via selected AI provider
-            env = _read_engine_env()
-            provider_hint = env.get("SCRIPT_AI_PROVIDER", "deepseek").strip().lower() or "deepseek"
+            env = _read_engine_env(settings)
+            provider_hint = env.get("SCRIPT_AI_PROVIDER", "claude").strip().lower() or "claude"
             self.progress.emit(f"AI đang viết script… ({self._provider_label(provider_hint)} đang chọn)")
             raw = self._generate(article, settings)
 
@@ -268,7 +269,7 @@ class AutoScriptWorker(QThread):
     def _generate(self, article: dict, settings: dict) -> dict:
         """Use the selected script provider; fallback only when explicitly enabled."""
         errors = []
-        engine_env = _read_engine_env()
+        engine_env = _read_engine_env(settings)
         claude_key = (
             engine_env.get("CLAUDE_API_KEY", "").strip()
             or settings.get("claude_api_key", "").strip()
@@ -282,15 +283,15 @@ class AutoScriptWorker(QThread):
             or settings.get("gemini_api_key", "").strip()
         )
 
-        selected = engine_env.get("SCRIPT_AI_PROVIDER", "deepseek").strip().lower()
+        selected = engine_env.get("SCRIPT_AI_PROVIDER", "claude").strip().lower()
         if selected not in ("deepseek", "gemini", "claude"):
-            selected = "deepseek"
+            selected = "claude"
         fallback_enabled = (
-            engine_env.get("SCRIPT_AI_FALLBACK", "false").strip().lower()
+            engine_env.get("SCRIPT_AI_FALLBACK", "true").strip().lower()
             in ("1", "true", "yes", "on")
         )
         order = (
-            [selected] + [p for p in ("deepseek", "gemini", "claude") if p != selected]
+            [selected] + [p for p in ("claude", "deepseek", "gemini") if p != selected]
             if fallback_enabled
             else [selected]
         )
@@ -317,9 +318,10 @@ class AutoScriptWorker(QThread):
                     return self._generate_claude(article, settings, claude_key, engine_env)
 
                 if provider == selected:
+                    env_path = get_auto_video_env_local(settings)
                     raise ValueError(
                         f"Chưa có API key cho {self._provider_label(provider)} trong "
-                        f"{ENGINE_ENV_LOCAL}."
+                        f"{env_path}."
                     )
             except Exception as e:
                 label = {"deepseek": "DeepSeek", "gemini": "Gemini", "claude": "Claude"}.get(provider, provider)
@@ -335,7 +337,7 @@ class AutoScriptWorker(QThread):
         if not errors:
             raise ValueError(
                 "Chưa có API key nào.\n"
-                "Vào Settings → Auto Video → AI viết script để nhập key."
+                "Vào Settings → API để nhập key."
             )
         raise ValueError("Tất cả AI providers đều lỗi:\n" + "\n".join(errors))
 
@@ -524,7 +526,8 @@ class AutoScriptWorker(QThread):
             img = None
 
         # Fix voice from engine .env.local (single source of truth)
-        env = _read_engine_env()
+        env = _read_engine_env(settings)
+        env_path = get_auto_video_env_local(settings)
         provider = env.get("TTS_PROVIDER", "genmax").strip() or "genmax"
         voice_key_map = {
             "lucylab": "VIETNAMESE_VOICEID",
@@ -535,7 +538,7 @@ class AutoScriptWorker(QThread):
         voice_key = voice_key_map.get(provider)
         if not voice_key:
             raise ValueError(
-                f"TTS_PROVIDER không hợp lệ trong {ENGINE_ENV_LOCAL}: {provider}"
+                f"TTS_PROVIDER không hợp lệ trong {env_path}: {provider}"
             )
         voice_id = env.get(voice_key, "").strip()
         if provider == "ai33" and not voice_id:
@@ -543,7 +546,7 @@ class AutoScriptWorker(QThread):
             voice_key = "AI33_VOICE_ID hoặc GENMAX_VOICE_ID"
         if not voice_id:
             raise ValueError(
-                f"Thiếu {voice_key} trong {ENGINE_ENV_LOCAL}.\n"
+                f"Thiếu {voice_key} trong {env_path}.\n"
                 "Vào Settings → Auto Video để nhập cấu hình engine."
             )
 
@@ -584,12 +587,11 @@ class AutoVideoEngineWorker(QThread):
     finished = pyqtSignal(str)   # video path
     error    = pyqtSignal(str)
 
-    ENGINE_DIR = Path("/Users/admin/Auto-Create-Video")
-
     def __init__(self, script_path: str, parent=None):
         super().__init__(parent)
         self.script_path = script_path
         self._cancelled  = False
+        self.ENGINE_DIR = get_auto_video_engine_dir(load_settings())
 
     @staticmethod
     def _overall_progress(step: int, total: int, step_pct: int = 0) -> int:
@@ -611,6 +613,10 @@ class AutoVideoEngineWorker(QThread):
     @staticmethod
     def _shell_path() -> str:
         """Lấy PATH đầy đủ từ login shell — fix lỗi GUI app thiếu node/npx/ffmpeg."""
+        import os
+        import sys
+        if sys.platform == "win32":
+            return os.environ.get("PATH", "")
         import subprocess as _sp
         try:
             r = _sp.run(["/bin/zsh", "-l", "-c", "echo $PATH"],
@@ -619,7 +625,6 @@ class AutoVideoEngineWorker(QThread):
                 return r.stdout.strip()
         except Exception:
             pass
-        import os
         return os.environ.get("PATH", "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin")
 
     @staticmethod
@@ -666,10 +671,13 @@ class AutoVideoEngineWorker(QThread):
         import os
         import subprocess
         tsx_bin = self.ENGINE_DIR / "node_modules" / ".bin" / "tsx"
+        if not tsx_bin.exists() and (self.ENGINE_DIR / "node_modules" / ".bin" / "tsx.cmd").exists():
+            tsx_bin = self.ENGINE_DIR / "node_modules" / ".bin" / "tsx.cmd"
         if not tsx_bin.exists():
             self.error.emit(
                 f"Không tìm thấy tsx.\n"
-                f"Chạy: cd /Users/admin/Auto-Create-Video && npm install"
+                f"Chạy: cd {self.ENGINE_DIR} && npm install\n"
+                f"Có thể set HEDRA_AUTO_VIDEO_ENGINE_DIR nếu engine nằm ở thư mục khác."
             )
             return
         cmd = [str(tsx_bin), "src/cli.ts", self.script_path]
@@ -720,7 +728,9 @@ class AutoVideoEngineWorker(QThread):
             self.finished.emit(str(video) if video.exists() else "")
 
         except FileNotFoundError:
-            self.error.emit("Không tìm thấy engine. Chạy: cd auto-create-video && npm install")
+            self.error.emit(
+                f"Không tìm thấy engine. Chạy: cd {self.ENGINE_DIR} && npm install"
+            )
         except Exception as e:
             self.error.emit(str(e))
 

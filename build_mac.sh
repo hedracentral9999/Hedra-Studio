@@ -3,19 +3,26 @@ set -e
 
 echo "🔧 Build Hedra Studio cho Mac..."
 
-# Activate venv
-source "$(dirname "$0")/venv/bin/activate"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="$ROOT_DIR/venv/bin/python3"
+export PYINSTALLER_CONFIG_DIR="$ROOT_DIR/.pyinstaller-cache"
+
+if [ ! -x "$PYTHON" ]; then
+    python3 -m venv "$ROOT_DIR/venv"
+fi
 
 # Cài PyInstaller nếu chưa có
-pip install -q pyinstaller
+if ! "$PYTHON" -c "import PyInstaller" >/dev/null 2>&1; then
+    "$PYTHON" -m pip install -q pyinstaller
+fi
 
 # Đọc version
-VERSION=$(python3 -c "from version import VERSION; print(VERSION)")
+VERSION=$("$PYTHON" -c "from version import VERSION; print(VERSION)")
 echo "📦 Version: $VERSION"
 
 # Build app
 echo "⚙️  PyInstaller đang build..."
-pyinstaller TTS.spec --clean --noconfirm
+"$PYTHON" -m PyInstaller TTS.spec --clean --noconfirm
 
 # Kiểm tra build xong chưa
 if [ ! -d "dist/Hedra Studio.app" ]; then
@@ -47,6 +54,10 @@ create-dmg \
     "$DMG_NAME" \
     "dist/Hedra Studio.app"
 
+echo "🔎 Verify DMG..."
+hdiutil verify "$DMG_NAME"
+shasum -a 256 "$DMG_NAME" > SHA256SUMS-macOS.txt
+
 echo ""
 echo "✅ Xong! File: $DMG_NAME"
-open .
+echo "✅ Checksum: SHA256SUMS-macOS.txt"

@@ -39,6 +39,14 @@ Giọng nam, trầm ấm, quyền lực, kiên định — chuyên nghiệp như
 - GIỮ NGUYÊN 100% nội dung gốc — không thêm, không bớt, không đổi nghĩa
 - Chỉ được: thêm tags, viết hoa, thêm dấu câu, sửa chính tả rõ ràng
 
+### 1b. KHÓA VAI HỘI THOẠI — TUYỆT ĐỐI KHÔNG ĐỔI CHỦ / VỊ NGỮ
+- Mỗi dòng input là lời của MỘT người nói. Chỉ enhance chính dòng đó, KHÔNG trả lời thay, KHÔNG tường thuật lại.
+- Giữ nguyên góc nhìn người nói: "mình" vẫn là "mình", "em" vẫn là "em", "anh" vẫn là "anh", "bạn" vẫn là "bạn".
+- KHÔNG đổi câu trực tiếp thành câu kể kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
+- KHÔNG đổi câu hỏi thành câu trả lời. Ví dụ "Mình có được test trước không?" vẫn phải là câu hỏi của người nói đó.
+- KHÔNG gộp hai lượt thoại của hai người thành một đoạn. Giữ thứ tự và ý từng lượt thoại.
+- Chỉ được mở rộng viết tắt trong đúng vị trí gốc: "a"→"anh", "e"→"em"; KHÔNG tự đổi "mình"→"anh" hoặc "bạn"→"em".
+
 ### 2. VIẾT TẮT → MỞ RỘNG
 a → anh | e → em | u → bạn | mk/mik → mình
 k/ko/kg → không | dc/đc → được | vs → với
@@ -164,6 +172,14 @@ Tags TUYỆT ĐỐI TRÁNH: [giggles] [nervous] [sheepishly] [whining] [professi
 ### 1. NỘI DUNG
 - GIỮ NGUYÊN 100% nội dung gốc — không thêm ý, không bớt ý, không đổi nghĩa
 - Chỉ được: thêm tags, viết hoa, thêm dấu câu, sửa chính tả, thêm từ đệm tự nhiên
+
+### 1b. KHÓA VAI HỘI THOẠI — TUYỆT ĐỐI KHÔNG ĐỔI CHỦ / VỊ NGỮ
+- Mỗi dòng input là lời của MỘT người nói. Chỉ enhance chính dòng đó, KHÔNG trả lời thay, KHÔNG tường thuật lại.
+- Giữ nguyên góc nhìn người nói: "mình" vẫn là "mình", "em" vẫn là "em", "anh" vẫn là "anh", "bạn" vẫn là "bạn".
+- KHÔNG đổi câu trực tiếp thành câu kể kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
+- KHÔNG đổi câu hỏi thành câu trả lời. Ví dụ "Mình có được test trước không?" vẫn phải là câu hỏi của người nói đó.
+- KHÔNG gộp hai lượt thoại của hai người thành một đoạn. Giữ thứ tự và ý từng lượt thoại.
+- Chỉ được mở rộng viết tắt trong đúng vị trí gốc: "a"→"anh", "e"→"em"; KHÔNG tự đổi "mình"→"anh" hoặc "bạn"→"em".
 
 ### 2. VIẾT TẮT → MỞ RỘNG
 a → anh | e → em | u → bạn | mk/mik → mình
@@ -291,6 +307,9 @@ GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
 - Thêm tags [happy], [curious]...
 - Thêm CAPS, nhịp (...), kéo dài âm (nhaaa)
 - KHÔNG thêm từ mới, KHÔNG đổi câu, KHÔNG đảo ý
+- KHÔNG đổi chủ ngữ / vị ngữ / người nói / người nghe
+- KHÔNG biến câu hỏi thành câu trả lời hoặc câu kể
+- KHÔNG viết lại kiểu "Anh hỏi...", "Anh muốn...", "Em nói..." nếu input không có cấu trúc đó
 - Output = input, chỉ khác format"""
 
     # ── Công thức liên tục theo từng % ─
@@ -324,14 +343,43 @@ QUY TẮC CHÍNH XÁC THEO %:
 LUẬT CỨNG:
 - Sửa chính tả + viết tắt → đầy đủ (áp dụng 100% câu)
 - KHÔNG bịa thông tin sai, KHÔNG thêm ý không có trong input
+- KHÔNG đổi vai hội thoại, chủ ngữ, vị ngữ, người nói, người nghe
+- KHÔNG trả lời thay người nói; chỉ transform nội dung có sẵn
 - Format: tags, CAPS, nhịp, kéo dài âm"""
 
 # Giữ lại để backward compat
 CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
 
+DIALOGUE_ROLE_LOCK = """
+## 🔐 KHÓA VAI HỘI THOẠI — GHI ĐÈ TOÀN BỘ PROMPT NẾU CÓ MÂU THUẪN
+
+Nhiệm vụ là TRANSFORM văn bản, không phải viết câu trả lời mới.
+
+Luật bắt buộc:
+- Mỗi dòng input là lời của đúng người nói ở dòng đó.
+- Giữ nguyên chủ ngữ, vị ngữ, đại từ và hướng xưng hô của từng dòng.
+- "mình" vẫn là "mình"; "em" vẫn là "em"; "anh" vẫn là "anh"; "bạn" vẫn là "bạn".
+- Chỉ mở rộng viết tắt ở đúng vị trí gốc: "a"→"anh", "e"→"em", "k"→"không".
+- Không tự đổi "mình" thành "anh", không đổi "bạn" thành "em", không đổi khách thành shop hoặc shop thành khách.
+- Không biến câu hỏi thành câu trả lời. Dòng hỏi phải vẫn là dòng hỏi.
+- Không biến lời trực tiếp thành tường thuật kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
+- Không thêm sự kiện, không thêm kết luận, không thêm ý tư vấn mới.
+- Có thể thêm tag cảm xúc, dấu câu, CAPS/kéo dài âm nếu không làm đổi nghĩa.
+
+Ví dụ đúng:
+INPUT: Mình có được test trước khi mua không?
+OUTPUT: [questioning] Mình có được test trước khi mua không?
+
+Ví dụ sai:
+INPUT: Mình có được test trước khi mua không?
+OUTPUT: [questioning] Anh muốn test trước khi mua vì sợ không đáp ứng nhu cầu?
+
+Nếu không chắc người nói là ai: giữ nguyên đại từ gốc, tuyệt đối không suy đoán.
+"""
+
 PROMPTS = {
-    "🎯  Nghiêm túc": DEFAULT_PROMPT,
-    "😄  Hài hước":   DEFAULT_PROMPT_FUNNY,
+    "Nghiêm túc": DEFAULT_PROMPT,
+    "Hài hước":   DEFAULT_PROMPT_FUNNY,
 }
 
 # ── Template starters cho AI prompt generation ────────────────────
@@ -441,119 +489,222 @@ DESTRUCTIVE = "#ff3b30"
 CARD_RADIUS = 12
 CONTROL_RADIUS = 8
 
-STYLE = f"""
+def _theme_tokens(theme: str | None = "light") -> dict[str, str]:
+    mode = (theme or "light").strip().lower()
+    if mode == "dark":
+        return {
+            "BG": "#1c1c1e",
+            "SURFACE": "#1c1c1e",
+            "SURFACE_2": "#242426",
+            "CONTROL_BG": "#2c2c2e",
+            "CONTROL_HV": "#363638",
+            "CONTROL_DN": "#3a3a3c",
+            "BORDER": "#3a3a3c",
+            "BORDER_SOFT": "#2f2f31",
+            "TEXT": "#f5f5f7",
+            "TEXT_MUTE": "#aeaeb2",
+            "TEXT_FAINT": "#8e8e93",
+            "ACCENT": "#0a84ff",
+            "ACCENT_HV": "#409cff",
+            "ACCENT_DN": "#006fd6",
+            "SEG_BG": "#3a3a3c",
+            "SELECTION_BG": "#1f5f9f",
+            "POPUP_BG": "#2c2c2e",
+            "POPUP_TEXT": "#f5f5f7",
+            "POPUP_BORDER": "#48484a",
+            "POPUP_SELECTED": "#124f87",
+            "SCROLL": "#636366",
+            "SCROLL_HV": "#8e8e93",
+        }
+    return {
+        "BG": BG,
+        "SURFACE": SURFACE,
+        "SURFACE_2": SURFACE_2,
+        "CONTROL_BG": CONTROL_BG,
+        "CONTROL_HV": CONTROL_HV,
+        "CONTROL_DN": CONTROL_DN,
+        "BORDER": BORDER,
+        "BORDER_SOFT": BORDER_SOFT,
+        "TEXT": TEXT,
+        "TEXT_MUTE": TEXT_MUTE,
+        "TEXT_FAINT": TEXT_FAINT,
+        "ACCENT": ACCENT,
+        "ACCENT_HV": ACCENT_HV,
+        "ACCENT_DN": ACCENT_DN,
+        "SEG_BG": SEG_BG,
+        "SELECTION_BG": "#cce4ff",
+        "POPUP_BG": "#ffffff",
+        "POPUP_TEXT": "#1d1d1f",
+        "POPUP_BORDER": "#d2d2d7",
+        "POPUP_SELECTED": "#e8f0fe",
+        "SCROLL": "#c7c7cc",
+        "SCROLL_HV": "#aeaeb2",
+    }
+
+
+def resolve_app_theme(theme: str | None) -> str:
+    mode = (theme or "system").strip().lower()
+    if mode in {"dark", "light"}:
+        return mode
+    try:
+        value = subprocess.check_output(
+            ["defaults", "read", "-g", "AppleInterfaceStyle"],
+            stderr=subprocess.DEVNULL,
+            timeout=0.3,
+            text=True,
+        ).strip()
+        return "dark" if value.lower() == "dark" else "light"
+    except Exception:
+        return "light"
+
+
+def theme_tokens(theme: str | None = "light") -> dict[str, str]:
+    return _theme_tokens(resolve_app_theme(theme))
+
+
+def apply_theme_globals(target_globals: dict, theme: str | None = "light") -> dict[str, str]:
+    """Update imported color token names inside a module before building UI."""
+    tokens = theme_tokens(theme)
+    for key in (
+        "BG", "SURFACE", "SURFACE_2", "CONTROL_BG", "CONTROL_HV", "CONTROL_DN",
+        "BORDER", "BORDER_SOFT", "TEXT", "TEXT_MUTE", "TEXT_FAINT",
+        "ACCENT", "ACCENT_HV", "ACCENT_DN", "SEG_BG",
+    ):
+        if key in tokens:
+            target_globals[key] = tokens[key]
+    return tokens
+
+
+def get_style(theme: str | None = "light") -> str:
+    t = theme_tokens(theme)
+    return f"""
 QWidget {{
     font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
     font-size: 13px;
-    background: {BG};
-    color: {TEXT};
+    background: {t["BG"]};
+    color: {t["TEXT"]};
 }}
 QLabel {{
-    color: {TEXT};
+    color: {t["TEXT"]};
     background: transparent;
     border: none;
 }}
 QTextEdit, QPlainTextEdit, QLineEdit {{
-    border: 1px solid {BORDER_SOFT};
+    border: 1px solid {t["BORDER_SOFT"]};
     border-radius: {CONTROL_RADIUS}px;
     padding: 7px 10px;
-    background: {SURFACE};
-    color: {TEXT};
-    selection-background-color: #cce4ff;
-    selection-color: {TEXT};
+    background: {t["SURFACE"]};
+    color: {t["TEXT"]};
+    selection-background-color: {t["SELECTION_BG"]};
+    selection-color: {t["TEXT"]};
 }}
 QTextEdit:focus, QPlainTextEdit:focus, QLineEdit:focus {{
-    border-color: {ACCENT};
-    background: {SURFACE};
+    border-color: {t["ACCENT"]};
+    background: {t["SURFACE"]};
 }}
 QLineEdit {{
     min-height: 26px;
 }}
 QTextEdit:disabled, QPlainTextEdit:disabled, QLineEdit:disabled {{
-    color: {TEXT_FAINT};
-    background: {CONTROL_BG};
+    color: {t["TEXT_FAINT"]};
+    background: {t["CONTROL_BG"]};
 }}
 QComboBox {{
     border: none;
     border-radius: {CONTROL_RADIUS}px;
     padding: 3px 26px 3px 10px;
     min-height: 24px;
-    background: {CONTROL_BG};
-    color: {TEXT};
+    background: {t["CONTROL_BG"]};
+    color: {t["TEXT"]};
 }}
 QComboBox:hover {{
-    background: {CONTROL_HV};
+    background: {t["CONTROL_HV"]};
 }}
 QComboBox:focus {{
-    background: {CONTROL_HV};
+    background: {t["CONTROL_HV"]};
 }}
 QComboBox::drop-down {{
     border: none;
     width: 24px;
+}}
+QComboBox QAbstractItemView {{
+    background: {t["POPUP_BG"]};
+    color: {t["POPUP_TEXT"]};
+    border: 1px solid {t["POPUP_BORDER"]};
+    border-radius: 8px;
+    outline: none;
+    selection-background-color: {t["POPUP_SELECTED"]};
+    selection-color: {t["POPUP_TEXT"]};
+    padding: 2px;
+}}
+QComboBox QAbstractItemView::item {{
+    min-height: 28px;
+    padding: 4px 12px;
+    color: {t["POPUP_TEXT"]};
 }}
 QPushButton {{
     border: 1px solid transparent;
     border-radius: {CONTROL_RADIUS}px;
     padding: 4px 13px;
     min-height: 26px;
-    background: {CONTROL_BG};
-    color: {TEXT};
+    background: {t["CONTROL_BG"]};
+    color: {t["TEXT"]};
 }}
-QPushButton:hover   {{ background: {CONTROL_HV}; }}
-QPushButton:pressed {{ background: {CONTROL_DN}; }}
-QPushButton:disabled {{ background: {CONTROL_BG}; color: {TEXT_FAINT}; border-color: {BORDER_SOFT}; }}
+QPushButton:hover   {{ background: {t["CONTROL_HV"]}; }}
+QPushButton:pressed {{ background: {t["CONTROL_DN"]}; }}
+QPushButton:disabled {{ background: {t["CONTROL_BG"]}; color: {t["TEXT_FAINT"]}; border-color: {t["BORDER_SOFT"]}; }}
 QCheckBox {{
     spacing: 8px;
-    color: {TEXT};
+    color: {t["TEXT"]};
     background: transparent;
     border: none;
 }}
 QCheckBox::indicator {{
     width: 18px;
     height: 18px;
-    border: 1px solid {BORDER};
+    border: 1px solid {t["BORDER"]};
     border-radius: 5px;
-    background: {SURFACE};
+    background: {t["SURFACE"]};
 }}
 QCheckBox::indicator:hover {{
     border-color: #c0c0c7;
-    background: {SURFACE_2};
+    background: {t["SURFACE_2"]};
 }}
 QCheckBox::indicator:checked {{
-    background: {ACCENT};
-    border-color: {ACCENT};
+    background: {t["ACCENT"]};
+    border-color: {t["ACCENT"]};
 }}
 QSlider::groove:horizontal {{
-    height: 4px; background: {SEG_BG}; border-radius: 2px;
+    height: 4px; background: {t["SEG_BG"]}; border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    background: {ACCENT}; width: 18px; height: 18px;
+    background: {t["ACCENT"]}; width: 18px; height: 18px;
     margin: -7px 0; border-radius: 9px;
-    border: 2px solid {SURFACE};
+    border: 2px solid {t["SURFACE"]};
 }}
-QSlider::sub-page:horizontal {{ background: {ACCENT}; border-radius: 2px; }}
+QSlider::sub-page:horizontal {{ background: {t["ACCENT"]}; border-radius: 2px; }}
 QProgressBar {{
-    background: {SEG_BG};
+    background: {t["SEG_BG"]};
     border: none;
     border-radius: 5px;
     height: 10px;
     text-align: center;
 }}
 QProgressBar::chunk {{
-    background: {ACCENT};
+    background: {t["ACCENT"]};
     border-radius: 5px;
 }}
-QFrame[frameShape="4"] {{ background: {BORDER_SOFT}; max-height: 1px; border: none; }}
+QFrame[frameShape="4"] {{ background: {t["BORDER_SOFT"]}; max-height: 1px; border: none; }}
 QScrollBar:vertical {{ width: 6px; background: transparent; }}
-QScrollBar::handle:vertical {{ background: #c7c7cc; border-radius: 3px; min-height: 30px; }}
-QScrollBar::handle:vertical:hover {{ background: #aeaeb2; }}
+QScrollBar::handle:vertical {{ background: {t["SCROLL"]}; border-radius: 3px; min-height: 30px; }}
+QScrollBar::handle:vertical:hover {{ background: {t["SCROLL_HV"]}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QDialog {{ background: {BG}; }}
+QDialog {{ background: {t["BG"]}; }}
 QTabWidget::pane {{ border: none; background: transparent; }}
 QTabBar {{ background: transparent; }}
 QTabBar::tab {{
     background: transparent;
-    color: {TEXT_MUTE};
+    color: {t["TEXT_MUTE"]};
     padding: 8px 18px;
     font-size: 13px;
     border: none;
@@ -561,15 +712,15 @@ QTabBar::tab {{
     margin-bottom: -1px;
 }}
 QTabBar::tab:selected {{
-    color: {TEXT};
+    color: {t["TEXT"]};
     font-weight: 600;
-    border-bottom: 2px solid {ACCENT};
+    border-bottom: 2px solid {t["ACCENT"]};
 }}
-QTabBar::tab:hover:!selected {{ color: {TEXT}; }}
+QTabBar::tab:hover:!selected {{ color: {t["TEXT"]}; }}
 QListWidget {{
-    border: 1px solid {BORDER_SOFT};
+    border: 1px solid {t["BORDER_SOFT"]};
     border-radius: {CARD_RADIUS}px;
-    background: {SURFACE};
+    background: {t["SURFACE"]};
     padding: 6px;
 }}
 QListWidget::item {{
@@ -577,27 +728,30 @@ QListWidget::item {{
     border-radius: 7px;
 }}
 QListWidget::item:selected {{
-    background: #e8f2ff;
-    color: {TEXT};
+    background: {t["POPUP_SELECTED"]};
+    color: {t["TEXT"]};
 }}
 QMenu {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
+    background: {t["SURFACE"]};
+    border: 1px solid {t["BORDER"]};
     border-radius: {CARD_RADIUS}px;
     padding: 6px;
 }}
 QMenu::item {{
     padding: 7px 22px;
     border-radius: 7px;
-    color: {TEXT};
+    color: {t["TEXT"]};
 }}
 QMenu::item:selected {{
-    background: #e8f2ff;
-    color: {ACCENT};
+    background: {t["POPUP_SELECTED"]};
+    color: {t["ACCENT"]};
 }}
 QMenu::separator {{
     height: 1px;
-    background: {BORDER_SOFT};
+    background: {t["BORDER_SOFT"]};
     margin: 5px 4px;
 }}
 """
+
+
+STYLE = get_style("light")

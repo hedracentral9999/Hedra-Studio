@@ -1,18 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
+from pathlib import Path
 sys.path.insert(0, '.')
 from version import VERSION
 
 block_cipher = None
 
+datas = [('assets/sf-symbols', 'assets/sf-symbols')]
+for src in ('build/icon.icns', 'build/icon.ico'):
+    if Path(src).exists():
+        datas.append((src, '.'))
+
+win_icon = 'build/icon.ico' if Path('build/icon.ico').exists() else None
+
 a = Analysis(
     ['tts_app.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('build/icon.icns', '.'),
-        ('assets/sf-symbols', 'assets/sf-symbols'),
-    ],
+    datas=datas,
     hiddenimports=[
         'PyQt6.sip', 'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets',
         'PyQt6.QtMultimedia', 'PyQt6.QtNetwork',
@@ -20,7 +25,7 @@ a = Analysis(
         'voice_library', 'settings_dialog', 'main_window', 'version',
         'telegram_config', 'certifi',
         'auto_video_workers',
-        'anthropic', 'bs4', 'beautifulsoup4',
+        'anthropic', 'bs4',
     ],
     hookspath=[],
     runtime_hooks=[],
@@ -76,6 +81,7 @@ else:
         a.datas,
         [],
         name='Hedra Studio',
+        icon=win_icon,
         debug=False,
         strip=False,
         upx=False,

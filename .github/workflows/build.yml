@@ -20,7 +20,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyinstaller PyQt6 requests anthropic beautifulsoup4
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements_build.txt
 
       - name: Read version
         id: ver
@@ -45,10 +47,17 @@ jobs:
             "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" \
             "dist/Hedra Studio.app"
 
+      - name: Verify and checksum DMG
+        run: |
+          hdiutil verify "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
+          shasum -a 256 "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" > SHA256SUMS-macOS.txt
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
+          files: |
+            Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg
+            SHA256SUMS-macOS.txt
           generate_release_notes: true
 
   # ── Build Windows .exe installer ──────────────────────────────────
@@ -62,7 +71,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyinstaller PyQt6 requests anthropic beautifulsoup4
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements_build.txt
 
       - name: Read version
         id: ver
@@ -89,7 +100,15 @@ jobs:
           path: setup.iss
           options: /O+
 
+      - name: Checksum installer
+        shell: pwsh
+        run: |
+          $file = "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"
+          Get-FileHash -Algorithm SHA256 $file | ForEach-Object { "$($_.Hash.ToLower())  $file" } | Set-Content SHA256SUMS-Windows.txt
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"
+          files: |
+            Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe
+            SHA256SUMS-Windows.txt

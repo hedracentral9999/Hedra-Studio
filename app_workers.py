@@ -12,10 +12,28 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app_constants import (
     DEFAULT_PROMPT, get_creativity_guide, CREATIVITY_CONTENT_LOCK,
+    DIALOGUE_ROLE_LOCK,
     VERSION, GITHUB_REPO, VOICE_ID, MODEL, EL_OUTPUT_FORMAT,
     GEMINI_CHAT_PROMPT,
 )
 from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE
+
+_ENGINE_ENV_LOCAL = Path("/Users/admin/Auto-Create-Video/.env.local")
+
+def _read_pipeline_env() -> dict:
+    out: dict[str, str] = {}
+    try:
+        if not _ENGINE_ENV_LOCAL.exists():
+            return out
+        for line in _ENGINE_ENV_LOCAL.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            out[key.strip()] = value.strip()
+    except Exception:
+        return {}
+    return out
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
 _EL_V3_STYLE_RULES = (
@@ -186,7 +204,7 @@ class AddSharedVoiceWorker(QThread):
 
 
 class PromptGeneratorWorker(QThread):
-    """Dùng DeepSeek để tạo system prompt từ mô tả ngắn của user."""
+    """Dùng Claude/DeepSeek để tạo system prompt từ mô tả ngắn của user."""
     done  = pyqtSignal(str)
     error = pyqtSignal(str)
 
@@ -217,11 +235,12 @@ Nếu mô tả có trường "Tuyệt đối tránh":
 
 Trả về CHỈ nội dung system prompt, không có markdown ngoài, không có tiêu đề."""
 
-    def __init__(self, description: str, api_key: str, gemini_key: str = ""):
+    def __init__(self, description: str, api_key: str, gemini_key: str = "", claude_key: str = ""):
         super().__init__()
         self.description = description
         self.api_key     = api_key
         self.gemini_key  = gemini_key
+        self.claude_key  = claude_key
 
     @staticmethod
     def _extract_field(description: str, label: str) -> str:
@@ -276,7 +295,28 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
 
     def run(self):
         try:
-            # Ưu tiên Gemini (miễn phí) → fallback DeepSeek
+            # ── Ưu tiên Claude → fallback Gemini → fallback DeepSeek ─
+            if self.claude_key:
+                full_prompt = f"Tạo prompt cho phong cách: {self.description}"
+                res = requests.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key":         self.claude_key,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type":      "application/json",
+                    },
+                    json={
+                        "model":    "claude-haiku-4-5-20251001",
+                        "max_tokens": 1800,
+                        "system":   self._META_PROMPT,
+                        "messages": [{"role": "user", "content": full_prompt}],
+                    },
+                    timeout=60,
+                )
+                if res.status_code == 200:
+                    prompt = res.json()["content"][0]["text"].strip()
+                    self.done.emit(self._ensure_required_user_terms(prompt))
+                    return
             if self.gemini_key:
                 full_prompt = f"{self._META_PROMPT}\n\nTạo prompt cho phong cách: {self.description}"
                 res = requests.post(
@@ -293,7 +333,7 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                         self.done.emit(self._ensure_required_user_terms(prompt))
                         return
             if not self.api_key:
-                self.error.emit("⚠️ Chưa có AI key — vào Settings → API Keys → thêm Gemini (miễn phí) hoặc DeepSeek")
+                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude hoặc DeepSeek")
                 return
             res = requests.post(
                 "https://api.deepseek.com/chat/completions",
@@ -340,11 +380,12 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
   "avoid":    "điều cần tránh khi enhance kịch bản"
 }"""
 
-    def __init__(self, description: str, api_key: str, gemini_key: str = ""):
+    def __init__(self, description: str, api_key: str, gemini_key: str = "", claude_key: str = ""):
         super().__init__()
         self.description = description
         self.api_key     = api_key
         self.gemini_key  = gemini_key
+        self.claude_key  = claude_key
 
     @staticmethod
     def _parse_json(raw: str) -> dict:
@@ -357,7 +398,30 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
 
     def run(self):
         try:
-            # Ưu tiên Gemini (miễn phí) → fallback DeepSeek
+            # ── Ưu tiên Claude → fallback Gemini → fallback DeepSeek ─
+            if self.claude_key:
+                res = requests.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key":         self.claude_key,
+                        "anthropic-version": "2023-06-01",
+                        "Content-Type":      "application/json",
+                    },
+                    json={
+                        "model":    "claude-haiku-4-5-20251001",
+                        "max_tokens": 600,
+                        "system":   self._SYSTEM,
+                        "messages": [{"role": "user", "content": f"Mô tả: {self.description}"}],
+                    },
+                    timeout=30,
+                )
+                if res.status_code == 200:
+                    raw = res.json()["content"][0]["text"].strip()
+                    try:
+                        self.done.emit(self._parse_json(raw))
+                        return
+                    except json.JSONDecodeError:
+                        pass  # fallback to Gemini/DeepSeek
             if self.gemini_key:
                 full_prompt = f"{self._SYSTEM}\n\nMô tả: {self.description}"
                 res = requests.post(
@@ -377,7 +441,7 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
                         except json.JSONDecodeError:
                             pass  # fallback to DeepSeek
             if not self.api_key:
-                self.error.emit("⚠️ Chưa có AI key — vào Settings → API Keys → thêm Gemini (miễn phí) hoặc DeepSeek")
+                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude hoặc DeepSeek")
                 return
             res = requests.post(
                 "https://api.deepseek.com/chat/completions",
@@ -497,6 +561,7 @@ class Worker(QThread):
         self.speed    = speed
         self.filename = filename
         self.s        = settings
+        self._srt_content: str | None = None
 
     def run(self):
         try:
@@ -509,49 +574,147 @@ class Worker(QThread):
             path = os.path.join(out_dir, self.filename + ".mp3")
             with open(path, "wb") as f:
                 f.write(audio)
+            self._write_srt_sidecar(path, enhanced)
             self.done.emit(path)
         except Exception as e:
             self.error.emit(str(e))
 
+    @staticmethod
+    def _clean_tts_text(text: str) -> str:
+        text = re.sub(r"\[[a-z][a-z -]{1,40}\]", "", text or "", flags=re.I)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    @staticmethod
+    def _fmt_srt_time(sec: float) -> str:
+        sec = max(0.0, float(sec or 0))
+        h = int(sec // 3600)
+        m = int((sec % 3600) // 60)
+        s = int(sec % 60)
+        ms = int(round((sec - int(sec)) * 1000))
+        if ms >= 1000:
+            s += 1
+            ms -= 1000
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    def _estimated_srt(self, text: str) -> str:
+        clean = self._clean_tts_text(text)
+        parts = [p.strip() for p in re.split(r"(?<=[.!?。！？])\s+|\n+", clean) if p.strip()]
+        if not parts:
+            parts = [clean] if clean else []
+        chunks: list[str] = []
+        for part in parts:
+            words = part.split()
+            cur: list[str] = []
+            for word in words:
+                if sum(len(x) + 1 for x in cur) + len(word) > 42 and cur:
+                    chunks.append(" ".join(cur))
+                    cur = [word]
+                else:
+                    cur.append(word)
+            if cur:
+                chunks.append(" ".join(cur))
+        if not chunks:
+            return ""
+        cursor = 0.0
+        lines: list[str] = []
+        words_per_sec = max(1.7, 2.75 * max(0.5, float(self.speed or 1.0)))
+        for i, chunk in enumerate(chunks, 1):
+            word_count = max(1, len(chunk.split()))
+            dur = max(1.25, min(4.5, word_count / words_per_sec + 0.35))
+            start, end = cursor, cursor + dur
+            lines.extend([
+                str(i),
+                f"{self._fmt_srt_time(start)} --> {self._fmt_srt_time(end)}",
+                chunk,
+                "",
+            ])
+            cursor = end
+        return "\n".join(lines).strip() + "\n"
+
+    def _write_srt_sidecar(self, audio_path: str, text: str) -> str | None:
+        srt_path = os.path.splitext(audio_path)[0] + ".srt"
+        srt = (self._srt_content or "").strip()
+        if not srt:
+            srt = self._estimated_srt(text).strip()
+        if not srt:
+            return None
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write(srt + "\n")
+        return srt_path
+
+    @staticmethod
+    def _find_url(data, keys: set[str]) -> str:
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if str(key).lower() in keys and isinstance(value, str) and value.startswith("http"):
+                    return value
+                found = Worker._find_url(value, keys)
+                if found:
+                    return found
+        elif isinstance(data, list):
+            for item in data:
+                found = Worker._find_url(item, keys)
+                if found:
+                    return found
+        return ""
+
+    def _download_srt_url(self, url: str) -> None:
+        if not url:
+            return
+        dl = requests.get(url, timeout=30)
+        if dl.status_code == 200 and dl.text.strip():
+            self._srt_content = dl.text
+
     def _enhance(self, text: str) -> str:
+        claude_key = self.s.get("claude_api_key", "").strip()
         ds_key     = self.s.get("ds_api_key", "").strip()
-        gemini_key = self.s.get("gemini_api_key", "").strip()
-        if not ds_key and not gemini_key:
+        if not claude_key and not ds_key:
             raise Exception(
                 "⚠️ Chưa có AI key để enhance kịch bản.\n"
-                "📌 Vào Settings → tab API Keys:\n"
-                "  • Gemini API Key (miễn phí — khuyến nghị cho người mới)\n"
-                "  • DeepSeek API Key (trả phí, chất lượng cao)"
+                "📌 Vào Settings → API:\n"
+                "  • Claude API Key (khuyến nghị — chất lượng cao)\n"
+                "  • DeepSeek API Key (fallback)"
             )
-        # ── Lấy temperature từ style (slider), fallback về creative bool nếu chưa có
         temperature = self.s.get(
             "enhance_style_temperature",
             0.7 if self.s.get("enhance_style_creative", False) else 0.3
         )
-        # ── Lấy base prompt
         system_prompt = self.s.get("enhance_prompt", DEFAULT_PROMPT)
-        # ── Đặt guide sáng tạo LÊN ĐẦU để AI ưu tiên ─
-        system_prompt = get_creativity_guide(temperature) + "\n\n" + system_prompt
+        system_prompt = (
+            get_creativity_guide(temperature)
+            + "\n\n"
+            + system_prompt
+            + "\n\n"
+            + DIALOGUE_ROLE_LOCK
+        )
+        claude_model  = self.s.get("claude_model", "claude-sonnet-4-6")
 
-        # ── Ưu tiên Gemini (miễn phí) → fallback DeepSeek (trả phí) ─
-        if gemini_key:
-            full_prompt = f"{system_prompt}\n\n{text}"
+        # ── Ưu tiên Claude → fallback DeepSeek ─
+        if claude_key:
             res = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"gemini-2.5-flash:generateContent?key={gemini_key}",
-                headers={"Content-Type": "application/json"},
-                json={"contents": [{"parts": [{"text": full_prompt}]}]},
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key":         claude_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type":      "application/json",
+                },
+                json={
+                    "model":       claude_model,
+                    "max_tokens":  2000,
+                    "temperature": temperature,
+                    "system":      system_prompt,
+                    "messages":    [{"role": "user", "content": text}],
+                },
                 timeout=60,
             )
             if res.status_code == 200:
-                candidates = res.json().get("candidates", [])
-                if candidates:
-                    return candidates[0]["content"]["parts"][0]["text"].strip()
-            # Gemini lỗi → thử DeepSeek nếu có
+                return res.json()["content"][0]["text"].strip()
             if not ds_key:
-                raise Exception(f"Gemini {res.status_code}: {res.text[:200]}")
+                raise Exception(f"Claude {res.status_code}: {res.text[:200]}")
+            self.status.emit("⚠️ Claude lỗi — thử DeepSeek...")
 
-        # ── DeepSeek (trả phí, dùng khi không có Gemini hoặc Gemini lỗi) ─
+        # ── DeepSeek fallback ─
         res = requests.post(
             "https://api.deepseek.com/chat/completions",
             headers={"Authorization": f"Bearer {ds_key}",
@@ -572,156 +735,232 @@ class Worker(QThread):
         raise Exception(f"DeepSeek {res.status_code}: {res.text[:200]}")
 
     def _tts(self, text: str) -> bytes:
-        voice_id = self.s.get("selected_voice_id") or VOICE_ID
+        env = _read_pipeline_env()
+        provider = (env.get("TTS_PROVIDER") or "genmax").strip().lower()
+        if provider not in {"genmax", "ai33", "elevenlabs", "lucylab"}:
+            provider = "genmax"
 
-        # ── Thử GenMax trước ─────────────────────────────────────
-        gm_key = self.s.get("genmax_api_key", "").strip()
-        if gm_key:
+        order = [provider]
+        if provider == "genmax" and self._env_bool(env.get("GENMAX_FALLBACK_TO_AI33"), True):
+            order.append("ai33")
+        for fallback in ("elevenlabs",):
+            if fallback not in order:
+                order.append(fallback)
+
+        errors: list[str] = []
+        for item in order:
             try:
-                self.status.emit("Đang generate audio [GenMax]...")
-                gm_provider = self.s.get("genmax_provider", "elevenlabs") or "elevenlabs"
-                gm_model = self.s.get("genmax_model_id", MODEL) or MODEL
-                tts_text = (
-                    _style_eleven_v3_text(text)
-                    if _eleven_v3_style_enabled(self.s) and gm_provider == "elevenlabs" and gm_model == "eleven_v3"
-                    else text
-                )
-                tts_body: dict = {
-                    "text":     tts_text,
-                    "provider": gm_provider,
-                    "model_id": gm_model,
-                    "language_code": (
-                        self.s.get("tts_language_code", "").strip()
-                        or self.s.get("language_code", "").strip()
-                        or "vi"
-                    ),
-                    "voice_settings": {
-                        "stability":        0.5,
-                        "similarity_boost": 0.75,
-                        "speed":            self.speed,
-                    },
-                }
-                res = requests.post(
-                    f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
-                    headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
-                    json=tts_body,
-                    timeout=30,
-                )
-                if res.status_code == 202:
-                    task_id = res.json().get("id")
-                    if not task_id:
-                        raise Exception("GenMax không trả về task_id")
-                    # Poll cho đến khi hoàn thành. GenMax/MiniMax có thể mất >90s.
-                    deadline = time.time() + 300
-                    poll_interval = 2
-                    while time.time() < deadline:
-                        time.sleep(poll_interval)
-                        self.status.emit("Đang chờ GenMax render audio...")
-                        p = requests.get(
-                            f"https://api.genmax.io/v1/history/{task_id}",
-                            headers={"xi-api-key": gm_key},
-                            timeout=15,
-                        )
-                        if p.status_code != 200:
-                            raise Exception(f"GenMax poll lỗi {p.status_code}: {p.text[:200]}")
-                        pdata = p.json()
-                        status = pdata.get("status", "")
-                        if status == "completed":
-                            audio_url = (pdata.get("result") or {}).get("audio_url", "")
-                            if not audio_url:
-                                raise Exception("GenMax không trả về audio_url")
-                            self.status.emit("Đang tải audio từ GenMax...")
-                            dl = requests.get(audio_url, timeout=30)
-                            if dl.status_code != 200:
-                                raise Exception(f"GenMax download lỗi {dl.status_code}")
-                            return dl.content
-                        elif status in ("failed", "error"):
-                            raise Exception(f"GenMax render thất bại: {pdata}")
-                        # pending/processing — tiếp tục poll
-                        poll_interval = min(poll_interval + 1, 5)
-                    raise Exception("GenMax timeout sau 300 giây")
-                elif res.status_code == 200:
-                    # Một số response trả về audio trực tiếp
-                    return res.content
-                else:
-                    raise Exception(f"GenMax {res.status_code}: {res.text[:300]}")
-            except Exception as gm_err:
-                self.status.emit(f"⚠️ GenMax lỗi — chuyển sang ElevenLabs... ({gm_err})")
+                if item == "genmax":
+                    return self._tts_genmax(text, env)
+                if item == "ai33":
+                    return self._tts_ai33(text, env)
+                if item == "elevenlabs":
+                    return self._tts_elevenlabs(text, env)
+            except Exception as e:
+                errors.append(f"{item}: {e}")
+                if item != order[-1]:
+                    self.status.emit(f"⚠️ {item} lỗi — thử provider tiếp theo...")
+        raise Exception("Tất cả TTS provider đều lỗi:\n" + "\n".join(errors))
 
-        # ── Fallback ElevenLabs ───────────────────────────────────
+    @staticmethod
+    def _env_bool(value: str | None, default: bool = False) -> bool:
+        if value is None or str(value).strip() == "":
+            return default
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    def _common_language(self, env: dict) -> str:
+        return (
+            self.s.get("tts_language_code", "").strip()
+            or self.s.get("language_code", "").strip()
+            or env.get("GENMAX_LANGUAGE_CODE", "").strip()
+            or "vi"
+        )
+
+    def _voice_for(self, provider: str, env: dict) -> str:
+        # Priority: per-tool voice from settings > env var > selected_voice_id fallback
+        per_tool = self.s.get("tts_voice_id", "").strip()
+        selected  = self.s.get("selected_voice_id", "").strip()
+        if provider == "genmax":
+            return per_tool or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
+        if provider == "ai33":
+            return per_tool or env.get("AI33_VOICE_ID", "").strip() or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
+        if provider == "elevenlabs":
+            return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or env.get("GENMAX_VOICE_ID", "").strip() or VOICE_ID
+        return per_tool or selected or VOICE_ID
+
+    def _tts_genmax(self, text: str, env: dict) -> bytes:
+        gm_key = env.get("GENMAX_API_KEY", "").strip() or self.s.get("genmax_api_key", "").strip()
+        if not gm_key:
+            raise Exception("thiếu GenMax API key")
+        voice_id = self._voice_for("genmax", env)
+        gm_provider = env.get("GENMAX_PROVIDER", "").strip() or self.s.get("genmax_provider", "elevenlabs") or "elevenlabs"
+        gm_model = env.get("GENMAX_MODEL_ID", "").strip() or self.s.get("genmax_model_id", MODEL) or MODEL
+        tts_text = (
+            _style_eleven_v3_text(text)
+            if _eleven_v3_style_enabled(self.s) and gm_provider == "elevenlabs" and gm_model == "eleven_v3"
+            else text
+        )
+        self.status.emit(f"Đang generate audio [GenMax · {gm_model}]...")
+        body: dict = {
+            "text": tts_text,
+            "provider": gm_provider,
+            "model_id": gm_model,
+            "language_code": self._common_language(env),
+            "with_transcript": True,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+                "speed": self.speed,
+            },
+        }
+        res = requests.post(
+            f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
+            headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if res.status_code == 200:
+            return res.content
+        if res.status_code != 202:
+            raise Exception(f"GenMax {res.status_code}: {res.text[:300]}")
+        task_id = res.json().get("id")
+        if not task_id:
+            raise Exception("GenMax không trả về task_id")
+        deadline = time.time() + 300
+        poll_interval = 2
+        while time.time() < deadline:
+            time.sleep(poll_interval)
+            self.status.emit("Đang chờ GenMax render audio...")
+            poll = requests.get(
+                f"https://api.genmax.io/v1/history/{task_id}",
+                headers={"xi-api-key": gm_key},
+                timeout=15,
+            )
+            if poll.status_code != 200:
+                raise Exception(f"GenMax poll lỗi {poll.status_code}: {poll.text[:200]}")
+            pdata = poll.json()
+            status = pdata.get("status", "")
+            if status == "completed":
+                audio_url = (pdata.get("result") or {}).get("audio_url", "")
+                if not audio_url:
+                    raise Exception("GenMax không trả về audio_url")
+                srt_url = self._find_url(
+                    pdata,
+                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
+                )
+                if srt_url:
+                    self.status.emit("Đang tải phụ đề SRT từ GenMax...")
+                    self._download_srt_url(srt_url)
+                self.status.emit("Đang tải audio từ GenMax...")
+                dl = requests.get(audio_url, timeout=30)
+                if dl.status_code != 200:
+                    raise Exception(f"GenMax download lỗi {dl.status_code}")
+                return dl.content
+            if status in ("failed", "error"):
+                raise Exception(f"GenMax render thất bại: {pdata}")
+            poll_interval = min(poll_interval + 1, 5)
+        raise Exception("GenMax timeout sau 300 giây")
+
+    def _tts_ai33(self, text: str, env: dict) -> bytes:
+        key = env.get("AI33_API_KEY", "").strip()
+        if not key:
+            raise Exception("thiếu ai33 API key")
+        voice_id = self._voice_for("ai33", env)
+        model = env.get("AI33_MODEL_ID", "").strip() or "eleven_v3"
+        endpoint = (env.get("AI33_ENDPOINT", "").strip() or "https://api.ai33.pro").rstrip("/")
+        output_format = env.get("AI33_OUTPUT_FORMAT", "").strip() or "mp3_44100_128"
+        tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
+        self.status.emit(f"Đang generate audio [ai33 · {model}]...")
+        res = requests.post(
+            f"{endpoint}/v1/text-to-speech/{voice_id}?output_format={output_format}",
+            headers={"xi-api-key": key, "Content-Type": "application/json"},
+            json={
+                "text": tts_text,
+                "model_id": model,
+                "with_transcript": True,
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75,
+                    "speed": self.speed,
+                },
+            },
+            timeout=30,
+        )
+        if res.status_code not in (200, 202):
+            raise Exception(f"ai33 {res.status_code}: {res.text[:300]}")
+        task_id = res.json().get("task_id") or res.json().get("id")
+        if not task_id:
+            raise Exception("ai33 không trả về task_id")
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            time.sleep(2)
+            self.status.emit("Đang chờ ai33 render audio...")
+            poll = requests.get(
+                f"{endpoint}/v1/task/{task_id}",
+                headers={"xi-api-key": key, "Content-Type": "application/json"},
+                timeout=15,
+            )
+            if poll.status_code != 200:
+                raise Exception(f"ai33 poll {poll.status_code}: {poll.text[:200]}")
+            pdata = poll.json()
+            if pdata.get("status") == "done":
+                audio_url = (pdata.get("metadata") or {}).get("audio_url", "")
+                if not audio_url:
+                    raise Exception("ai33 done nhưng không có audio_url")
+                srt_url = self._find_url(
+                    pdata,
+                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
+                )
+                if srt_url:
+                    self.status.emit("Đang tải phụ đề SRT từ ai33...")
+                    self._download_srt_url(srt_url)
+                dl = requests.get(audio_url, timeout=30)
+                if dl.status_code != 200:
+                    raise Exception(f"ai33 download {dl.status_code}")
+                return dl.content
+            if pdata.get("status") == "error":
+                raise Exception(pdata.get("error_message") or str(pdata)[:300])
+        raise Exception("ai33 timeout sau 300 giây")
+
+    def _tts_elevenlabs(self, text: str, env: dict) -> bytes:
         keys = self.s.get("el_api_keys", [])
+        env_key = env.get("ELEVENLABS_API_KEY", "").strip()
+        old = self.s.get("el_api_key", "").strip()
+        keys = [env_key] + list(keys or []) + ([old] if old else [])
+        keys = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
         if not keys:
-            old = self.s.get("el_api_key", "").strip()
-            keys = [old] if old else []
-        keys = [k.strip() for k in keys if k.strip()]
-        if not keys:
-            if gm_key:
-                raise Exception("⚠️ GenMax lỗi và chưa có ElevenLabs API key.\n📌 Vào Settings → tab API Keys để thêm.")
-            raise Exception("⚠️ Chưa nhập API key.\n📌 Vào Settings → tab API Keys để thêm GenMax hoặc ElevenLabs key.")
+            raise Exception("thiếu ElevenLabs API key")
+        voice_id = self._voice_for("elevenlabs", env)
+        model = env.get("ELEVENLABS_MODEL_ID", "").strip() or MODEL
         last_err = None
         for idx, key in enumerate(keys, 1):
             label = f"key {idx}/{len(keys)} (...{key[-6:]})"
-            self.status.emit(f"Đang generate audio ElevenLabs [{label}]...")
-            el_model = MODEL
-            tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and el_model == "eleven_v3" else text
-            tts_body = {
-                "text":     tts_text,
-                "model_id": el_model,
+            self.status.emit(f"Đang generate audio [ElevenLabs · {label}]...")
+            tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
+            body = {
+                "text": tts_text,
+                "model_id": model,
                 "output_format": EL_OUTPUT_FORMAT,
                 "voice_settings": {
-                    "stability":        0.5,
+                    "stability": 0.5,
                     "similarity_boost": 0.75,
-                    "speed":            self.speed,
+                    "speed": self.speed,
                 },
             }
-            _lang = self.s.get("tts_language_code", "").strip() or self.s.get("language_code", "").strip()
-            if _lang:
-                tts_body["language_code"] = _lang
+            lang = self._common_language(env)
+            if lang:
+                body["language_code"] = lang
             res = requests.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
                 headers={"xi-api-key": key, "Content-Type": "application/json"},
-                json=tts_body,
+                json=body,
                 timeout=60,
             )
             if res.status_code == 200:
                 return res.content
-            body = res.text[:300]
-            if res.status_code in (401, 403, 429) or \
-               any(w in res.text.lower() for w in ("quota", "insufficient", "limit")):
-                reason = {401: "key không hợp lệ", 403: "không có quyền",
-                          429: "rate limited / hết credit"}.get(res.status_code, "hết credit")
-                detail_msg = f"{label}: {reason}"
-                if body:
-                    try:
-                        err_data = res.json()
-                        detail = err_data.get("detail", "")
-                        if isinstance(detail, str):
-                            err_msg = detail
-                        elif isinstance(detail, list) and detail:
-                            err_msg = detail[0].get("msg", str(detail[0]))
-                        elif isinstance(detail, dict):
-                            err_msg = detail.get("message", str(detail))
-                        else:
-                            err_msg = str(err_data)
-                        if err_msg and err_msg != "None":
-                            detail_msg += f"\n→ {err_msg[:200]}"
-                    except Exception:
-                        detail_msg += f"\n→ {body[:200]}"
-                last_err = Exception(detail_msg)
-                if idx < len(keys):
-                    self.status.emit(f"⚠️ {label} {reason} — thử key tiếp theo...")
-                continue
-            # Lỗi không rõ — hiển thị chi tiết để debug
-            reason_map = {
-                400: "sai request (có thể model/voice không tồn tại)",
-                422: "dữ liệu không hợp lệ (có thể text quá dài hoặc ký tự đặc biệt)",
-            }
-            hint = reason_map.get(res.status_code, "")
-            detail = f"ElevenLabs {res.status_code}"
-            if hint:
-                detail += f" — {hint}"
-            detail += f"\n\n{body}"
-            raise Exception(detail)
+            last_err = Exception(f"ElevenLabs {res.status_code}: {res.text[:300]}")
+            if idx < len(keys):
+                self.status.emit(f"⚠️ ElevenLabs {label} lỗi — thử key tiếp theo...")
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
 
@@ -738,8 +977,9 @@ class _TTSOnlyWorker(QThread):
         self.speed    = speed
         self.filename = filename
         self.s        = settings
-        # Mượn _tts từ Worker
-        self._tts = Worker(text, speed, filename, settings)._tts
+        # Mượn TTS core từ Worker và giữ delegate để lấy SRT provider trả về.
+        self._delegate = Worker(text, speed, filename, settings)
+        self._tts = self._delegate._tts
 
     def run(self):
         try:
@@ -750,6 +990,7 @@ class _TTSOnlyWorker(QThread):
             path = os.path.join(out_dir, self.filename + ".mp3")
             with open(path, "wb") as f:
                 f.write(audio)
+            self._delegate._write_srt_sidecar(path, self.text)
             self.done.emit(path)
         except Exception as e:
             self.error.emit(str(e))

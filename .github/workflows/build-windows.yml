@@ -1,9 +1,7 @@
 name: Build Windows EXE
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,7 +23,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install pyinstaller PyQt6 requests elevenlabs
+          pip install -r requirements_build.txt
+          choco install innosetup -y
 
       - name: Read version
         id: version
@@ -37,18 +36,26 @@ jobs:
         run: |
           pyinstaller TTS.spec --clean --noconfirm
 
-      - name: Rename output EXE
+      - name: Build installer with Inno Setup
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" setup.iss
+
+      - name: Rename output artifacts
         run: |
           $ver = "${{ steps.version.outputs.VERSION }}"
-          $src = "dist\Hedra Studio.exe"
-          $dst = "Hedra-Studio-$ver-win.exe"
-          Move-Item $src $dst
-          echo "EXE_NAME=$dst" >> $env:GITHUB_OUTPUT
+          $portable = "dist\Hedra Studio.exe"
+          $portableDst = "Hedra-Studio-$ver-win-portable.exe"
+          Copy-Item $portable $portableDst
+          $installer = "Hedra-Studio-$ver-win-setup.exe"
+          echo "PORTABLE_NAME=$portableDst" >> $env:GITHUB_OUTPUT
+          echo "INSTALLER_NAME=$installer" >> $env:GITHUB_OUTPUT
         id: rename
 
       - name: Upload EXE to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.rename.outputs.EXE_NAME }}
+          files: |
+            ${{ steps.rename.outputs.PORTABLE_NAME }}
+            ${{ steps.rename.outputs.INSTALLER_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
