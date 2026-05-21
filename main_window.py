@@ -2378,6 +2378,7 @@ class MainWindow(QWidget):
     def _check_update(self):
         self._updater = UpdateChecker()
         self._updater.update_found.connect(self._on_update_found)
+        self._updater.no_update.connect(self._on_auto_no_update)
         self._track_thread("_updater", self._updater)
 
     def _manual_check_update(self):
@@ -2472,8 +2473,16 @@ fi
     def _on_manual_update_error(self, msg: str):
         QMessageBox.warning(self, "Không kiểm tra được cập nhật", msg)
 
+    def _on_auto_no_update(self, latest: str):
+        if hasattr(self, "_btn_check_update"):
+            self._btn_check_update.setText("Mới nhất")
+            self._btn_check_update.setToolTip(f"Đang dùng bản mới nhất v{latest}. Nhấn để kiểm tra lại.")
+
     def _on_update_found(self, version: str, url: str):
         self._update_url = url
+        if hasattr(self, "_btn_check_update"):
+            self._btn_check_update.setText("Có bản mới")
+            self._btn_check_update.setToolTip(f"Có bản v{version}. Nhấn banner để cập nhật.")
         self._banner_text.setText(f"Có bản cập nhật v{version} — nhấn để tải, cài và tự mở lại")
         self.update_banner.setVisible(True)
 
@@ -2715,6 +2724,33 @@ rm -f "$DMG" 2>/dev/null
             QMessageBox.warning(self, "Thiếu tên file", "Nhập tên file trước khi generate nhé!")
             self.filename_input.setFocus()
             return
+        safe_filename = os.path.basename(filename).strip()
+        if safe_filename.lower().endswith(".mp3"):
+            safe_filename = safe_filename[:-4].strip()
+        safe_filename = safe_filename.replace(" ", "_")
+        if not safe_filename:
+            QMessageBox.warning(self, "Tên file không hợp lệ", "Nhập lại tên file ngắn gọn hơn nhé!")
+            self.filename_input.setFocus()
+            return
+        out_dir = self.settings.get("output_dir", DEFAULT_OUT)
+        audio_path = os.path.join(out_dir, safe_filename + ".mp3")
+        srt_path = os.path.splitext(audio_path)[0] + ".srt"
+        existing = [p for p in (audio_path, srt_path) if os.path.exists(p)]
+        if existing:
+            names = "\n".join(f"• {os.path.basename(p)}" for p in existing)
+            reply = QMessageBox.question(
+                self,
+                "File đã tồn tại",
+                f"Các file này đã tồn tại trong thư mục output:\n\n{names}\n\nBạn có muốn lưu đè không?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self.tts_status_lbl.setText("Đã hủy để tránh ghi đè file.")
+                self.filename_input.setFocus()
+                return
+        if safe_filename != filename:
+            self.filename_input.setText(safe_filename)
         speed = self.slider.value() / 10
         if hasattr(self, "creativity_slider"):
             t = self.creativity_slider.value() / 100.0
@@ -2742,10 +2778,10 @@ rm -f "$DMG" 2>/dev/null
         preview_text = getattr(self, "_enhanced_cache", "").strip()
         if preview_text:
             self.worker = _TTSOnlyWorker(preview_text, speed,
-                                         filename.replace(" ", "_"), self.settings)
+                                         safe_filename, self.settings)
         else:
             # Chưa preview → enhance + TTS như cũ
-            self.worker = Worker(text, speed, filename.replace(" ", "_"), self.settings)
+            self.worker = Worker(text, speed, safe_filename, self.settings)
 
         self.worker.status.connect(self._on_tts_status)
         self.worker.done.connect(self._on_done)

@@ -14,7 +14,7 @@ import requests
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from app_constants import DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY
+from app_constants import DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY, VOICE_ID
 from version import LICENSE_VERIFY_URL, VERSION
 
 # ── Telegram feedback config ──────────────────────────────────────────
@@ -41,6 +41,13 @@ TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = _load_telegram_config()
 
 APP_DATA_NAME = "Hedra Studio"
 LEGACY_APP_DATA_NAME = "TTSApp"
+DEFAULT_ADAM_VOICE = {
+    "id": VOICE_ID,
+    "name": "Adam - Dominant, Firm",
+    "lang": "vi",
+    "langs": [],
+    "multilingual": True,
+}
 
 
 # ── Data directory (persists across updates) ───────────────────────
@@ -296,8 +303,8 @@ def _default_settings() -> dict:
         "output_dir":               DEFAULT_OUT,
         "enhance_prompt":           DEFAULT_PROMPT,
         "default_speed":            1.0,
-        "selected_voice_id":        "",
-        "selected_voice_name":      "Adam",
+        "selected_voice_id":        VOICE_ID,
+        "selected_voice_name":      "Adam - Dominant, Firm",
         "shared_voice_enabled":     False,
         "av_voice_presets":         {},
         "custom_styles":            [],
@@ -307,10 +314,10 @@ def _default_settings() -> dict:
         "enhance_style_creative":   False,
         "language_code":            "vi",
         "tts_language_code":        "vi",
-        "favorite_voice_ids":       [],
-        "favorite_voices":          [],
-        "tts_voice_id":             "",
-        "tts_voice_name":           "",
+        "favorite_voice_ids":       [VOICE_ID],
+        "favorite_voices":          [dict(DEFAULT_ADAM_VOICE)],
+        "tts_voice_id":             VOICE_ID,
+        "tts_voice_name":           "Adam - Dominant, Firm",
         "av_voice_id":              "",
         "av_voice_name":            "",
         "av_language_code":         "vi",
@@ -376,6 +383,26 @@ def _backfill_settings(s: dict) -> dict:
     for key, default in defaults.items():
         if key not in s:
             s[key] = default
+    if not str(s.get("selected_voice_id", "")).strip():
+        s["selected_voice_id"] = VOICE_ID
+    if not str(s.get("selected_voice_name", "")).strip() or str(s.get("selected_voice_name", "")).strip() == "Adam":
+        s["selected_voice_name"] = "Adam - Dominant, Firm"
+    if not str(s.get("tts_voice_id", "")).strip():
+        s["tts_voice_id"] = s["selected_voice_id"]
+    if not str(s.get("tts_voice_name", "")).strip():
+        s["tts_voice_name"] = s["selected_voice_name"]
+    favs = s.get("favorite_voices")
+    if not isinstance(favs, list):
+        favs = []
+        s["favorite_voices"] = favs
+    if not any(isinstance(v, dict) and v.get("id") == VOICE_ID for v in favs):
+        favs.insert(0, dict(DEFAULT_ADAM_VOICE))
+    fav_ids = s.get("favorite_voice_ids")
+    if not isinstance(fav_ids, list):
+        fav_ids = []
+        s["favorite_voice_ids"] = fav_ids
+    if VOICE_ID not in fav_ids:
+        fav_ids.insert(0, VOICE_ID)
     return s
 
 
