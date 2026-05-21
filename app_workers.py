@@ -1091,35 +1091,68 @@ class Worker(QThread):
             raise Exception("thiếu ElevenLabs API key")
         voice_id = self._voice_for("elevenlabs", env)
         model = env.get("ELEVENLABS_MODEL_ID", "").strip() or MODEL
-        last_err = None
-        for idx, key in enumerate(keys, 1):
-            label = f"key {idx}/{len(keys)} (...{key[-6:]})"
-            self.status.emit(f"Đang generate audio [ElevenLabs · {label}]...")
-            tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
-            body = {
-                "text": tts_text,
-                "model_id": model,
-                "output_format": EL_OUTPUT_FORMAT,
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "speed": self.speed,
-                },
-            }
-            lang = self._common_language(env)
-            if lang:
-                body["language_code"] = lang
-            res = requests.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                headers={"xi-api-key": key, "Content-Type": "application/json"},
-                json=body,
-                timeout=60,
+
+        def _is_library_voice_block(message: str) -> bool:
+            lower = (message or "").lower()
+            return (
+                "paid_plan_required" in lower
+                and ("library voice" in lower or "free users cannot use" in lower)
             )
-            if res.status_code == 200:
-                return res.content
-            last_err = Exception(f"ElevenLabs {res.status_code}: {res.text[:300]}")
-            if idx < len(keys):
-                self.status.emit(f"⚠️ ElevenLabs {label} lỗi — thử key tiếp theo...")
+
+        def _attempt_voice(target_voice_id: str, voice_label: str) -> tuple[bytes | None, Exception | None, bool]:
+            last_err: Exception | None = None
+            saw_library_block = False
+            for idx, key in enumerate(keys, 1):
+                key_label = f"key {idx}/{len(keys)} (...{key[-6:]})"
+                self.status.emit(f"Đang generate audio [ElevenLabs · {voice_label} · {key_label}]...")
+                tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
+                body = {
+                    "text": tts_text,
+                    "model_id": model,
+                    "output_format": EL_OUTPUT_FORMAT,
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75,
+                        "speed": self.speed,
+                    },
+                }
+                lang = self._common_language(env)
+                if lang:
+                    body["language_code"] = lang
+                res = requests.post(
+                    f"https://api.elevenlabs.io/v1/text-to-speech/{target_voice_id}",
+                    headers={"xi-api-key": key, "Content-Type": "application/json"},
+                    json=body,
+                    timeout=60,
+                )
+                if res.status_code == 200:
+                    return res.content, None, saw_library_block
+                error_text = res.text[:500]
+                saw_library_block = saw_library_block or _is_library_voice_block(error_text)
+                last_err = Exception(f"ElevenLabs {res.status_code}: {error_text[:300]}")
+                if idx < len(keys):
+                    self.status.emit(f"⚠️ ElevenLabs {voice_label} · {key_label} lỗi — thử key tiếp theo...")
+            return None, last_err, saw_library_block
+
+        audio, last_err, library_blocked = _attempt_voice(voice_id, "voice đang chọn")
+        if audio is not None:
+            return audio
+
+        # ElevenLabs free tier still has 10k characters, but cannot synthesize
+        # shared/library voices via API. Fall back to the built-in Adam voice so
+        # the backup path remains useful instead of failing with a generic error.
+        if library_blocked and voice_id != VOICE_ID:
+            self.status.emit("⚠️ ElevenLabs free không dùng được voice đang chọn — thử Adam mặc định...")
+            audio, adam_err, _ = _attempt_voice(VOICE_ID, "Adam mặc định")
+            if audio is not None:
+                return audio
+            last_err = adam_err or last_err
+
+        if library_blocked:
+            raise Exception(
+                "ElevenLabs còn ký tự free nhưng API free không dùng được shared/library voice. "
+                "Hãy nâng cấp ElevenLabs hoặc chọn Adam mặc định để dùng free credits."
+            )
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
 
@@ -1566,7 +1599,10 @@ class _CreditsChecker(QThread):
                     parts.append("✅ GenMax")
             # ── ElevenLabs credits ────────────────────────────────
             if self.el_keys:
-                total = 0
+                total_paid = 0
+                total_free = 0
+                paid_count = 0
+                free_count = 0
                 for key in self.el_keys:
                     r = requests.get(
                         "https://api.elevenlabs.io/v1/user/subscription",
@@ -1574,10 +1610,22 @@ class _CreditsChecker(QThread):
                     )
                     if r.status_code == 200:
                         d = r.json()
-                        total += d.get("character_limit", 0) - d.get("character_count", 0)
-                parts.append(f"EL: {total:,}")
-                if len(self.el_keys) > 1:
-                    parts[-1] += f" ({len(self.el_keys)} keys)"
+                        remain = max(0, int(d.get("character_limit", 0) - d.get("character_count", 0)))
+                        tier = str(d.get("tier", "")).strip().lower()
+                        if tier == "free":
+                            total_free += remain
+                            free_count += 1
+                        else:
+                            total_paid += remain
+                            paid_count += 1
+                if paid_count and free_count:
+                    parts.append(f"EL: {total_paid:,} paid + {total_free:,} free")
+                elif paid_count:
+                    suffix = f" ({paid_count} keys)" if paid_count > 1 else ""
+                    parts.append(f"EL: {total_paid:,}{suffix}")
+                elif free_count:
+                    suffix = f" ({free_count} keys)" if free_count > 1 else ""
+                    parts.append(f"EL: {total_free:,} free{suffix} · Adam")
             # ── Fallback ──────────────────────────────────────────
             if not parts:
                 self.done.emit("⚠️  Chưa có TTS API key — vào Settings")

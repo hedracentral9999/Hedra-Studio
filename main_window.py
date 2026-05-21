@@ -2966,13 +2966,17 @@ rm -f "$DMG" 2>/dev/null
         self.tts_status_lbl.setStyleSheet(
             "color:#dc2626; font-size:12px; font-weight:600; background:transparent;"
         )
+        clean_msg = re.sub(r"(sk-[A-Za-z0-9_\\-]{8,}|sk_[A-Za-z0-9_\\-]{8,}|[A-Fa-f0-9]{32,})", "***", str(msg or ""))
+        short_msg = clean_msg.replace("\n", " · ").strip()
+        if len(short_msg) > 260:
+            short_msg = short_msg[:257].rstrip() + "..."
         if hasattr(self, "_audio_icon_lbl"):
             self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
             self._audio_title_lbl.setText("Tạo audio lỗi")
             self._audio_title_lbl.setStyleSheet(
                 f"font-size:22px;font-weight:700;color:#dc2626;background:transparent;border:none;"
             )
-            self._audio_detail_lbl.setText("Kiểm tra API key, provider hoặc thử tạo lại.")
+            self._audio_detail_lbl.setText(short_msg or "Kiểm tra API key, provider hoặc thử tạo lại.")
         has_old_audio = bool(getattr(self, "_last_audio_path", "") and os.path.exists(self._last_audio_path))
         self._btn_play_audio.setEnabled(has_old_audio)
         self._btn_open_folder.setEnabled(has_old_audio)
