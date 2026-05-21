@@ -31,6 +31,7 @@ jobs:
       - name: Static checks
         run: |
           python3 -m py_compile app_utils.py main_window.py app_workers.py app_constants.py settings_dialog.py tts_app.py app_dialogs.py auto_video_workers.py app_icons.py version.py scripts/security_audit_release.py
+          python3 -c "import settings_dialog; import main_window; import tts_app; print('import smoke ok')"
           git diff --check
           python3 scripts/security_audit_release.py --source .
 
@@ -98,6 +99,7 @@ jobs:
         shell: pwsh
         run: |
           python -m py_compile app_utils.py main_window.py app_workers.py app_constants.py settings_dialog.py tts_app.py app_dialogs.py auto_video_workers.py app_icons.py version.py scripts/security_audit_release.py
+          python -c "import settings_dialog; import main_window; import tts_app; print('import smoke ok')"
           git diff --check
           python scripts/security_audit_release.py --source .
 
