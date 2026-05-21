@@ -1138,20 +1138,15 @@ class Worker(QThread):
         if audio is not None:
             return audio
 
-        # ElevenLabs free tier still has 10k characters, but cannot synthesize
-        # shared/library voices via API. Fall back to the built-in Adam voice so
-        # the backup path remains useful instead of failing with a generic error.
-        if library_blocked and voice_id != VOICE_ID:
-            self.status.emit("⚠️ ElevenLabs free không dùng được voice đang chọn — thử Adam mặc định...")
-            audio, adam_err, _ = _attempt_voice(VOICE_ID, "Adam mặc định")
-            if audio is not None:
-                return audio
-            last_err = adam_err or last_err
-
         if library_blocked:
+            voice_name = (
+                self.s.get("tts_voice_name", "").strip()
+                or self.s.get("selected_voice_name", "").strip()
+                or voice_id
+            )
             raise Exception(
-                "ElevenLabs còn ký tự free nhưng API free không dùng được shared/library voice. "
-                "Hãy nâng cấp ElevenLabs hoặc chọn Adam mặc định để dùng free credits."
+                f"ElevenLabs còn ký tự free nhưng không render được voice '{voice_name}' qua API free "
+                "vì đây là shared/library voice. Chọn Adam/premade voice, hoặc dùng GenMax/nâng cấp ElevenLabs."
             )
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
@@ -1625,7 +1620,7 @@ class _CreditsChecker(QThread):
                     parts.append(f"EL: {total_paid:,}{suffix}")
                 elif free_count:
                     suffix = f" ({free_count} keys)" if free_count > 1 else ""
-                    parts.append(f"EL: {total_free:,} free{suffix} · Adam")
+                    parts.append(f"EL: {total_free:,} free{suffix} · chỉ premade")
             # ── Fallback ──────────────────────────────────────────
             if not parts:
                 self.done.emit("⚠️  Chưa có TTS API key — vào Settings")
