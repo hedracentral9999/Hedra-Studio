@@ -313,6 +313,26 @@ class _NullEdit:
         return ""
 
 
+def _widget_text(widget) -> str:
+    if hasattr(widget, "currentText"):
+        return widget.currentText().strip()
+    if hasattr(widget, "text"):
+        return widget.text().strip()
+    if hasattr(widget, "toPlainText"):
+        return widget.toPlainText().strip()
+    return ""
+
+
+def _widget_value(widget) -> str:
+    return _widget_text(widget)
+
+
+def _first_key_from_widget(widget) -> str:
+    raw = _widget_text(widget)
+    parts = [p.strip() for p in re.split(r"[\s,;]+", raw) if p.strip()]
+    return parts[0] if parts else ""
+
+
 class _PipelineVoicePreviewWorker(QThread):
     done = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -1692,6 +1712,17 @@ class SettingsDialog(QDialog):
             )
             return w
 
+        def _multi_key(value: str, placeholder: str) -> QTextEdit:
+            w = QTextEdit()
+            w.setPlainText(value)
+            w.setPlaceholderText(placeholder)
+            w.setFixedHeight(74)
+            w.setAcceptRichText(False)
+            w.setStyleSheet(
+                "QTextEdit{background:transparent;border:none;font-size:13px;padding:0;}"
+            )
+            return w
+
         def _field_row(field: QWidget, service: str | None = None) -> QWidget:
             w = QWidget()
             w.setStyleSheet("background:transparent;border:none;")
@@ -1703,15 +1734,8 @@ class SettingsDialog(QDialog):
             status.setFixedWidth(62)
             status.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            def _value() -> str:
-                if hasattr(field, "text"):
-                    return field.text().strip()
-                if hasattr(field, "toPlainText"):
-                    return field.toPlainText().strip()
-                return ""
-
             def _refresh_status():
-                ok = bool(_value())
+                ok = bool(_widget_text(field))
                 status.setText("Đã có" if ok else "Thiếu")
                 status.setStyleSheet(
                     "QLabel{font-size:11px;font-weight:600;border-radius:8px;"
@@ -1745,10 +1769,13 @@ class SettingsDialog(QDialog):
         self._row(glay_tts, "② ai33", _field_row(self._pv_ai33_key, None),
                   "Fallback tự động khi GenMax lỗi.")
 
-        self.el_keys = _line_key(api_values["elevenlabs"], "sk_...")
+        el_key_text = "\n".join([k for k in el_saved[:3] if str(k).strip()])
+        if not el_key_text and api_values["elevenlabs"]:
+            el_key_text = api_values["elevenlabs"]
+        self.el_keys = _multi_key(el_key_text, "Mỗi dòng 1 ElevenLabs API key — tối đa 3 key")
         self._pv_el_key = self.el_keys
         self._row(glay_tts, "③ ElevenLabs", _field_row(self.el_keys, "elevenlabs"),
-                  "Fallback cuối — thư viện voice.", last=True)
+                  "Fallback cuối — paste tối đa 3 key, tool tự thử key tiếp theo khi lỗi/hết quota.", last=True)
 
         v.addWidget(grp_tts)
 
@@ -4921,7 +4948,7 @@ class SettingsDialog(QDialog):
         key_map = {
             "genmax": getattr(self, "_pv_gm_key", _NullEdit()).text().strip(),
             "ai33": getattr(self, "_pv_ai33_key", _NullEdit()).text().strip(),
-            "elevenlabs": getattr(self, "_pv_el_key", _NullEdit()).text().strip(),
+            "elevenlabs": _first_key_from_widget(getattr(self, "_pv_el_key", _NullEdit())),
             "lucylab": getattr(self, "_pv_ll_key", _NullEdit()).text().strip(),
         }
         return {
@@ -5403,28 +5430,9 @@ class SettingsDialog(QDialog):
     def _save(self):
         env = _read_env_local()
 
-        def _widget_value(widget) -> str:
-            if hasattr(widget, "currentText"):
-                return widget.currentText().strip()
-            if hasattr(widget, "text"):
-                return widget.text().strip()
-            if hasattr(widget, "toPlainText"):
-                return widget.toPlainText().strip()
-            return ""
-
         el_value = _widget_value(getattr(self, "el_keys", _NullEdit())).strip()
-        if "\n" in el_value:
-            raw_keys = el_value.splitlines()
-        elif el_value:
-            existing_extra = [
-                k.strip()
-                for k in self.settings.get("el_api_keys", [])[1:]
-                if k.strip() and k.strip() != el_value
-            ]
-            raw_keys = [el_value] + existing_extra
-        else:
-            raw_keys = []
-        self.settings["el_api_keys"] = [k.strip() for k in raw_keys if k.strip()][:3]
+        raw_keys = re.split(r"[\s,;]+", el_value) if el_value else []
+        self.settings["el_api_keys"] = list(dict.fromkeys(k.strip() for k in raw_keys if k.strip()))[:3]
 
         def _merged_key(name: str, api_widget, pipeline_widget) -> str:
             api_value = _widget_value(api_widget)
@@ -5532,7 +5540,7 @@ class SettingsDialog(QDialog):
                 "AI33_OUTPUT_FORMAT":  getattr(self, "_pv_ai33_output_format", _NullEdit()).text().strip() or "mp3_44100_128",
                 "AI33_POLL_INTERVAL_MS": "2000",
                 "AI33_POLL_TIMEOUT_MS": "300000",
-                "ELEVENLABS_API_KEY":  getattr(self, "_pv_el_key",  _NullEdit()).text().strip(),
+                "ELEVENLABS_API_KEY":  _first_key_from_widget(getattr(self, "_pv_el_key", _NullEdit())),
                 "ELEVENLABS_MODEL_ID":  getattr(self, "_pv_el_model", _NullEdit()).text().strip(),
                 "VIETNAMESE_API_KEY":  getattr(self, "_pv_ll_key",  _NullEdit()).text().strip(),
                 "LUCYLAB_ENDPOINT":     getattr(self, "_pv_ll_endpoint", _NullEdit()).text().strip(),
