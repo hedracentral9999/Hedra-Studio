@@ -5,7 +5,6 @@ import json
 import time
 import base64
 import requests
-from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -16,9 +15,9 @@ from app_constants import (
     VERSION, GITHUB_REPO, VOICE_ID, MODEL, EL_OUTPUT_FORMAT,
     GEMINI_CHAT_PROMPT,
 )
-from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE
+from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local
 
-_ENGINE_ENV_LOCAL = Path("/Users/admin/Auto-Create-Video/.env.local")
+_ENGINE_ENV_LOCAL = get_auto_video_env_local()
 
 def _read_pipeline_env() -> dict:
     out: dict[str, str] = {}

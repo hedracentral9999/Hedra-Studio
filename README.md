@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.8.2-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/Hedra_Studio-v1.8.2-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.8.3-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/Hedra_Studio-v1.8.3-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
@@ -122,8 +122,8 @@ Hai tab này có trong app nhưng cần license key.
 
 Settings được lưu tại:
 
-- **macOS:** `~/Library/Application Support/TTSApp/settings.json`
-- **Windows:** `%APPDATA%/TTSApp/settings.json`
+- **macOS:** `~/Library/Application Support/Hedra Studio/settings.json`
+- **Windows:** `%APPDATA%/Hedra Studio/settings.json`
 
 ### Telegram Feedback (cho dev)
 
@@ -214,8 +214,8 @@ Endpoint nhận `POST` JSON gồm `key`, `feature`, `app`, `version`, `device_id
 Push tag `v*` -> tự động build Mac + Windows -> upload lên Release.
 
 ```bash
-git tag v1.8.2
-git push origin v1.8.2
+git tag v1.8.3
+git push origin v1.8.3
 ```
 
 ---
@@ -246,18 +246,18 @@ Hedra-Studio/
 
 ---
 
-## 📝 Prompt mẫu
+## Prompt mẫu
 
 | File | Mô tả |
 |------|-------|
 | `prompt-elevenlabs-v3.md` | Prompt gốc cho ElevenLabs v3 - giọng Adam |
 | `prompt-chat-to-script.md` | Prompt cho Gemini chat → kịch bản |
 
-> 💡 **Tạo prompt riêng?** Tham khảo [ElevenLabs Docs](https://try.elevenlabs.io/rinor1xaj4ze) về tags, controls, và voice settings để custom prompt theo ý bạn.
+> **Tạo prompt riêng?** Tham khảo [ElevenLabs Docs](https://try.elevenlabs.io/rinor1xaj4ze) về tags, controls, và voice settings để custom prompt theo ý bạn.
 
 ---
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 Hedra Studio được thiết kế **minh bạch** — không có tracking, telemetry, hay hành vi ẩn.
 
@@ -270,6 +270,14 @@ Hedra Studio được thiết kế **minh bạch** — không có tracking, tele
 | `generativelanguage.googleapis.com` | Gemini chat → kịch bản | Khi bạn dùng Chat tab |
 | `api.telegram.org` | Gửi feedback đến dev | Chỉ khi bạn nhấn **Gửi phản hồi** |
 | `api.github.com` | Kiểm tra bản cập nhật | Khi khởi động app, 1 lần |
+
+### Release sạch
+
+Artifact chính thức nên được tải từ GitHub Releases. Mỗi release được build từ source bằng GitHub Actions và phải qua security audit trước khi upload:
+
+- source scan: chặn token/API key, `.env`, `settings.json`, output cá nhân;
+- artifact scan: chặn `telegram_config.py`, local path `/Users/admin`, file audio/video/output;
+- checksum SHA256 được phát hành kèm DMG/installer để người dùng đối chiếu.
 
 ### Auto-update
 
@@ -286,19 +294,21 @@ Script ghi log tại `/tmp/hedra_update.log` — bạn có thể kiểm tra bấ
 ### API Keys
 
 Keys được lưu trong file `settings.json` tại:
-- **macOS:** `~/Library/Application Support/TTSApp/settings.json`
-- **Windows:** `%APPDATA%/TTSApp/settings.json`
+- **macOS:** `~/Library/Application Support/Hedra Studio/settings.json`
+- **Windows:** `%APPDATA%/Hedra Studio/settings.json`
 
 **Không** được gửi đi đâu ngoài các API bạn đã cấu hình (ElevenLabs, DeepSeek, Gemini).
 
+Bản public không đọc settings cũ từ `TTSApp`, nên API key của máy dev/pro không tự xuất hiện trong app tải về.
+
 ### Những gì app KHÔNG làm
 
-- ❌ **Không** tracking, analytics, telemetry
-- ❌ **Không** gửi dữ liệu cá nhân ra ngoài
-- ❌ **Không** đọc file ngoài thư mục được chỉ định
-- ❌ **Không** chạy ngầm ẩn (chỉ chạy khi bạn mở)
-- ❌ **Không** ghi đè hay sửa file hệ thống
-- ❌ **Không** keylogger, không capture màn hình (trừ Gemini chat bạn tự kéo thả ảnh)
+- **Không** tracking, analytics, telemetry
+- **Không** gửi dữ liệu cá nhân ra ngoài
+- **Không** đọc file ngoài thư mục được chỉ định
+- **Không** chạy ngầm ẩn (chỉ chạy khi bạn mở)
+- **Không** ghi đè hay sửa file hệ thống
+- **Không** keylogger, không capture màn hình (trừ Gemini chat bạn tự kéo thả ảnh)
 
 ### Build từ source
 
@@ -306,7 +316,7 @@ Nếu bạn lo ngại về bảo mật, hoàn toàn có thể [build từ source
 
 ---
 
-## 📄 License
+## License
 
 Source được publish để người dùng kiểm tra/audit và dùng phi thương mại theo [PolyForm Noncommercial 1.0.0](LICENSE).
 

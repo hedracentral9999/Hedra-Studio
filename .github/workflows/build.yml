@@ -28,8 +28,17 @@ jobs:
         id: ver
         run: echo "VERSION=$(python3 -c 'from version import VERSION; print(VERSION)')" >> $GITHUB_OUTPUT
 
+      - name: Static checks
+        run: |
+          python3 -m py_compile app_utils.py main_window.py app_workers.py app_constants.py settings_dialog.py tts_app.py app_dialogs.py auto_video_workers.py app_icons.py version.py scripts/security_audit_release.py
+          git diff --check
+          python3 scripts/security_audit_release.py --source .
+
       - name: Build .app
         run: pyinstaller TTS.spec --clean --noconfirm
+
+      - name: Security audit app bundle
+        run: python3 scripts/security_audit_release.py --artifact "dist/Hedra Studio.app"
 
       - name: Install create-dmg
         run: brew install create-dmg
@@ -51,6 +60,9 @@ jobs:
         run: |
           hdiutil verify "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
           shasum -a 256 "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg" > SHA256SUMS-macOS.txt
+
+      - name: Security audit DMG
+        run: python3 scripts/security_audit_release.py --artifact "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-mac.dmg"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -82,6 +94,13 @@ jobs:
           $v = python -c "from version import VERSION; print(VERSION)"
           echo "VERSION=$v" >> $env:GITHUB_OUTPUT
 
+      - name: Static checks
+        shell: pwsh
+        run: |
+          python -m py_compile app_utils.py main_window.py app_workers.py app_constants.py settings_dialog.py tts_app.py app_dialogs.py auto_video_workers.py app_icons.py version.py scripts/security_audit_release.py
+          git diff --check
+          python scripts/security_audit_release.py --source .
+
       - name: Build .exe
         run: pyinstaller TTS.spec --clean --noconfirm
 
@@ -94,6 +113,10 @@ jobs:
             Write-Error "dist\Hedra Studio.exe NOT FOUND"; exit 1
           }
 
+      - name: Security audit portable EXE
+        shell: pwsh
+        run: python scripts/security_audit_release.py --artifact "dist\Hedra Studio.exe"
+
       - name: Create installer (Inno Setup)
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
@@ -105,6 +128,10 @@ jobs:
         run: |
           $file = "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"
           Get-FileHash -Algorithm SHA256 $file | ForEach-Object { "$($_.Hash.ToLower())  $file" } | Set-Content SHA256SUMS-Windows.txt
+
+      - name: Security audit installer
+        shell: pwsh
+        run: python scripts/security_audit_release.py --artifact "Hedra-Studio-${{ steps.ver.outputs.VERSION }}-win-setup.exe"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

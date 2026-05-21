@@ -20,6 +20,9 @@ fi
 VERSION=$("$PYTHON" -c "from version import VERSION; print(VERSION)")
 echo "📦 Version: $VERSION"
 
+echo "🛡️  Security audit source..."
+"$PYTHON" scripts/security_audit_release.py --source "$ROOT_DIR"
+
 # Build app
 echo "⚙️  PyInstaller đang build..."
 "$PYTHON" -m PyInstaller TTS.spec --clean --noconfirm
@@ -29,6 +32,11 @@ if [ ! -d "dist/Hedra Studio.app" ]; then
     echo "❌ Build thất bại — không tìm thấy dist/Hedra Studio.app"
     exit 1
 fi
+
+echo "🛡️  Security audit app bundle..."
+"$PYTHON" scripts/security_audit_release.py \
+    --artifact "dist/Hedra Studio.app" \
+    --exact-local
 
 # Cài create-dmg nếu chưa có
 if ! command -v create-dmg &> /dev/null; then
@@ -57,6 +65,11 @@ create-dmg \
 echo "🔎 Verify DMG..."
 hdiutil verify "$DMG_NAME"
 shasum -a 256 "$DMG_NAME" > SHA256SUMS-macOS.txt
+
+echo "🛡️  Security audit DMG..."
+"$PYTHON" scripts/security_audit_release.py \
+    --artifact "$DMG_NAME" \
+    --exact-local
 
 echo ""
 echo "✅ Xong! File: $DMG_NAME"

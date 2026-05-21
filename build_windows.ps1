@@ -13,8 +13,14 @@ if (-not (Test-Path "venv")) {
 & .\venv\Scripts\python.exe -m pip install --upgrade pip
 & .\venv\Scripts\python.exe -m pip install -r requirements_build.txt
 
+Write-Host "Security audit source..."
+& .\venv\Scripts\python.exe scripts\security_audit_release.py --source .
+
 Write-Host "Building portable EXE..."
 & .\venv\Scripts\pyinstaller.exe TTS.spec --clean --noconfirm
+
+Write-Host "Security audit portable EXE..."
+& .\venv\Scripts\python.exe scripts\security_audit_release.py --artifact "dist\Hedra Studio.exe" --exact-local
 
 if ($SkipInstaller) {
     Write-Host "Portable EXE: dist\Hedra Studio.exe"
@@ -43,4 +49,9 @@ if (-not $iscc) {
 
 Write-Host "Building installer..."
 & $iscc.Source setup.iss
+Write-Host "Security audit installer..."
+$installer = Get-ChildItem -Path . -Filter "Hedra-Studio-*-win-setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($installer) {
+    & .\venv\Scripts\python.exe scripts\security_audit_release.py --artifact $installer.FullName --exact-local
+}
 Write-Host "Installer: Hedra-Studio-*-win-setup.exe"

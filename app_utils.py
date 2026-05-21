@@ -39,16 +39,30 @@ def _load_telegram_config() -> tuple[str, str]:
 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = _load_telegram_config()
 
 
+APP_DATA_NAME = "Hedra Studio"
+LEGACY_APP_DATA_NAME = "TTSApp"
+
+
 # ── Data directory (persists across updates) ───────────────────────
-def get_data_dir() -> Path:
+def _platform_data_dir(app_name: str, create: bool = True) -> Path:
     if sys.platform == "darwin":
-        d = Path.home() / "Library" / "Application Support" / "TTSApp"
+        d = Path.home() / "Library" / "Application Support" / app_name
     elif sys.platform == "win32":
-        d = Path(os.environ.get("APPDATA", str(Path.home()))) / "TTSApp"
+        d = Path(os.environ.get("APPDATA", str(Path.home()))) / app_name
     else:
-        d = Path.home() / ".tts_app"
-    d.mkdir(parents=True, exist_ok=True)
+        d = Path.home() / f".{app_name.lower().replace(' ', '_')}"
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def get_data_dir() -> Path:
+    return _platform_data_dir(APP_DATA_NAME, create=True)
+
+
+def get_legacy_data_dir() -> Path:
+    return _platform_data_dir(LEGACY_APP_DATA_NAME, create=False)
+
 
 DATA_DIR      = get_data_dir()
 SETTINGS_FILE = str(DATA_DIR / "settings.json")
@@ -267,64 +281,7 @@ def _install_exception_hook():
 
 
 # ── Settings helpers ───────────────────────────────────────────────
-def load_settings() -> dict:
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, encoding="utf-8") as f:
-                s = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            # File corrupt — backup và trả về defaults
-            backup = SETTINGS_FILE + ".corrupt.bak"
-            try:
-                os.rename(SETTINGS_FILE, backup)
-            except Exception:
-                pass
-            print(f"[WARN] settings.json corrupt ({e}), reset to defaults")
-            s = {}
-        # Migration: el_api_key → el_api_keys
-        if "el_api_key" in s and "el_api_keys" not in s:
-            s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
-        # Backfill tất cả key có thể thiếu từ phiên bản cũ
-        _DEFAULTS = {
-            "el_api_keys":              [],
-            "genmax_api_key":           "",
-            "ds_api_key":               "",
-            "gemini_api_key":           "",
-            "gemini_chat_prompt":       "",
-            "chat_pronoun_mode":        "auto",
-            "telegram_bot_token":       "",
-            "telegram_chat_id":         "",
-            "output_dir":               DEFAULT_OUT,
-            "enhance_prompt":           DEFAULT_PROMPT,
-            "default_speed":            1.0,
-            "selected_voice_id":        "",
-            "selected_voice_name":      "Adam",
-            "shared_voice_enabled":     False,
-            "av_voice_presets":         {},
-            "custom_styles":            [],
-            "prompt_preset_overrides":  {},
-            "enhance_style_name":       "Nghiêm túc",
-            "enhance_style_temperature": 0.3,
-            "enhance_style_creative":   False,
-            "language_code":            "vi",
-            "tts_language_code":        "vi",
-            "favorite_voice_ids":       [],
-            "favorite_voices":          [],   # [{id, name, lang}] — dùng chung cho tất cả tools
-            "tts_voice_id":             "",   # voice riêng cho TTS tab
-            "tts_voice_name":           "",
-            "av_voice_id":              "",   # voice riêng cho Auto Video tab
-            "av_voice_name":            "",
-            "av_language_code":         "vi",
-            "app_theme":                "system",
-            "auto_video_engine_dir":     "",
-            "auto_video_license_key":     "",
-            "pro_license_key":            "",
-            "pro_license_cache":          {},
-        }
-        for key, default in _DEFAULTS.items():
-            if key not in s:
-                s[key] = default
-        return s
+def _default_settings() -> dict:
     return {
         "el_api_keys":              [],
         "genmax_api_key":           "",
@@ -361,6 +318,102 @@ def load_settings() -> dict:
         "pro_license_key":            "",
         "pro_license_cache":          {},
     }
+
+
+_SAFE_LEGACY_MIGRATION_KEYS = {
+    "app_theme",
+    "output_dir",
+    "default_speed",
+    "selected_voice_id",
+    "selected_voice_name",
+    "shared_voice_enabled",
+    "enhance_style_name",
+    "enhance_style_temperature",
+    "enhance_style_creative",
+    "language_code",
+    "tts_language_code",
+    "favorite_voice_ids",
+    "favorite_voices",
+    "tts_voice_id",
+    "tts_voice_name",
+}
+
+
+def _read_settings_file(path: str | Path) -> dict:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return data if isinstance(data, dict) else {}
+
+
+def _sanitize_legacy_value(key: str, value):
+    if key == "favorite_voices" and isinstance(value, list):
+        cleaned = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            cleaned.append({
+                "id": str(item.get("id", "") or ""),
+                "name": str(item.get("name", "") or ""),
+                "lang": str(item.get("lang", item.get("language", "")) or ""),
+                "langs": item.get("langs", []) if isinstance(item.get("langs", []), list) else [],
+            })
+        return cleaned
+    if key == "favorite_voice_ids" and isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, (str, int, float, bool, list, dict)) or value is None:
+        return value
+    return None
+
+
+def _backfill_settings(s: dict) -> dict:
+    defaults = _default_settings()
+    if "el_api_key" in s and "el_api_keys" not in s:
+        s["el_api_keys"] = [s.pop("el_api_key")] if s["el_api_key"] else []
+    for key, default in defaults.items():
+        if key not in s:
+            s[key] = default
+    return s
+
+
+def _migrate_legacy_non_secret_settings() -> dict:
+    settings = _default_settings()
+    legacy_file = get_legacy_data_dir() / "settings.json"
+    if not legacy_file.exists():
+        return settings
+    try:
+        legacy = _read_settings_file(legacy_file)
+    except Exception as e:
+        print(f"[WARN] legacy settings migration skipped ({e})")
+        return settings
+    for key in _SAFE_LEGACY_MIGRATION_KEYS:
+        if key in legacy:
+            migrated = _sanitize_legacy_value(key, legacy[key])
+            if migrated is not None:
+                settings[key] = migrated
+    try:
+        save_settings(settings)
+        print(f"[INFO] migrated non-secret preferences from {legacy_file} to {SETTINGS_FILE}")
+    except Exception as e:
+        print(f"[WARN] cannot write migrated settings ({e})")
+    return settings
+
+
+def load_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            s = _read_settings_file(SETTINGS_FILE)
+        except (json.JSONDecodeError, IOError) as e:
+            # File corrupt — backup và trả về defaults
+            backup = SETTINGS_FILE + ".corrupt.bak"
+            try:
+                os.rename(SETTINGS_FILE, backup)
+            except Exception:
+                pass
+            print(f"[WARN] settings.json corrupt ({e}), reset to defaults")
+            s = {}
+        return _backfill_settings(s)
+    return _migrate_legacy_non_secret_settings()
+
 
 def save_settings(s: dict):
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
