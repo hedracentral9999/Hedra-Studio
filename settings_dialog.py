@@ -16,6 +16,7 @@ import requests
 from app_utils import (
     DEFAULT_OUT, DATA_DIR, ERROR_LOG, SETTINGS_FILE,
     get_auto_video_assets_dir, get_auto_video_env_local, load_settings, save_settings,
+    is_auto_video_unlocked,
 )
 
 # ── .env.local helpers (Auto-Create-Video pipeline config) ───────────────────
@@ -29,6 +30,10 @@ def _env_local_path() -> Path:
 
 def _engine_assets_dir() -> Path:
     return get_auto_video_assets_dir(load_settings())
+
+
+def _auto_video_env_enabled(settings: dict | None = None) -> bool:
+    return is_auto_video_unlocked(settings or load_settings())
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
 _EL_V3_STYLE_RULES = (
@@ -131,6 +136,8 @@ def _backup_engine_logo_assets() -> Path | None:
 def _read_env_local() -> dict:
     """Đọc .env.local thành dict key→value. Comment và dòng trống bị bỏ qua."""
     out: dict = {}
+    if not _auto_video_env_enabled():
+        return out
     env_local = _env_local_path()
     if not env_local.exists():
         return out
@@ -146,6 +153,8 @@ def _read_env_local() -> dict:
 def _write_env_local(updates: dict) -> None:
     """Ghi updates vào .env.local — giữ nguyên comments, thứ tự, dòng trống.
     Nếu key chưa tồn tại trong file thì append vào cuối (không tạo section mới)."""
+    if not _auto_video_env_enabled():
+        return
     env_local = _env_local_path()
     env_local.parent.mkdir(parents=True, exist_ok=True)
     lines = (

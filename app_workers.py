@@ -15,13 +15,15 @@ from app_constants import (
     VERSION, GITHUB_REPO, VOICE_ID, MODEL, EL_OUTPUT_FORMAT,
     GEMINI_CHAT_PROMPT,
 )
-from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local
+from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local, is_auto_video_unlocked, load_settings
 
 _ENGINE_ENV_LOCAL = get_auto_video_env_local()
 
 def _read_pipeline_env() -> dict:
     out: dict[str, str] = {}
     try:
+        if not is_auto_video_unlocked(load_settings()):
+            return out
         if not _ENGINE_ENV_LOCAL.exists():
             return out
         for line in _ENGINE_ENV_LOCAL.read_text(encoding="utf-8").splitlines():

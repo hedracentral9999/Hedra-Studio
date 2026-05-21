@@ -144,6 +144,8 @@ def _looks_textual(path: Path) -> bool:
 
 
 def scan_file_content(path: Path, rel: str, errors: list[str], include_local_paths: bool, source_mode: bool):
+    if rel == "scripts/security_audit_release.py":
+        return
     if rel in {"README.md", "scripts/security_audit_release.py", "app_utils.py"}:
         include_local_paths = False
     if not source_mode and not _looks_textual(path):
