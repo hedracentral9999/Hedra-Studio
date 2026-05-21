@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import importlib
+
 import requests
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -16,18 +18,25 @@ from app_constants import DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY
 from version import LICENSE_VERIFY_URL, VERSION
 
 # ── Telegram feedback config ──────────────────────────────────────────
-# Ưu tiên: telegram_config.py > biến môi trường > mặc định rỗng
-# Tạo file telegram_config.py (đã trong .gitignore) với nội dung:
-#   TELEGRAM_BOT_TOKEN = "your_bot_token"
-#   TELEGRAM_CHAT_ID   = "your_chat_id"
-# Hoặc set biến môi trường: ELEVENLABS_TELEGRAM_BOT_TOKEN, ELEVENLABS_TELEGRAM_CHAT_ID
-try:
-    from telegram_config import TELEGRAM_BOT_TOKEN as _TG_BOT, TELEGRAM_CHAT_ID as _TG_CHAT
-    TELEGRAM_BOT_TOKEN = _TG_BOT
-    TELEGRAM_CHAT_ID = _TG_CHAT
-except (ImportError, ModuleNotFoundError):
-    TELEGRAM_BOT_TOKEN = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
-    TELEGRAM_CHAT_ID = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
+# Packaged releases must never bundle local developer credentials.
+# In a frozen app, only environment variables are honored. Source/dev runs can
+# still use an ignored telegram_config.py file for local testing.
+def _load_telegram_config() -> tuple[str, str]:
+    env_token = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
+    env_chat = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
+    if getattr(sys, "frozen", False):
+        return env_token, env_chat
+    try:
+        cfg = importlib.import_module("telegram_config")
+        return (
+            str(getattr(cfg, "TELEGRAM_BOT_TOKEN", env_token) or ""),
+            str(getattr(cfg, "TELEGRAM_CHAT_ID", env_chat) or ""),
+        )
+    except Exception:
+        return env_token, env_chat
+
+
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID = _load_telegram_config()
 
 
 # ── Data directory (persists across updates) ───────────────────────

@@ -28,7 +28,7 @@ from app_constants import (
 from app_utils import (
     DATA_DIR, DEFAULT_OUT,
     get_auto_video_env_local, is_auto_video_unlocked, is_chat_script_unlocked, load_settings, reveal_file, save_settings,
-    validate_pro_license_key,
+    validate_pro_license_key, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
 )
 from app_workers import (
     Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker,
@@ -74,15 +74,6 @@ _ELEVENLABS_LANGS = [
     ("Türkçe",           "tr"),
     ("Українська",       "uk"),
 ]
-
-# ── Telegram config ────────────────────────────────────────────────
-try:
-    from telegram_config import TELEGRAM_BOT_TOKEN as _TG_BOT, TELEGRAM_CHAT_ID as _TG_CHAT
-    TELEGRAM_BOT_TOKEN = _TG_BOT
-    TELEGRAM_CHAT_ID = _TG_CHAT
-except ImportError:
-    TELEGRAM_BOT_TOKEN = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
-    TELEGRAM_CHAT_ID = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
 
 # ── Apple-style popup combo (frameless, rounded, no dark native border) ───
 class _ApplePopupCombo(QComboBox):
