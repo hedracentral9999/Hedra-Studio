@@ -1769,21 +1769,17 @@ class SettingsDialog(QDialog):
         self._row(glay_ai, "① Claude", _field_row(self.claude_key, None),
                   "Chủ đạo — enhance & viết kịch bản (khuyến nghị).")
 
+        self.gemini_key = _line_key(api_values["gemini"], "AIza...")
+        self._pv_script_gemini_key = self.gemini_key
+        self._row(glay_ai, "② Gemini", _field_row(self.gemini_key, "gemini"),
+                  "Fallback miễn phí — TTS Enhance, STT và gợi ý prompt.")
+
         self.ds_key = _line_key(api_values["deepseek"], "sk-...")
         self._pv_deepseek_key = self.ds_key
-        self._row(glay_ai, "② DeepSeek", _field_row(self.ds_key, "deepseek"),
+        self._row(glay_ai, "③ DeepSeek", _field_row(self.ds_key, "deepseek"),
                   "Fallback tự động khi Claude lỗi.", last=True)
 
         v.addWidget(grp_ai)
-
-        # Gemini — dùng riêng cho thumbnail / chat
-        _coll_gem, _coll_gem_inner = self._add_collapsible(v, "AI bổ sung (Thumbnail & Chat)")
-        grp_gem_extra, glay_gem_extra = self._group()
-        self.gemini_key = _line_key(api_values["gemini"], "AIza...")
-        self._pv_script_gemini_key = self.gemini_key
-        self._row(glay_gem_extra, "Gemini", _field_row(self.gemini_key, "gemini"),
-                  "Phân tích thumbnail, Chat AI. Miễn phí.", last=True)
-        _coll_gem_inner.addWidget(grp_gem_extra)
 
         # ── NHÓM 3: Thông báo ───────────────────────────────────────
         v.addWidget(self._section_label_with_icon("message", "Thông báo"))
@@ -4044,11 +4040,11 @@ class SettingsDialog(QDialog):
         grp_gem_script, glay_gem_script = self._group()
         page_gem_lay.addWidget(grp_gem_script)
         self._pv_gemini_text_model = _lineedit(
-            env.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash"),
-            "gemini-2.5-flash",
+            env.get("GEMINI_TEXT_MODEL", self.settings.get("gemini_text_model", "auto") or "auto"),
+            "auto",
         )
         self._row(glay_gem_script, "Gemini model", self._pv_gemini_text_model,
-                  "Mặc định gemini-2.5-flash.", last=True)
+                  "Để auto để app tự chọn model khả dụng từ Gemini API.", last=True)
 
         page_claude = _provider_page()
         page_claude_lay = page_claude.layout()
@@ -5452,6 +5448,8 @@ class SettingsDialog(QDialog):
         self.settings["genmax_api_key"]     = pipeline_gm_key
         self.settings["ds_api_key"]         = pipeline_ds_key or self.ds_key.text().strip()
         self.settings["gemini_api_key"]     = pipeline_gemini_key or self.gemini_key.text().strip()
+        self.settings["gemini_text_model"]  = getattr(self, "_pv_gemini_text_model", _NullEdit()).text().strip() or "auto"
+        self.settings["gemini_stt_model"]   = self.settings.get("gemini_stt_model", "auto") or "auto"
         self.settings["claude_api_key"]     = pipeline_claude_key or getattr(self, "claude_key", _NullEdit()).text().strip()
         self.settings["claude_model"]       = (
             pipeline_claude_model
@@ -5558,7 +5556,7 @@ class SettingsDialog(QDialog):
                                        if hasattr(getattr(self, "_pv_auto_caption_style", None), "currentText") else "capcut_pop",
                 "DEEPSEEK_API_KEY":    pipeline_ds_key,
                 "GEMINI_API_KEY":      pipeline_gemini_key,
-                "GEMINI_TEXT_MODEL":   getattr(self, "_pv_gemini_text_model", _NullEdit()).text().strip() or "gemini-2.5-flash",
+                "GEMINI_TEXT_MODEL":   getattr(self, "_pv_gemini_text_model", _NullEdit()).text().strip() or "auto",
                 "CLAUDE_API_KEY":      pipeline_claude_key,
                 "CLAUDE_MODEL":        pipeline_claude_model or RECOMMENDED_CLAUDE_MODEL,
             })

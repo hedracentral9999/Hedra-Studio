@@ -287,6 +287,8 @@ def _default_settings() -> dict:
         "genmax_api_key":           "",
         "ds_api_key":               "",
         "gemini_api_key":           "",
+        "gemini_text_model":        "auto",
+        "gemini_stt_model":         "auto",
         "gemini_chat_prompt":       "",
         "chat_pronoun_mode":        "auto",
         "telegram_bot_token":       "",
@@ -336,6 +338,8 @@ _SAFE_LEGACY_MIGRATION_KEYS = {
     "favorite_voices",
     "tts_voice_id",
     "tts_voice_name",
+    "gemini_text_model",
+    "gemini_stt_model",
 }
 
 

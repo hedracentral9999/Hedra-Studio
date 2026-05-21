@@ -4,6 +4,7 @@ import re
 import json
 import time
 import base64
+import mimetypes
 import requests
 
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QUrl
@@ -18,6 +19,9 @@ from app_constants import (
 from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local, is_auto_video_unlocked, load_settings
 
 _ENGINE_ENV_LOCAL = get_auto_video_env_local()
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_AUTO_MODEL_VALUES = {"", "auto", "tự động", "automatic"}
+_GEMINI_MODEL_CACHE: dict[str, tuple[float, list[str]]] = {}
 
 def _read_pipeline_env() -> dict:
     out: dict[str, str] = {}
@@ -34,6 +38,139 @@ def _read_pipeline_env() -> dict:
             out[key.strip()] = value.strip()
     except Exception:
         return {}
+    return out
+
+
+def _normalise_gemini_model(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if raw.lower() in GEMINI_AUTO_MODEL_VALUES:
+        return ""
+    return raw.removeprefix("models/")
+
+
+def _list_gemini_models(api_key: str) -> list[str]:
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return []
+    cached = _GEMINI_MODEL_CACHE.get(api_key)
+    now = time.time()
+    if cached and now - cached[0] < 3600:
+        return cached[1]
+    res = requests.get(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        params={"key": api_key},
+        timeout=12,
+    )
+    if res.status_code != 200:
+        return []
+    models: list[str] = []
+    for item in res.json().get("models", []):
+        name = str(item.get("name", "")).removeprefix("models/").strip()
+        methods = {str(m) for m in item.get("supportedGenerationMethods", [])}
+        if name and "generateContent" in methods:
+            lowered = name.lower()
+            if not any(skip in lowered for skip in ("embedding", "imagen", "image", "veo", "tts", "aqa")):
+                models.append(name)
+    _GEMINI_MODEL_CACHE[api_key] = (now, models)
+    return models
+
+
+def _choose_gemini_model(api_key: str, preferred: str | None = "", task: str = "text") -> str:
+    preferred = _normalise_gemini_model(preferred)
+    if preferred:
+        return preferred
+    models = _list_gemini_models(api_key)
+    if not models:
+        return GEMINI_DEFAULT_MODEL
+    preferred_order = [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+    ]
+    lowered_map = {m.lower(): m for m in models}
+    for wanted in preferred_order:
+        if wanted in lowered_map:
+            return lowered_map[wanted]
+    for wanted in preferred_order:
+        for model in models:
+            if model.lower().startswith(wanted):
+                return model
+    flash = [m for m in models if "flash" in m.lower()]
+    return flash[0] if flash else models[0]
+
+
+def _extract_gemini_text(data: dict) -> str:
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise Exception("Gemini không trả về kết quả")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "\n".join(str(part.get("text", "")) for part in parts if part.get("text"))
+    if not text.strip():
+        raise Exception("Gemini trả về rỗng")
+    return text.strip()
+
+
+def _call_gemini_generate(
+    api_key: str,
+    parts: list[dict],
+    *,
+    system_prompt: str = "",
+    temperature: float = 0.3,
+    max_tokens: int = 2000,
+    preferred_model: str | None = "",
+    task: str = "text",
+    timeout: int = 60,
+) -> tuple[str, str]:
+    model = _choose_gemini_model(api_key, preferred_model, task=task)
+    payload: dict = {
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "temperature": float(temperature or 0),
+            "maxOutputTokens": int(max_tokens or 2000),
+        },
+    }
+    if system_prompt:
+        payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+    res = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+        headers={"Content-Type": "application/json"},
+        json=payload,
+        timeout=timeout,
+    )
+    if res.status_code == 503:
+        time.sleep(2)
+        res = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=timeout,
+        )
+    if res.status_code != 200:
+        raise Exception(f"Gemini {res.status_code}: {res.text[:240]}")
+    return _extract_gemini_text(res.json()), model
+
+
+def _strip_code_fences(text: str) -> str:
+    stripped = (text or "").strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json|text)?\s*", "", stripped, flags=re.I)
+        stripped = re.sub(r"\s*```$", "", stripped)
+    return stripped.strip()
+
+
+def _estimated_words_from_text(text: str) -> list[dict]:
+    words = re.findall(r"\S+", text or "")
+    out: list[dict] = []
+    cursor = 0.0
+    for word in words:
+        duration = max(0.18, min(0.7, len(word) / 13.0))
+        start = cursor
+        end = cursor + duration
+        out.append({"text": word, "start": start, "end": end, "type": "word"})
+        cursor = end
+        out.append({"text": " ", "start": cursor, "end": cursor + 0.04, "type": "spacing"})
+        cursor += 0.04
     return out
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
@@ -320,21 +457,20 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                     return
             if self.gemini_key:
                 full_prompt = f"{self._META_PROMPT}\n\nTạo prompt cho phong cách: {self.description}"
-                res = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"gemini-2.5-flash:generateContent?key={self.gemini_key}",
-                    headers={"Content-Type": "application/json"},
-                    json={"contents": [{"parts": [{"text": full_prompt}]}]},
-                    timeout=60,
-                )
-                if res.status_code == 200:
-                    candidates = res.json().get("candidates", [])
-                    if candidates:
-                        prompt = candidates[0]["content"]["parts"][0]["text"].strip()
-                        self.done.emit(self._ensure_required_user_terms(prompt))
-                        return
+                try:
+                    prompt, _model = _call_gemini_generate(
+                        self.gemini_key,
+                        [{"text": full_prompt}],
+                        max_tokens=1800,
+                        preferred_model="auto",
+                        timeout=60,
+                    )
+                    self.done.emit(self._ensure_required_user_terms(prompt))
+                    return
+                except Exception:
+                    pass  # fallback to DeepSeek
             if not self.api_key:
-                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude hoặc DeepSeek")
+                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude, Gemini hoặc DeepSeek")
                 return
             res = requests.post(
                 "https://api.deepseek.com/chat/completions",
@@ -425,24 +561,20 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
                         pass  # fallback to Gemini/DeepSeek
             if self.gemini_key:
                 full_prompt = f"{self._SYSTEM}\n\nMô tả: {self.description}"
-                res = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"gemini-2.5-flash:generateContent?key={self.gemini_key}",
-                    headers={"Content-Type": "application/json"},
-                    json={"contents": [{"parts": [{"text": full_prompt}]}]},
-                    timeout=30,
-                )
-                if res.status_code == 200:
-                    candidates = res.json().get("candidates", [])
-                    if candidates:
-                        raw = candidates[0]["content"]["parts"][0]["text"].strip()
-                        try:
-                            self.done.emit(self._parse_json(raw))
-                            return
-                        except json.JSONDecodeError:
-                            pass  # fallback to DeepSeek
+                try:
+                    raw, _model = _call_gemini_generate(
+                        self.gemini_key,
+                        [{"text": full_prompt}],
+                        max_tokens=600,
+                        preferred_model="auto",
+                        timeout=30,
+                    )
+                    self.done.emit(self._parse_json(raw))
+                    return
+                except Exception:
+                    pass  # fallback to DeepSeek
             if not self.api_key:
-                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude hoặc DeepSeek")
+                self.error.emit("⚠️ Chưa có AI key — vào Settings → API → thêm Claude, Gemini hoặc DeepSeek")
                 return
             res = requests.post(
                 "https://api.deepseek.com/chat/completions",
@@ -669,13 +801,15 @@ class Worker(QThread):
 
     def _enhance(self, text: str) -> str:
         claude_key = self.s.get("claude_api_key", "").strip()
+        gemini_key = self.s.get("gemini_api_key", "").strip()
         ds_key     = self.s.get("ds_api_key", "").strip()
-        if not claude_key and not ds_key:
+        if not claude_key and not gemini_key and not ds_key:
             raise Exception(
                 "⚠️ Chưa có AI key để enhance kịch bản.\n"
                 "📌 Vào Settings → API:\n"
                 "  • Claude API Key (khuyến nghị — chất lượng cao)\n"
-                "  • DeepSeek API Key (fallback)"
+                "  • Gemini API Key (free tier — fallback)\n"
+                "  • DeepSeek API Key (fallback cuối)"
             )
         temperature = self.s.get(
             "enhance_style_temperature",
@@ -690,8 +824,10 @@ class Worker(QThread):
             + DIALOGUE_ROLE_LOCK
         )
         claude_model  = self.s.get("claude_model", "claude-sonnet-4-6")
+        gemini_model = self.s.get("gemini_text_model", "auto")
+        errors: list[str] = []
 
-        # ── Ưu tiên Claude → fallback DeepSeek ─
+        # ── Ưu tiên Claude → Gemini free tier → DeepSeek ─
         if claude_key:
             res = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -711,9 +847,30 @@ class Worker(QThread):
             )
             if res.status_code == 200:
                 return res.json()["content"][0]["text"].strip()
-            if not ds_key:
+            errors.append(f"Claude {res.status_code}: {res.text[:200]}")
+            if not gemini_key and not ds_key:
                 raise Exception(f"Claude {res.status_code}: {res.text[:200]}")
-            self.status.emit("⚠️ Claude lỗi — thử DeepSeek...")
+            self.status.emit("⚠️ Claude lỗi — thử Gemini..." if gemini_key else "⚠️ Claude lỗi — thử DeepSeek...")
+
+        if gemini_key:
+            try:
+                result, model = _call_gemini_generate(
+                    gemini_key,
+                    [{"text": text}],
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=2000,
+                    preferred_model=gemini_model,
+                    task="text",
+                    timeout=60,
+                )
+                self.status.emit(f"Gemini đã xử lý ({model})")
+                return result.strip()
+            except Exception as e:
+                errors.append(str(e))
+                if not ds_key:
+                    raise Exception(str(e))
+                self.status.emit("⚠️ Gemini lỗi — thử DeepSeek...")
 
         # ── DeepSeek fallback ─
         res = requests.post(
@@ -733,7 +890,8 @@ class Worker(QThread):
         )
         if res.status_code == 200:
             return res.json()["choices"][0]["message"]["content"].strip()
-        raise Exception(f"DeepSeek {res.status_code}: {res.text[:200]}")
+        errors.append(f"DeepSeek {res.status_code}: {res.text[:200]}")
+        raise Exception("Tất cả AI enhance đều lỗi:\n" + "\n".join(errors))
 
     def _tts(self, text: str) -> bytes:
         env = _read_pipeline_env()
@@ -1245,36 +1403,92 @@ class FeedbackSender(QThread):
 
 # ── Speech-to-Text Worker ──────────────────────────────────────────
 class SpeechToTextWorker(QThread):
-    """Gọi GenMax STT API để chuyển audio → text + timestamps."""
+    """Gọi GenMax STT, fallback Gemini nếu GenMax lỗi hoặc thiếu key."""
     done   = pyqtSignal(str, list)  # (full_text, words)
     status = pyqtSignal(str)
     error  = pyqtSignal(str)
 
-    def __init__(self, file_path: str, genmax_key: str):
+    def __init__(self, file_path: str, genmax_key: str, gemini_key: str = "", settings: dict | None = None):
         super().__init__()
         self.file_path  = file_path
         self.genmax_key = genmax_key
+        self.gemini_key = (gemini_key or "").strip()
+        self.settings = settings or {}
 
     def run(self):
+        errors: list[str] = []
         try:
-            self.status.emit("Đang upload audio...")
-            with open(self.file_path, "rb") as f:
-                r = requests.post(
-                    "https://api.genmax.io/v1/speech-to-text",
-                    headers={"xi-api-key": self.genmax_key},
-                    files={"file": f},
-                    data={"model_id": "scribe_v1"},
-                    timeout=120,
-                )
-            if r.status_code != 200:
-                self.error.emit(f"GenMax STT lỗi {r.status_code}: {r.text[:200]}")
+            if self.genmax_key:
+                try:
+                    self.status.emit("Đang upload audio lên GenMax...")
+                    with open(self.file_path, "rb") as f:
+                        r = requests.post(
+                            "https://api.genmax.io/v1/speech-to-text",
+                            headers={"xi-api-key": self.genmax_key},
+                            files={"file": f},
+                            data={"model_id": "scribe_v1"},
+                            timeout=120,
+                        )
+                    if r.status_code == 200:
+                        data = r.json()
+                        text = data.get("text", "")
+                        words = data.get("words", [])
+                        self.done.emit(text, words)
+                        return
+                    errors.append(f"GenMax STT {r.status_code}: {r.text[:200]}")
+                except Exception as e:
+                    errors.append(f"GenMax STT: {e}")
+
+            if self.gemini_key:
+                if errors:
+                    self.status.emit("GenMax lỗi — thử Gemini fallback...")
+                else:
+                    self.status.emit("Đang nhận diện với Gemini...")
+                text = self._stt_gemini()
+                self.done.emit(text, _estimated_words_from_text(text))
                 return
-            data = r.json()
-            text  = data.get("text", "")
-            words = data.get("words", [])
-            self.done.emit(text, words)
+
+            if not errors:
+                self.error.emit("Thiếu STT key: thêm GenMax hoặc Gemini API Key trong Settings → API.")
+            else:
+                self.error.emit("\n".join(errors))
         except Exception as e:
             self.error.emit(str(e))
+
+    def _stt_gemini(self) -> str:
+        mime = mimetypes.guess_type(self.file_path)[0] or "audio/mpeg"
+        with open(self.file_path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        prompt = (
+            "Bạn là hệ thống Speech-to-Text. Hãy nghe audio và chép lại thành văn bản thuần.\n"
+            "Ưu tiên đúng ngôn ngữ gốc, giữ dấu tiếng Việt, sửa lỗi nghe rõ ràng.\n"
+            "Trả về JSON hợp lệ, không markdown, đúng dạng: {\"text\":\"...\"}"
+        )
+        raw, model = _call_gemini_generate(
+            self.gemini_key,
+            [
+                {"text": prompt},
+                {"inline_data": {"mime_type": mime, "data": data}},
+            ],
+            temperature=0.0,
+            max_tokens=4000,
+            preferred_model=self.settings.get("gemini_stt_model", "auto"),
+            task="stt",
+            timeout=180,
+        )
+        self.status.emit(f"Gemini đã nhận diện ({model})")
+        cleaned = _strip_code_fences(raw)
+        try:
+            parsed = json.loads(cleaned)
+            text = str(parsed.get("text", "")).strip()
+            if text:
+                return text
+        except Exception:
+            pass
+        text = cleaned.strip()
+        if not text:
+            raise Exception("Gemini STT trả về rỗng")
+        return text
 
 
 def words_to_srt(words: list) -> str:

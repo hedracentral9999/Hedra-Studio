@@ -1493,13 +1493,18 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Chưa có file", "Kéo thả file audio vào trước nhé!")
             return
         gm_key = self.settings.get("genmax_api_key", "").strip()
-        if not gm_key:
-            QMessageBox.warning(self, "Thiếu GenMax API Key",
-                                "Cần GenMax API Key để dùng Speech-to-Text.\nVào Settings → API để thêm.")
+        gemini_key = self.settings.get("gemini_api_key", "").strip()
+        if not gm_key and not gemini_key:
+            QMessageBox.warning(
+                self,
+                "Thiếu STT API Key",
+                "Cần GenMax hoặc Gemini API Key để dùng Speech-to-Text.\n"
+                "Vào Settings → API để thêm.",
+            )
             return
         self._stt_btn.setEnabled(False)
         self._stt_status.setText("Đang nhận diện...")
-        self._stt_worker = SpeechToTextWorker(self._stt_path, gm_key)
+        self._stt_worker = SpeechToTextWorker(self._stt_path, gm_key, gemini_key, self.settings)
         self._stt_worker.status.connect(self._stt_status.setText)
         self._stt_worker.done.connect(self._on_stt_done)
         self._stt_worker.error.connect(self._on_stt_error)
@@ -2753,11 +2758,17 @@ rm -f "$DMG" 2>/dev/null
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
-        has_ai = bool(self.settings.get("ds_api_key") or self.settings.get("gemini_api_key"))
+        has_ai = bool(
+            self.settings.get("claude_api_key")
+            or self.settings.get("gemini_api_key")
+            or self.settings.get("ds_api_key")
+        )
         if not has_ai:
             QMessageBox.warning(self, "Thiếu AI Key",
                                 "Cần API key AI để xử lý kịch bản:\n\n"
-                                "Gemini API Key (miễn phí — khuyến nghị)\n"
+                                "Claude API Key (khuyến nghị)\n"
+                                "   hoặc\n"
+                                "Gemini API Key (miễn phí — fallback)\n"
                                 "   hoặc\n"
                                 "DeepSeek API Key\n\n"
                                 "Vào Settings → API để thêm.")
