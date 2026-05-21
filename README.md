@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.4-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/🎙_Hedra_Studio-v1.4.4-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.8.1-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/Hedra_Studio-v1.8.1-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
@@ -19,28 +19,28 @@
 
 ---
 
-## ✨ Tính năng
+## Tính năng
 
 | Tính năng | Mô tả |
 |-----------|-------|
-| **🎙 TTS** | Tạo audio, nghe lại trong app, mở file và xuất SRT |
-| **📝 STT** | Chuyển audio thành text/SRT |
-| **🤖 TTS Enhance** | Tối ưu văn bản trước khi TTS: sửa chính tả, mở rộng viết tắt, thêm tags |
-| **💬 Kịch bản** | Tính năng Pro: chụp ảnh chat Zalo → Gemini phân tích → xuất kịch bản TTS |
-| **🎬 Auto Video** | Tính năng Pro: link/text → script → TTS → render video |
-| **🎭 2 phong cách Built-in** | `🎯 Nghiêm túc` (temp 0.3) và `😄 Hài hước` (temp 0.7) |
-| **➕ Style Wizard** | AI hỗ trợ tạo style tuỳ chỉnh với 7 câu hỏi |
-| **🌐 Đa ngôn ngữ** | Hỗ trợ 60+ ngôn ngữ — dropdown chọn nhanh + tự động |
-| **🎤 Shared Voice Library** | Duyệt và thêm giọng từ ElevenLabs Shared Voice Library |
-| **📂 Output tùy chỉnh** | Chọn thư mục lưu file MP3 |
-| **🔄 Auto-update** | Kiểm tra bản mới khi khởi động + tự động cập nhật DMG |
-| **🔔 System Tray** | Thu nhỏ xuống tray, hotkey toàn cục |
-| **💬 In-app Feedback** | Gửi phản hồi trực tiếp đến dev qua Telegram |
-| **🔐 License online** | TTS/STT dùng được miễn phí; Kịch bản/Auto Video cần key Pro |
+| **TTS** | Tạo audio, nghe lại trong app, mở file và xuất SRT |
+| **STT** | Chuyển audio thành text/SRT |
+| **TTS Enhance** | Tối ưu văn bản trước khi TTS: sửa chính tả, mở rộng viết tắt, thêm tags |
+| **Kịch bản** | Tính năng Pro: chụp ảnh chat Zalo -> Gemini phân tích -> xuất kịch bản TTS |
+| **Auto Video** | Tính năng Pro: link/text -> script -> TTS -> render video |
+| **2 phong cách built-in** | `Nghiêm túc` (temp 0.3) và `Hài hước` (temp 0.7) |
+| **Style Wizard** | AI hỗ trợ tạo style tuỳ chỉnh với 7 câu hỏi |
+| **Đa ngôn ngữ** | Hỗ trợ 60+ ngôn ngữ, dropdown chọn nhanh và tự động |
+| **Shared Voice Library** | Duyệt và thêm giọng từ ElevenLabs Shared Voice Library |
+| **Output tùy chỉnh** | Chọn thư mục lưu file MP3/SRT |
+| **Auto-update** | Kiểm tra bản mới khi khởi động và cập nhật qua GitHub Releases |
+| **System Tray** | Thu nhỏ xuống tray, hotkey toàn cục |
+| **In-app Feedback** | Gửi phản hồi trực tiếp đến dev qua Telegram |
+| **License online** | TTS/STT dùng được miễn phí; Kịch bản/Auto Video cần key Pro |
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 <p align="center">
   <i>(Thêm ảnh chụp màn hình ở đây)</i>
@@ -52,7 +52,7 @@
 
 ---
 
-## 🚀 Cài đặt nhanh
+## Cài đặt nhanh
 
 ### macOS
 
@@ -62,12 +62,12 @@
 
 ### Windows
 
-1. **Tải file `.exe`** từ [Releases](https://github.com/hedracentral9999/Hedra-Studio/releases)
+1. **Tải file setup `.exe`** từ [Releases](https://github.com/hedracentral9999/Hedra-Studio/releases)
 2. Chạy file setup — tự động cài đặt
 
 ---
 
-## 🔧 Hướng dẫn sử dụng
+## Hướng dẫn sử dụng
 
 ### 1. Lấy API Keys
 
@@ -87,7 +87,7 @@ Bạn cần ít nhất 2 API keys:
 2. Dán kịch bản vào ô text
 3. (Tuỳ chọn) Điều chỉnh **tốc độ đọc** bằng slider
 4. Nhấn **Generate**
-5. App sẽ: **Enhance với DeepSeek** → **TTS với ElevenLabs** → Lưu file MP3
+5. App sẽ: **Enhance với provider AI đã chọn** -> **TTS với provider giọng đọc đã chọn** -> lưu MP3/SRT
 
 ### 3. Kịch bản và Auto Video Pro
 
@@ -116,7 +116,7 @@ Hai tab này có trong app nhưng cần license key.
 
 ---
 
-## ⚙️ Cấu hình nâng cao
+## Cấu hình nâng cao
 
 ### File cấu hình
 
@@ -148,7 +148,7 @@ export ELEVENLABS_TELEGRAM_CHAT_ID="your_chat_id"
 
 ---
 
-## 🏗 Build từ source
+## Build từ source
 
 ### Requirements
 
@@ -211,11 +211,11 @@ Endpoint nhận `POST` JSON gồm `key`, `feature`, `app`, `version`, `device_id
 
 ### GitHub Actions (tự động)
 
-Push tag `v*` → tự động build Mac + Windows → upload lên Release.
+Push tag `v*` -> tự động build Mac + Windows -> upload lên Release.
 
 ```bash
-git tag v1.4.4
-git push origin v1.4.4
+git tag v1.8.1
+git push origin v1.8.1
 ```
 
 ---
