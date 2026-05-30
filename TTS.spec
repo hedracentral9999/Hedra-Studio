@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 sys.path.insert(0, '.')
 from version import VERSION
 
 block_cipher = None
 
-datas = [('assets/sf-symbols', 'assets/sf-symbols')]
+datas = [
+    ('assets/sf-symbols', 'assets/sf-symbols'),
+    ('assets/fonts', 'assets/fonts'),
+]
+datas += collect_data_files('faster_whisper')
+if Path('vendor/escbase-template3').exists():
+    datas.append(('vendor/escbase-template3', 'vendor/escbase-template3'))
 for src in ('build/icon.icns', 'build/icon.ico'):
     if Path(src).exists():
         datas.append((src, '.'))
@@ -25,11 +32,12 @@ a = Analysis(
         'voice_library', 'settings_dialog', 'main_window', 'version',
         'certifi',
         'auto_video_workers',
+        'faster_whisper', 'ctranslate2', 'tokenizers', 'av', 'onnxruntime', 'numpy',
         'anthropic', 'bs4',
     ],
     hookspath=[],
     runtime_hooks=[],
-    excludes=['telegram_config', 'tkinter', 'matplotlib', 'numpy', 'scipy'],
+    excludes=['telegram_config', 'tkinter', 'matplotlib', 'scipy'],
     cipher=block_cipher,
     noarchive=False,
 )

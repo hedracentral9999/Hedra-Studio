@@ -73,11 +73,40 @@ def get_legacy_data_dir() -> Path:
 
 DATA_DIR      = get_data_dir()
 SETTINGS_FILE = str(DATA_DIR / "settings.json")
-DEFAULT_OUT   = str(DATA_DIR / "output")
+LEGACY_DEFAULT_OUT = str(DATA_DIR / "output")
+
+
+def _default_output_dir() -> str:
+    env_value = os.environ.get("HEDRA_STUDIO_OUTPUT_DIR", "").strip()
+    if env_value:
+        return str(Path(os.path.expanduser(env_value)).resolve())
+    if sys.platform == "darwin":
+        return str(Path.home() / "hedra-studio" / "output")
+    return LEGACY_DEFAULT_OUT
+
+
+DEFAULT_OUT   = _default_output_dir()
 ERROR_LOG     = DATA_DIR / "error.log"
+PERF_LOG      = DATA_DIR / "performance.log"
 LICENSE_CACHE_FILE = DATA_DIR / "license.json"
 DEVICE_ID_FILE = DATA_DIR / "device_id"
 LICENSE_GRACE_DAYS = 7
+
+
+def perf_log(event: str, **fields) -> None:
+    """Lightweight diagnostics log for macOS lag investigations."""
+    try:
+        safe_event = re.sub(r"\s+", "_", str(event or "event")).strip("_") or "event"
+        parts = [f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]", f"event={safe_event}", f"pid={os.getpid()}"]
+        for key, value in fields.items():
+            if value is None:
+                continue
+            text = str(value).replace("\n", " ")[:240]
+            parts.append(f"{key}={text}")
+        with open(PERF_LOG, "a", encoding="utf-8") as f:
+            f.write(" ".join(parts) + "\n")
+    except Exception:
+        pass
 
 
 def _runtime_root() -> Path:
@@ -215,7 +244,7 @@ def validate_pro_license_key(
 ) -> tuple[bool, str, dict]:
     normalized = re.sub(r"\s+", "", key or "")
     if not normalized:
-        return False, "Chưa nhập license key.", {}
+        return False, "Chưa nhập Pro key.", {}
     endpoint = os.environ.get("HEDRA_LICENSE_VERIFY_URL", LICENSE_VERIFY_URL).strip()
     if not endpoint:
         return False, "Chưa cấu hình license server.", {}
@@ -237,7 +266,7 @@ def validate_pro_license_key(
             return False, f"License server trả về HTTP {res.status_code}.", {}
         data = res.json()
     except requests.RequestException as e:
-        return False, f"Không kết nối được license server: {e}", {}
+        return False, f"Không kiểm tra được key: {e}", {}
     except Exception as e:
         return False, f"Không đọc được phản hồi license server: {e}", {}
 
@@ -321,6 +350,24 @@ def _default_settings() -> dict:
         "av_voice_id":              "",
         "av_voice_name":            "",
         "av_language_code":         "vi",
+        "auto_video_mode":          "article",
+        "one_shot_industry":        "tech",
+        "one_shot_lut_path":        "",
+        "one_shot_noise_reduce":    True,
+        "one_shot_cut_video":       True,
+        "one_shot_apply_lut":       True,
+        "one_shot_render_profile":  "multi_1080",
+        "one_shot_whisper_model":   "small",
+        "one_shot_thumbnail_template": "boxphonefarm",
+        "one_shot_thumbnail_font":  "dt_phudu_black",
+        "one_shot_thumbnail_size":  "large",
+        "one_shot_thumbnail_lines": "auto",
+        "one_shot_thumbnail_position": "center",
+        "one_shot_thumbnail_title_mode": "expert",
+        "one_shot_ai_review_thumbnail": True,
+        "one_shot_last_video_dir":  "",
+        "one_shot_last_batch_dir":  "",
+        "one_shot_last_lut_dir":    "",
         "app_theme":                "system",
         "auto_video_engine_dir":     "",
         "auto_video_license_key":     "",
@@ -376,6 +423,24 @@ def _sanitize_legacy_value(key: str, value):
     return None
 
 
+def _normalize_output_dir(value) -> str:
+    text = str(value or DEFAULT_OUT).strip() or DEFAULT_OUT
+    try:
+        path = Path(os.path.expanduser(text))
+        if path.name == "ouput":
+            path = path.with_name("output")
+        try:
+            if path.resolve() == Path(LEGACY_DEFAULT_OUT).resolve():
+                return DEFAULT_OUT
+        except Exception:
+            if str(path) == LEGACY_DEFAULT_OUT:
+                return DEFAULT_OUT
+        return str(path)
+    except Exception:
+        pass
+    return text
+
+
 def _backfill_settings(s: dict) -> dict:
     defaults = _default_settings()
     if "el_api_key" in s and "el_api_keys" not in s:
@@ -391,6 +456,7 @@ def _backfill_settings(s: dict) -> dict:
         s["tts_voice_id"] = s["selected_voice_id"]
     if not str(s.get("tts_voice_name", "")).strip():
         s["tts_voice_name"] = s["selected_voice_name"]
+    s["output_dir"] = _normalize_output_dir(s.get("output_dir"))
     favs = s.get("favorite_voices")
     if not isinstance(favs, list):
         favs = []

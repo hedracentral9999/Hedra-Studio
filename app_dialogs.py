@@ -17,11 +17,19 @@ from app_constants import (
 from app_icons import ui_icon, icon_size
 from app_workers import PromptGeneratorWorker, SuggestAnswersWorker, FeedbackSender
 
+def _theme_for(parent=None) -> tuple[str, dict[str, str]]:
+    settings = getattr(parent, "settings", {}) if parent is not None else {}
+    mode = settings.get("app_theme", "system") if isinstance(settings, dict) else "system"
+    return mode, theme_tokens(mode)
+
+
 class EmojiPickerDialog(QDialog):
     """Bảng chọn emoji — 6 cột, button đủ lớn, full visible không cần scroll."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Chọn icon")
+        self._theme_mode, self._t = _theme_for(parent)
+        self.setStyleSheet(get_style(self._theme_mode))
         self.chosen = ""
         self._build()
         # Center on screen (tránh bị che bởi macOS menu bar)
@@ -38,7 +46,7 @@ class EmojiPickerDialog(QDialog):
         v.setSpacing(0)
 
         inner = QWidget()
-        inner.setStyleSheet("QWidget{background:#f5f5f7;border:none;}")
+        inner.setStyleSheet(f"QWidget{{background:{self._t['BG']};border:none;}}")
         grid = QGridLayout(inner)
         grid.setSpacing(8)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -48,10 +56,10 @@ class EmojiPickerDialog(QDialog):
             btn = QPushButton(em)
             btn.setFixedSize(52, 52)
             btn.setStyleSheet(
-                "QPushButton{font-size:26px;border:1px solid #e5e5ea;"
-                "border-radius:10px;background:#ffffff;}"
-                "QPushButton:hover{background:#e8f0fd;border-color:#0071e3;}"
-                "QPushButton:pressed{background:#dce9fd;}"
+                f"QPushButton{{font-size:26px;border:1px solid {self._t['BORDER_SOFT']};"
+                f"border-radius:10px;background:{self._t['SURFACE']};color:{self._t['TEXT']};}}"
+                f"QPushButton:hover{{background:{self._t['CONTROL_HV']};border-color:{self._t['ACCENT']};}}"
+                f"QPushButton:pressed{{background:{self._t['CONTROL_DN']};}}"
             )
             btn.clicked.connect(lambda _, e=em: self._pick(e))
             grid.addWidget(btn, i // cols, i % cols)
@@ -108,7 +116,7 @@ class AddStyleDialog(QDialog):
         title_col.setSpacing(2)
         title = QLabel("Thêm phong cách" if not data else "Sửa phong cách")
         title.setStyleSheet(f"font-size:17px;font-weight:700;color:{self._t['TEXT']};background:transparent;border:none;")
-        subtitle = QLabel("Tạo preset prompt riêng cho TTS Enhance. Preset này sẽ đồng bộ sang Settings và tab TTS.")
+        subtitle = QLabel("Tạo preset prompt riêng cho TTS Enhance. Preset này sẽ đồng bộ sang Cài đặt và tab TTS.")
         subtitle.setStyleSheet(f"font-size:12px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -488,7 +496,7 @@ class AddStyleDialog(QDialog):
             self._ai_status.setText("Nhập mô tả ngắn trước.")
             return
         if not self._ds_key and not self._gemini_key:
-            self._ai_status.setText("Chưa có AI key. Vào Settings > API để thêm Gemini hoặc DeepSeek.")
+            self._ai_status.setText("Chưa có AI key. Vào Cài đặt > API để thêm Gemini hoặc DeepSeek.")
             return
         self._btn_suggest.setEnabled(False)
         self._btn_suggest.setText("...")
@@ -511,7 +519,7 @@ class AddStyleDialog(QDialog):
 
     def _generate_from_wizard(self):
         if not self._ds_key and not self._gemini_key:
-            self._ai_status.setText("Chưa có AI key. Vào Settings > API để thêm Gemini hoặc DeepSeek.")
+            self._ai_status.setText("Chưa có AI key. Vào Cài đặt > API để thêm Gemini hoặc DeepSeek.")
             return
         answers = self._gather_wizard_answers()
         if not answers.get("product", "").strip():
@@ -599,6 +607,8 @@ class DropZone(QFrame):
         extensions: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp"),
     ):
         super().__init__(parent)
+        self._theme_mode, self._t = _theme_for(parent)
+        self.setStyleSheet(get_style(self._theme_mode))
         self._dialog_title = dialog_title
         self._file_filter = file_filter
         self._extensions = tuple(ext.lower() for ext in extensions)
@@ -606,8 +616,9 @@ class DropZone(QFrame):
         self.setFixedHeight(90)
         self._set_idle_style()
         lbl = QLabel(label, self)
+        self._label = lbl
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("color:#6e6e73; font-size:13px; border:none; background:transparent;")
+        lbl.setStyleSheet(f"color:{self._t['TEXT_MUTE']}; font-size:13px; border:none; background:transparent;")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(lbl)
@@ -615,13 +626,13 @@ class DropZone(QFrame):
 
     def _set_idle_style(self):
         self.setStyleSheet(
-            "QFrame{border:2px dashed #d2d2d7;border-radius:10px;background:#ffffff;}"
-            "QFrame:hover{border-color:#0071e3;}"
+            f"QFrame{{border:2px dashed {self._t['BORDER']};border-radius:10px;background:{self._t['SURFACE_2']};}}"
+            f"QFrame:hover{{border-color:{self._t['ACCENT']};background:{self._t['CONTROL_HV']};}}"
         )
 
     def _set_hover_style(self):
         self.setStyleSheet(
-            "QFrame{border:2px dashed #0071e3;border-radius:10px;background:#f0f7ff;}"
+            f"QFrame{{border:2px dashed {self._t['ACCENT']};border-radius:10px;background:{self._t['CONTROL_HV']};}}"
         )
 
     def mousePressEvent(self, e):
@@ -680,6 +691,8 @@ class PromptWizardDialog(QDialog):
 
     def __init__(self, parent=None, ds_api_key: str = "", gemini_api_key: str = ""):
         super().__init__(parent)
+        self._theme_mode, self._t = _theme_for(parent)
+        self.setStyleSheet(get_style(self._theme_mode))
         self.setWindowTitle("Prompt Wizard")
         self.setFixedSize(560, 640)
         self._ds_key         = ds_api_key
@@ -705,7 +718,7 @@ class PromptWizardDialog(QDialog):
 
         sub = QLabel("Bạn trả lời 7 câu hỏi — AI chỉ gợi ý thêm cho những câu bạn chưa điền.")
         sub.setStyleSheet(
-            "font-size:12px;color:#6e6e73;background:transparent;border:none;"
+            f"font-size:12px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;"
         )
         sub.setWordWrap(True)
         v.addWidget(sub)
@@ -713,7 +726,7 @@ class PromptWizardDialog(QDialog):
         # AI gợi ý nhanh
         ai_frame = QFrame()
         ai_frame.setStyleSheet(
-            "QFrame{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;}"
+            f"QFrame{{background:{self._t['CONTROL_BG']};border:1px solid {self._t['BORDER_SOFT']};border-radius:10px;}}"
         )
         af = QHBoxLayout(ai_frame)
         af.setContentsMargins(12, 8, 12, 8)
@@ -723,8 +736,9 @@ class PromptWizardDialog(QDialog):
             "Mô tả ngắn về bạn → AI gợi ý câu chưa trả lời  (vd: shop thời trang nữ miền Nam)"
         )
         self._brief_edit.setStyleSheet(
-            "QLineEdit{background:#fff;border:1px solid #bfdbfe;"
+            f"QLineEdit{{background:{self._t['SURFACE']};border:1px solid {self._t['BORDER_SOFT']};"
             "border-radius:6px;padding:4px 8px;font-size:12px;}"
+            f"QLineEdit:focus{{border-color:{self._t['ACCENT']};}}"
         )
         self._brief_edit.returnPressed.connect(self._ai_suggest)
         af.addWidget(self._brief_edit, 1)
@@ -732,10 +746,10 @@ class PromptWizardDialog(QDialog):
         self._btn_suggest.setFixedHeight(30)
         self._btn_suggest.setFixedWidth(90)
         self._btn_suggest.setStyleSheet(
-            "QPushButton{background:#0071e3;color:white;border:none;"
+            f"QPushButton{{background:{self._t['ACCENT']};color:white;border:none;"
             "border-radius:6px;font-size:12px;font-weight:600;}"
-            "QPushButton:hover{background:#0077ed;}"
-            "QPushButton:disabled{background:#a8d0fb;}"
+            f"QPushButton:hover{{background:{self._t['ACCENT_HV']};}}"
+            f"QPushButton:disabled{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT_FAINT']};}}"
         )
         self._btn_suggest.clicked.connect(self._ai_suggest)
         af.addWidget(self._btn_suggest)
@@ -743,13 +757,13 @@ class PromptWizardDialog(QDialog):
 
         self._suggest_status = QLabel("")
         self._suggest_status.setStyleSheet(
-            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+            f"font-size:11px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;"
         )
         v.addWidget(self._suggest_status)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#e5e5ea;")
+        sep.setStyleSheet(f"color:{self._t['BORDER_SOFT']};")
         v.addWidget(sep)
 
         # Scroll area — 7 câu hỏi
@@ -759,7 +773,7 @@ class PromptWizardDialog(QDialog):
         scroll.setStyleSheet(
             "QScrollArea{background:transparent;border:none;}"
             "QScrollBar:vertical{width:6px;background:transparent;}"
-            "QScrollBar::handle:vertical{background:#c7c7cc;border-radius:3px;}"
+            f"QScrollBar::handle:vertical{{background:{self._t['SCROLL']};border-radius:3px;}}"
         )
         inner = QWidget()
         inner.setStyleSheet("QWidget{background:transparent;border:none;}")
@@ -770,7 +784,7 @@ class PromptWizardDialog(QDialog):
         for key, label, chips, multi, placeholder in self._QUESTIONS:
             q_frame = QFrame()
             q_frame.setStyleSheet(
-                "QFrame{background:#ffffff;border:1px solid #e5e5ea;border-radius:10px;}"
+                f"QFrame{{background:{self._t['SURFACE']};border:1px solid {self._t['BORDER_SOFT']};border-radius:10px;}}"
             )
             qf = QVBoxLayout(q_frame)
             qf.setContentsMargins(12, 8, 12, 8)
@@ -778,7 +792,7 @@ class PromptWizardDialog(QDialog):
 
             q_lbl = QLabel(label)
             q_lbl.setStyleSheet(
-                "QLabel{font-size:13px;font-weight:600;color:#1d1d1f;"
+                f"QLabel{{font-size:13px;font-weight:600;color:{self._t['TEXT']};"
                 "background:transparent;border:none;}"
             )
             qf.addWidget(q_lbl)
@@ -806,9 +820,9 @@ class PromptWizardDialog(QDialog):
                 txt = QLineEdit()
                 txt.setPlaceholderText(placeholder)
                 txt.setStyleSheet(
-                    "QLineEdit{background:#f5f5f7;border:1px solid #e5e5ea;"
+                    f"QLineEdit{{background:{self._t['CONTROL_BG']};border:1px solid {self._t['BORDER_SOFT']};"
                     "border-radius:6px;padding:4px 8px;font-size:12px;}"
-                    "QLineEdit:focus{border-color:#0071e3;background:#fff;}"
+                    f"QLineEdit:focus{{border-color:{self._t['ACCENT']};background:{self._t['SURFACE']};}}"
                 )
                 self._text_fields[key] = txt
                 qf.addWidget(txt)
@@ -821,7 +835,7 @@ class PromptWizardDialog(QDialog):
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet("color:#e5e5ea;")
+        sep2.setStyleSheet(f"color:{self._t['BORDER_SOFT']};")
         v.addWidget(sep2)
 
         # Footer
@@ -835,10 +849,10 @@ class PromptWizardDialog(QDialog):
         self._btn_gen.setFixedHeight(32)
         self._btn_gen.setDefault(True)
         self._btn_gen.setStyleSheet(
-            "QPushButton{background:#0071e3;color:white;border:none;"
+            f"QPushButton{{background:{self._t['ACCENT']};color:white;border:none;"
             "border-radius:8px;padding:0 20px;font-size:13px;font-weight:600;}"
-            "QPushButton:hover{background:#0077ed;}"
-            "QPushButton:disabled{background:#a8d0fb;}"
+            f"QPushButton:hover{{background:{self._t['ACCENT_HV']};}}"
+            f"QPushButton:disabled{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT_FAINT']};}}"
         )
         self._btn_gen.clicked.connect(self._generate_prompt)
         foot.addWidget(btn_cancel)
@@ -849,16 +863,16 @@ class PromptWizardDialog(QDialog):
     def _chip_style(self, active: bool) -> str:
         if active:
             return (
-                "QPushButton{font-size:12px;background:#0071e3;color:white;"
+                f"QPushButton{{font-size:12px;background:{self._t['ACCENT']};color:white;"
                 "border:none;border-radius:12px;padding:0 10px;}"
-                "QPushButton:hover{background:#0077ed;}"
-                "QPushButton:pressed{background:#005bb5;}"
+                f"QPushButton:hover{{background:{self._t['ACCENT_HV']};}}"
+                f"QPushButton:pressed{{background:{self._t['ACCENT_DN']};}}"
             )
         return (
-            "QPushButton{font-size:12px;background:#f0f0f5;color:#1d1d1f;"
-            "border:1px solid #d2d2d7;border-radius:12px;padding:0 10px;}"
-            "QPushButton:hover{background:#e5e5ea;}"
-            "QPushButton:pressed{background:#d2d2d7;}"
+            f"QPushButton{{font-size:12px;background:{self._t['CONTROL_BG']};color:{self._t['TEXT']};"
+            f"border:1px solid {self._t['BORDER_SOFT']};border-radius:12px;padding:0 10px;}}"
+            f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}"
+            f"QPushButton:pressed{{background:{self._t['CONTROL_DN']};}}"
         )
 
     def _toggle_chip(self, key: str, chip: str, multi: bool):
@@ -927,7 +941,7 @@ class PromptWizardDialog(QDialog):
             self._suggest_status.setText("⚠️  Nhập mô tả ngắn trước nhé!")
             return
         if not self._ds_key and not self._gemini_key:
-            self._suggest_status.setText("⚠️  Chưa có AI key — vào Settings → API Keys → thêm Gemini (miễn phí)")
+            self._suggest_status.setText("⚠️  Chưa có AI key — vào Cài đặt → API Keys → thêm Gemini")
             return
         self._btn_suggest.setEnabled(False)
         self._btn_suggest.setText("...")
@@ -952,7 +966,7 @@ class PromptWizardDialog(QDialog):
     def _generate_prompt(self):
         if not self._ds_key and not self._gemini_key:
             QMessageBox.warning(self, "Thiếu API Key",
-                                "Cần Gemini hoặc DeepSeek API key để tạo prompt.\nVào Settings → API Keys → thêm Gemini (miễn phí)!")
+                                "Cần Gemini hoặc DeepSeek API key để tạo prompt.\nVào Cài đặt → API Keys để thêm key.")
             return
         answers = self._gather_answers()
         if not answers.get("product", "").strip():
@@ -1005,6 +1019,8 @@ class FeedbackDialog(QDialog):
 
     def __init__(self, parent=None, version: str = "", telegram_cfg: dict | None = None):
         super().__init__(parent)
+        self._theme_mode, self._t = _theme_for(parent)
+        self.setStyleSheet(get_style(self._theme_mode))
         self.setWindowTitle("Phản hồi")
         self.setFixedSize(460, 390)
         self._version = version
@@ -1025,13 +1041,13 @@ class FeedbackDialog(QDialog):
         v.addWidget(title)
 
         sub = QLabel("Góp ý, báo lỗi hoặc yêu cầu tính năng mới — sẽ đến thẳng nhà phát triển.")
-        sub.setStyleSheet("font-size:12px;color:#6e6e73;background:transparent;border:none;")
+        sub.setStyleSheet(f"font-size:12px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;")
         sub.setWordWrap(True)
         v.addWidget(sub)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#e5e5ea;")
+        sep.setStyleSheet(f"color:{self._t['BORDER_SOFT']};")
         v.addWidget(sep)
 
         # Category
@@ -1083,7 +1099,7 @@ class FeedbackDialog(QDialog):
         foot.setSpacing(8)
         self._status_lbl = QLabel("")
         self._status_lbl.setStyleSheet(
-            "font-size:11px;color:#6e6e73;background:transparent;border:none;"
+            f"font-size:11px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;"
         )
         foot.addWidget(self._status_lbl, 1)
         btn_cancel = QPushButton("Đóng")
@@ -1093,10 +1109,10 @@ class FeedbackDialog(QDialog):
         self._btn_send.setFixedHeight(32)
         self._btn_send.setDefault(True)
         self._btn_send.setStyleSheet(
-            "QPushButton{background:#0071e3;color:white;border:none;"
+            f"QPushButton{{background:{self._t['ACCENT']};color:white;border:none;"
             "border-radius:8px;padding:0 16px;font-size:13px;font-weight:600;}"
-            "QPushButton:hover{background:#0077ed;}"
-            "QPushButton:disabled{background:#a8d0fb;}"
+            f"QPushButton:hover{{background:{self._t['ACCENT_HV']};}}"
+            f"QPushButton:disabled{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT_FAINT']};}}"
         )
         self._btn_send.clicked.connect(self._send)
         foot.addWidget(btn_cancel)
@@ -1106,13 +1122,13 @@ class FeedbackDialog(QDialog):
     def _cat_style(self, active: bool) -> str:
         if active:
             return (
-                "QPushButton{font-size:12px;background:#0071e3;color:white;"
+                f"QPushButton{{font-size:12px;background:{self._t['ACCENT']};color:white;"
                 "border:none;border-radius:14px;padding:0 12px;}"
             )
         return (
-            "QPushButton{font-size:12px;background:#f0f0f5;color:#1d1d1f;"
-            "border:1px solid #d2d2d7;border-radius:14px;padding:0 12px;}"
-            "QPushButton:hover{background:#e5e5ea;}"
+            f"QPushButton{{font-size:12px;background:{self._t['CONTROL_BG']};color:{self._t['TEXT']};"
+            f"border:1px solid {self._t['BORDER_SOFT']};border-radius:14px;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}"
         )
 
     def _select_cat(self, cat: str):

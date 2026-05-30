@@ -579,7 +579,7 @@ def get_style(theme: str | None = "light") -> str:
     t = theme_tokens(theme)
     return f"""
 QWidget {{
-    font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    font-family: "Arial", "Helvetica Neue", "Helvetica";
     font-size: 13px;
     background: {t["BG"]};
     color: {t["TEXT"]};
@@ -667,7 +667,7 @@ QCheckBox::indicator {{
     background: {t["SURFACE"]};
 }}
 QCheckBox::indicator:hover {{
-    border-color: #c0c0c7;
+    border-color: {t["BORDER"]};
     background: {t["SURFACE_2"]};
 }}
 QCheckBox::indicator:checked {{

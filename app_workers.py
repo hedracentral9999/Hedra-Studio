@@ -896,12 +896,10 @@ class Worker(QThread):
     def _tts(self, text: str) -> bytes:
         env = _read_pipeline_env()
         provider = (env.get("TTS_PROVIDER") or "genmax").strip().lower()
-        if provider not in {"genmax", "ai33", "elevenlabs", "lucylab"}:
+        if provider not in {"genmax", "elevenlabs", "lucylab"}:
             provider = "genmax"
 
         order = [provider]
-        if provider == "genmax" and self._env_bool(env.get("GENMAX_FALLBACK_TO_AI33"), True):
-            order.append("ai33")
         for fallback in ("elevenlabs",):
             if fallback not in order:
                 order.append(fallback)
@@ -911,8 +909,6 @@ class Worker(QThread):
             try:
                 if item == "genmax":
                     return self._tts_genmax(text, env)
-                if item == "ai33":
-                    return self._tts_ai33(text, env)
                 if item == "elevenlabs":
                     return self._tts_elevenlabs(text, env)
             except Exception as e:
@@ -941,8 +937,6 @@ class Worker(QThread):
         selected  = self.s.get("selected_voice_id", "").strip()
         if provider == "genmax":
             return per_tool or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
-        if provider == "ai33":
-            return per_tool or env.get("AI33_VOICE_ID", "").strip() or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
         if provider == "elevenlabs":
             return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or env.get("GENMAX_VOICE_ID", "").strip() or VOICE_ID
         return per_tool or selected or VOICE_ID
@@ -1019,67 +1013,6 @@ class Worker(QThread):
                 raise Exception(f"GenMax render thất bại: {pdata}")
             poll_interval = min(poll_interval + 1, 5)
         raise Exception("GenMax timeout sau 300 giây")
-
-    def _tts_ai33(self, text: str, env: dict) -> bytes:
-        key = env.get("AI33_API_KEY", "").strip()
-        if not key:
-            raise Exception("thiếu ai33 API key")
-        voice_id = self._voice_for("ai33", env)
-        model = env.get("AI33_MODEL_ID", "").strip() or "eleven_v3"
-        endpoint = (env.get("AI33_ENDPOINT", "").strip() or "https://api.ai33.pro").rstrip("/")
-        output_format = env.get("AI33_OUTPUT_FORMAT", "").strip() or "mp3_44100_128"
-        tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
-        self.status.emit(f"Đang generate audio [ai33 · {model}]...")
-        res = requests.post(
-            f"{endpoint}/v1/text-to-speech/{voice_id}?output_format={output_format}",
-            headers={"xi-api-key": key, "Content-Type": "application/json"},
-            json={
-                "text": tts_text,
-                "model_id": model,
-                "with_transcript": True,
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "speed": self.speed,
-                },
-            },
-            timeout=30,
-        )
-        if res.status_code not in (200, 202):
-            raise Exception(f"ai33 {res.status_code}: {res.text[:300]}")
-        task_id = res.json().get("task_id") or res.json().get("id")
-        if not task_id:
-            raise Exception("ai33 không trả về task_id")
-        deadline = time.time() + 300
-        while time.time() < deadline:
-            time.sleep(2)
-            self.status.emit("Đang chờ ai33 render audio...")
-            poll = requests.get(
-                f"{endpoint}/v1/task/{task_id}",
-                headers={"xi-api-key": key, "Content-Type": "application/json"},
-                timeout=15,
-            )
-            if poll.status_code != 200:
-                raise Exception(f"ai33 poll {poll.status_code}: {poll.text[:200]}")
-            pdata = poll.json()
-            if pdata.get("status") == "done":
-                audio_url = (pdata.get("metadata") or {}).get("audio_url", "")
-                if not audio_url:
-                    raise Exception("ai33 done nhưng không có audio_url")
-                srt_url = self._find_url(
-                    pdata,
-                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
-                )
-                if srt_url:
-                    self.status.emit("Đang tải phụ đề SRT từ ai33...")
-                    self._download_srt_url(srt_url)
-                dl = requests.get(audio_url, timeout=30)
-                if dl.status_code != 200:
-                    raise Exception(f"ai33 download {dl.status_code}")
-                return dl.content
-            if pdata.get("status") == "error":
-                raise Exception(pdata.get("error_message") or str(pdata)[:300])
-        raise Exception("ai33 timeout sau 300 giây")
 
     def _tts_elevenlabs(self, text: str, env: dict) -> bytes:
         keys = self.s.get("el_api_keys", [])

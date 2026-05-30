@@ -1,0 +1,6 @@
+Đây là slide starter chuẩn của Escbase: giữ runtime mẫu, phụ đề một dòng, nhạc nền custom và safezone đã test.
+Slide hai mở bằng nguồn hoặc demo đặt ngay sau hook. Reveal hai cho metric ngắn. Reveal ba chốt chuyển dịch hoặc takeaway.
+Slide ba dành cho cơ chế hoặc workflow. Một visual chính mở ý. Hai reveal sau làm rõ nhịp trước sau và hệ quả.
+Slide bốn là highlight mode cho hai điểm chính. Card đầu nêu điểm A. Card thứ hai nêu điểm B.
+Slide năm là traffic-light mode cho phản ứng hoặc rủi ro. Đỏ là rủi ro hoặc phản ứng mạnh. Vàng là điểm cần kiểm chứng. Xanh là tín hiệu tích cực.
+Slide cuối chốt verdict. Reveal hai đưa thesis chính. Reveal ba để nguồn hoặc CTA thật gọn.

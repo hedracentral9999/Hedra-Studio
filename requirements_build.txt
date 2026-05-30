@@ -4,3 +4,5 @@ certifi>=2024.0.0
 pyinstaller==6.11.1
 anthropic>=0.40.0
 beautifulsoup4>=4.12.3
+faster-whisper==1.2.1
+Pillow>=10.4.0

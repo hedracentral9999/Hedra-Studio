@@ -1,0 +1,86 @@
+{
+  "theme": {
+    "preset": "custom",
+    "variables": {
+      "--primary": "#ff6a00",
+      "--primary-light": "#ffbf80",
+      "--primary-dark": "#9a3900",
+      "--accent": "#8fa8ff",
+      "--accent-light": "#dbe3ff",
+      "--info": "#4fd0ff",
+      "--success": "#68f2b4",
+      "--bg-dark": "#07111e"
+    },
+    "customVariables": {
+      "--primary": "#ff6a00",
+      "--primary-light": "#ffbf80",
+      "--primary-dark": "#9a3900",
+      "--accent": "#8fa8ff",
+      "--accent-light": "#dbe3ff",
+      "--info": "#4fd0ff",
+      "--success": "#68f2b4",
+      "--bg-dark": "#07111e"
+    }
+  },
+  "bgm": {
+    "mode": "custom",
+    "preset": "ambient",
+    "volume": 0.3,
+    "custom": {
+      "name": "meta.mp3",
+      "path": "preview-assets/bgm/meta.mp3",
+      "url": "preview-assets/bgm/meta.mp3"
+    }
+  },
+  "subtitles": {
+    "enabled": true,
+    "color": "#ffffff",
+    "fontSize": 18,
+    "bottom": 152,
+    "maxLines": 1
+  },
+  "visuals": {
+    "colorMode": "dark",
+    "backgroundColor": "#07111e",
+    "gridEnabled": false,
+    "gridLight": "#8fa8ff",
+    "iconGlow": "#ff6a00",
+    "iconBacklight": "#4fd0ff",
+    "iconLight": "#68f2b4",
+    "backgroundFx": "particles",
+    "customValues": {
+      "backgroundColor": "#07111e",
+      "gridLight": "#8fa8ff",
+      "iconGlow": "#ff6a00",
+      "iconBacklight": "#4fd0ff",
+      "iconLight": "#68f2b4"
+    }
+  },
+  "slides": {
+    "deletedIds": [],
+    "scriptLines": [
+      "Đây là slide starter chuẩn của Escbase: giữ runtime mẫu, phụ đề một dòng, nhạc nền custom và safezone đã test.",
+      "Slide hai mở bằng nguồn hoặc demo đặt ngay sau hook. Reveal hai cho metric ngắn. Reveal ba chốt chuyển dịch hoặc takeaway.",
+      "Slide ba dành cho cơ chế hoặc workflow. Một visual chính mở ý. Hai reveal sau làm rõ nhịp trước sau và hệ quả.",
+      "Slide bốn là highlight mode cho hai điểm chính. Card đầu nêu điểm A. Card thứ hai nêu điểm B.",
+      "Slide năm là traffic-light mode cho phản ứng hoặc rủi ro. Đỏ là rủi ro hoặc phản ứng mạnh. Vàng là điểm cần kiểm chứng. Xanh là tín hiệu tích cực.",
+      "Slide cuối chốt verdict. Reveal hai đưa thesis chính. Reveal ba để nguồn hoặc CTA thật gọn."
+    ],
+    "transitionSounds": [
+      "dramatic",
+      "sweep",
+      "bass",
+      "rise",
+      "chord",
+      "minimal"
+    ],
+    "revealSounds": [
+      "sparkle",
+      "pop",
+      "blip",
+      "bubble",
+      "tick",
+      "bell"
+    ]
+  }
+}
