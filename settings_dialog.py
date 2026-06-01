@@ -333,9 +333,61 @@ def _first_key_from_widget(widget) -> str:
     return parts[0] if parts else ""
 
 
+def _split_api_keys(value) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        raw_parts = []
+        for item in value:
+            raw_parts.extend(re.split(r"[\s,;]+", str(item or "")))
+    else:
+        raw_parts = re.split(r"[\s,;]+", str(value or ""))
+    keys: list[str] = []
+    for part in raw_parts:
+        key = str(part or "").strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _elevenlabs_key_pool(*sources, limit: int = 3) -> list[str]:
+    keys: list[str] = []
+    for source in sources:
+        if not source:
+            continue
+        if isinstance(source, dict):
+            values = [
+                source.get("elevenlabs"),
+                source.get("ELEVENLABS_API_KEY"),
+                source.get("ELEVENLABS_API_KEYS"),
+                source.get("ELEVENLABS_API_KEY_2"),
+                source.get("ELEVENLABS_API_KEY_3"),
+                source.get("el_api_key"),
+                source.get("el_api_keys"),
+            ]
+        else:
+            values = [source]
+        for value in values:
+            for key in _split_api_keys(value):
+                if key not in keys:
+                    keys.append(key)
+    return keys[:limit] if limit else keys
+
+
+def _elevenlabs_should_rotate(status_code: int | None, message: str = "") -> bool:
+    text = str(message or "").lower()
+    return (
+        status_code in (401, 402, 403, 429)
+        or "quota" in text
+        or "credit" in text
+        or "character" in text
+        or "rate limit" in text
+        or "too many requests" in text
+        or "billing" in text
+    )
+
+
 def _api_health_result(service: str, status: str, message: str, detail: str = "") -> dict:
     labels = {
-        "ok": "Hoạt động",
+        "ok": "OK",
         "missing": "Thiếu",
         "checking": "Đang kiểm tra...",
         "invalid": "Sai key",
@@ -451,15 +503,26 @@ class ApiHealthCheckWorker(QThread):
             return self._classify(service, res, "GenMax key hoạt động.")
 
         if service == "elevenlabs":
-            key = self._key("elevenlabs")
-            if not key:
+            keys = _elevenlabs_key_pool(self.values)
+            if not keys:
                 return _api_health_result(service, "missing", "Chưa nhập ElevenLabs API key.")
-            res = requests.get(
-                "https://api.elevenlabs.io/v1/user/subscription",
-                headers={"xi-api-key": key},
-                timeout=timeout,
-            )
-            return self._classify(service, res, "ElevenLabs key hoạt động.")
+            results = []
+            ok_count = 0
+            last_res = None
+            for key in keys:
+                res = requests.get(
+                    "https://api.elevenlabs.io/v1/user/subscription",
+                    headers={"xi-api-key": key},
+                    timeout=timeout,
+                )
+                last_res = res
+                if 200 <= res.status_code < 300:
+                    ok_count += 1
+                results.append(res)
+            if ok_count:
+                suffix = f" ({ok_count}/{len(keys)} key dùng được)" if len(keys) > 1 else ""
+                return _api_health_result(service, "ok", f"ElevenLabs key hoạt động{suffix}.")
+            return self._classify(service, last_res or results[-1], "ElevenLabs key hoạt động.")
 
         if service == "telegram":
             token = self._key("telegram_bot_token")
@@ -489,10 +552,12 @@ class _PipelineVoicePreviewWorker(QThread):
         eleven_v3_style_enabled: bool = True,
         lucylab_endpoint: str = "https://api.lucylab.io/json-rpc",
         output_path: str = "",
+        api_keys: list[str] | None = None,
     ):
         super().__init__()
         self.provider = provider
         self.api_key = api_key
+        self.api_keys = _elevenlabs_key_pool(api_key, api_keys)
         self.voice_id = voice_id
         self.genmax_provider = (genmax_provider or "elevenlabs").strip().lower()
         self.genmax_model_id = (genmax_model_id or "eleven_v3").strip()
@@ -601,24 +666,32 @@ class _PipelineVoicePreviewWorker(QThread):
 
     def _elevenlabs(self, text: str) -> bytes:
         tts_text = _style_eleven_v3_text(text) if self.eleven_v3_style_enabled else text
-        res = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}",
-            headers={"xi-api-key": self.api_key, "Content-Type": "application/json"},
-            json={
-                "text": tts_text,
-                "model_id": "eleven_v3",
-                "output_format": "mp3_44100_128",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "speed": 1.0,
+        keys = self.api_keys or _elevenlabs_key_pool(self.api_key)
+        if not keys:
+            raise RuntimeError("Thiếu ElevenLabs API key.")
+        last_err = ""
+        for idx, key in enumerate(keys, 1):
+            res = requests.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}",
+                headers={"xi-api-key": key, "Content-Type": "application/json"},
+                json={
+                    "text": tts_text,
+                    "model_id": "eleven_v3",
+                    "output_format": "mp3_44100_128",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75,
+                        "speed": 1.0,
+                    },
                 },
-            },
-            timeout=60,
-        )
-        if res.status_code == 200:
-            return res.content
-        raise RuntimeError(f"ElevenLabs {res.status_code}: {res.text[:200]}")
+                timeout=60,
+            )
+            if res.status_code == 200:
+                return res.content
+            last_err = f"ElevenLabs {res.status_code}: {res.text[:200]}"
+            if idx >= len(keys) or not _elevenlabs_should_rotate(res.status_code, res.text):
+                break
+        raise RuntimeError(last_err or "ElevenLabs preview lỗi.")
 
     def _lucylab_rpc(self, method: str, payload: dict) -> dict:
         res = requests.post(
@@ -1157,8 +1230,8 @@ class SettingsDialog(QDialog):
         self._SB_MUTE = _tokens["TEXT_MUTE"]
         self._GROUP_BG = _tokens["CONTROL_BG"]
         self.setWindowTitle("Cài đặt")
-        self.setMinimumSize(900, 660)
-        self.resize(1100, 780)
+        self.setMinimumSize(980, 700)
+        self.resize(1180, 820)
         self.setStyleSheet(get_style(self._theme_mode))
         # Voice selection state (edited in dialog, saved on accept)
         self._sel_voice_id   = self.settings.get("selected_voice_id") or VOICE_ID
@@ -1250,9 +1323,9 @@ class SettingsDialog(QDialog):
         if not widgets:
             return
         labels = {
-            "ok": "Hoạt động",
+            "ok": "OK",
             "missing": "Thiếu",
-            "checking": "Đang kiểm tra...",
+            "checking": "Đang kiểm tra",
             "invalid": "Sai key",
             "credit": "Hết credit",
             "rate_limited": "Rate limit",
@@ -1267,7 +1340,9 @@ class SettingsDialog(QDialog):
         detail_label = widgets.get("detail")
         if detail_label:
             detail_label.setText(message or labels.get(status, ""))
-            detail_label.setVisible(bool(message))
+            detail_label.setVisible(bool(message) and status in {
+                "invalid", "credit", "rate_limited", "network", "error"
+            })
             detail_label.setToolTip(detail or "")
         button = widgets.get("button")
         if button:
@@ -1284,6 +1359,8 @@ class SettingsDialog(QDialog):
         return {
             "genmax": _widget_text(getattr(self, "genmax_key", _NullEdit())),
             "elevenlabs": _first_key_from_widget(getattr(self, "el_keys", _NullEdit())),
+            "ELEVENLABS_API_KEYS": _widget_text(getattr(self, "el_keys", _NullEdit())),
+            "el_api_keys": _split_api_keys(_widget_text(getattr(self, "el_keys", _NullEdit()))),
             "lucylab": _widget_text(getattr(self, "_pv_ll_key", _NullEdit())),
             "claude": _widget_text(getattr(self, "claude_key", _NullEdit())),
             "claude_model": (
@@ -1317,7 +1394,7 @@ class SettingsDialog(QDialog):
         elif service == "__all__":
             service = None
         services = [service] if service else [
-            "genmax", "elevenlabs", "claude", "gemini", "deepseek", "telegram"
+            "genmax", "elevenlabs", "claude", "gemini", "deepseek"
         ]
         values = self._api_current_values()
         for item in services:
@@ -1394,13 +1471,18 @@ class SettingsDialog(QDialog):
         """Return prompt presets after applying user overrides.
 
         Built-in presets are editable slots in this app. If the user saves
-        "Hài hước" with temperature 0.00, reopening/selecting "Hài hước" must
+        "Viral" with temperature 0.00, reopening/selecting "Viral" must
         return exactly that saved setup, not the factory default 0.70.
         """
         overrides = self.settings.get("prompt_preset_overrides", {})
         if not isinstance(overrides, dict):
             overrides = {}
-        default_temps = {"Nghiêm túc": 0.3, "Hài hước": 0.7}
+        if "Viral" not in overrides:
+            if "Vivid" in overrides:
+                overrides["Viral"] = overrides.get("Vivid")
+            elif "Hài hước" in overrides:
+                overrides["Viral"] = overrides.get("Hài hước")
+        default_temps = {"Viral": 0.7}
         data: dict[str, dict] = {}
         for name, default_prompt in PROMPTS.items():
             ov = overrides.get(name, {})
@@ -1444,19 +1526,19 @@ class SettingsDialog(QDialog):
         name = (
             getattr(self, "_ep_active_style", "")
             or self.settings.get("enhance_style_name", "")
-            or "Nghiêm túc"
+            or "Viral"
         )
+        if name in {"Nghiêm túc", "Hài hước", "Vivid"}:
+            name = "Viral"
         prompt = self.prompt.toPlainText()
-        if hasattr(self, "_settings_temp_slider"):
-            temp = max(0.0, min(1.0, self._settings_temp_slider.value() / 100.0))
-        else:
-            saved_temp = self.settings.get("enhance_style_temperature", None)
-            temp = 0.3 if saved_temp is None or str(saved_temp).strip() == "" else float(saved_temp)
-        creative = temp >= 0.5
+        temp = 0.4
+        creative = False
         self.settings["enhance_prompt"] = prompt
         self.settings["enhance_style_name"] = name
         self.settings["enhance_style_temperature"] = temp
         self.settings["enhance_style_creative"] = creative
+        if hasattr(self, "_ep_prompts_map"):
+            self._ep_prompts_map[name] = prompt
 
         if name in PROMPTS:
             overrides = self.settings.get("prompt_preset_overrides", {})
@@ -1719,18 +1801,28 @@ class SettingsDialog(QDialog):
                     ("Vào API Keys",
                      'Sau khi đăng nhập → vào menu trái "API Keys"\n'
                      '→ nhấn "Create Key"'),
-                    ("Chọn quyền đơn giản, đủ dùng",
-                     "Trong khung Create API Key, bật như sau:\n"
+                    ("Chọn quyền cho Hedra",
+                     "Trong khung Create API Key, bật đúng các mục này:\n"
                      "• Text to Speech: Access\n"
-                     "• Voices: Read (hoặc Access nếu bạn cần thêm/sửa voices)\n"
-                     "• Models: Read\n"
-                     "• History: Read\n"
-                     "• Pronunciation Dictionaries: Read (nếu có dùng)\n"
+                     "• Voice Generation: Access\n"
+                     "• Voices: Write\n"
+                     "• Models: Access\n"
                      "• User: Read\n"
+                     "• History: Read\n"
+                     "• Pronunciation Dictionaries: Read nếu có dùng\n"
                      "• Các mục còn lại: No Access"),
-                    ("Gợi ý an toàn",
-                     "Ưu tiên chỉ cấp Read khi có thể.\n"
-                     "Chỉ bật Write/Access cho mục bạn thật sự cần thao tác."),
+                    ("Vì sao cần quyền này?",
+                     "Text to Speech / Voice Generation: tạo audio.\n"
+                     "Voices Write: đọc voice và thêm library voice vào tài khoản.\n"
+                     "Models Access: dùng đúng model Eleven v3.\n"
+                     "User Read: kiểm tra gói, credit/quota.\n"
+                     "History Read: hỗ trợ kiểm tra trạng thái khi cần."),
+                    ("Nếu vẫn lỗi voice",
+                     "Nếu app báo không đọc được voice hoặc lỗi 400:\n"
+                     "→ mở lại API Key\n"
+                     "→ bật Voices: Write\n"
+                     "→ bật Voice Generation: Access\n"
+                     "→ Save Changes rồi kiểm tra lại trong Hedra."),
                     ("Tạo key",
                      'Nhấn "Create Key" → đặt tên (ví dụ: Hedra Studio Mac)\n'
                      "→ copy key ngay sau khi tạo"),
@@ -1739,7 +1831,9 @@ class SettingsDialog(QDialog):
                      "→ Paste vào ô API Keys trong Hedra Studio\n"
                      "→ Mỗi key 1 dòng — có thể thêm nhiều key để tự xoay"),
                     ("Kiểm tra nhanh",
-                     "Nhấn Generate 1 đoạn ngắn để xác nhận key hoạt động"),
+                     "Trong Hedra: Settings → API → ElevenLabs → Kiểm tra.\n"
+                     "Sau đó vào Settings → Giọng đọc → dán Voice ID → Kiểm tra.\n"
+                     "Nếu cả hai OK thì key đã đủ quyền."),
                 ],
             },
             "genmax": {
@@ -1981,14 +2075,12 @@ class SettingsDialog(QDialog):
 
         def _api_guide_btn(service: str) -> QPushButton:
             btn = QPushButton("Hướng dẫn")
-            btn.setFixedHeight(30)
+            btn.setFixedHeight(28)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             accent = ACCENT
-            btn.setIcon(ui_icon("script", 12, accent))
-            btn.setIconSize(icon_size(12))
             btn.setStyleSheet(
                 f"QPushButton{{font-size:11px;font-weight:600;color:{accent};"
-                f"background:{CONTROL_BG};border:1px solid {BORDER_SOFT};border-radius:8px;padding:0 10px;}}"
+                "background:transparent;border:none;border-radius:7px;padding:0 6px;}}"
                 f"QPushButton:hover{{background:{CONTROL_HV};}}"
                 f"QPushButton:pressed{{background:{CONTROL_DN};}}"
             )
@@ -2000,21 +2092,73 @@ class SettingsDialog(QDialog):
             if password:
                 w.setEchoMode(QLineEdit.EchoMode.Password)
             w.setPlaceholderText(placeholder)
+            w.setFixedHeight(36)
             w.setStyleSheet(
-                "QLineEdit{background:transparent;border:none;font-size:13px;}"
+                f"QLineEdit{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};"
+                f"border-radius:9px;font-size:13px;padding:0 10px;color:{TEXT};}}"
+                f"QLineEdit:focus{{background:{SURFACE};border:1px solid {ACCENT};}}"
             )
             return w
 
-        def _multi_key(value: str, placeholder: str) -> QTextEdit:
-            w = QTextEdit()
-            w.setPlainText(value)
-            w.setPlaceholderText(placeholder)
-            w.setFixedHeight(74)
-            w.setAcceptRichText(False)
-            w.setStyleSheet(
-                "QTextEdit{background:transparent;border:none;font-size:13px;padding:0;}"
-            )
-            return w
+        class _ApiKeySlots(QWidget):
+            textChanged = pyqtSignal(str)
+
+            def __init__(self, value: str, parent=None):
+                super().__init__(parent)
+                self.setStyleSheet("QWidget{background:transparent;border:none;}")
+                v_slots = QVBoxLayout(self)
+                v_slots.setContentsMargins(0, 0, 0, 0)
+                v_slots.setSpacing(6)
+                self._edits: list[QLineEdit] = []
+                values = _split_api_keys(value)[:3]
+                labels = ["Key 1", "Key 2", "Key 3"]
+                for i, label in enumerate(labels):
+                    row = QWidget()
+                    row.setStyleSheet("QWidget{background:transparent;border:none;}")
+                    h = QHBoxLayout(row)
+                    h.setContentsMargins(0, 0, 0, 0)
+                    h.setSpacing(8)
+                    row_label = QLabel(label)
+                    row_label.setFixedWidth(42)
+                    row_label.setStyleSheet(
+                        f"QLabel{{font-size:12px;color:{TEXT_FAINT};background:transparent;border:none;}}"
+                    )
+                    edit = QLineEdit(values[i] if i < len(values) else "")
+                    edit.setPlaceholderText(label)
+                    edit.setEchoMode(QLineEdit.EchoMode.Password)
+                    edit.setFixedHeight(36)
+                    edit.setStyleSheet(
+                        f"QLineEdit{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};"
+                        f"border-radius:9px;font-size:13px;padding:0 10px;color:{TEXT};}}"
+                        f"QLineEdit:focus{{background:{SURFACE};border:1px solid {ACCENT};}}"
+                    )
+                    edit.textChanged.connect(lambda text, idx=i: self._on_edit_changed(idx, text))
+                    self._edits.append(edit)
+                    h.addWidget(row_label)
+                    h.addWidget(edit, 1)
+                    v_slots.addWidget(row)
+
+            def _on_edit_changed(self, idx: int, value: str):
+                parts = _split_api_keys(value)
+                if len(parts) > 1:
+                    for i, edit in enumerate(self._edits):
+                        edit.blockSignals(True)
+                        edit.setText(parts[i] if i < len(parts) else "")
+                        edit.blockSignals(False)
+                    self.textChanged.emit(self.text())
+                    return
+                self.textChanged.emit(self.text())
+
+            def text(self) -> str:
+                return " ".join(e.text().strip() for e in self._edits if e.text().strip())
+
+            def setText(self, value: str):
+                values = _split_api_keys(value)[:3]
+                for i, edit in enumerate(self._edits):
+                    edit.setText(values[i] if i < len(values) else "")
+
+        def _multi_key(value: str, placeholder: str) -> QWidget:
+            return _ApiKeySlots(value)
 
         def _field_row(field: QWidget, service: str | None = None) -> QWidget:
             w = QWidget()
@@ -2071,6 +2215,94 @@ class SettingsDialog(QDialog):
             outer.addWidget(detail)
             return w
 
+        def _provider_card(
+            service: str,
+            title: str,
+            field: QWidget,
+            note: str,
+            guide: bool = True,
+            last: bool = False,
+        ) -> QWidget:
+            row = QWidget()
+            row.setStyleSheet("QWidget{background:transparent;border:none;}")
+            row_v = QVBoxLayout(row)
+            row_v.setContentsMargins(16, 10, 16, 10)
+            row_v.setSpacing(8)
+
+            top = QHBoxLayout()
+            top.setContentsMargins(0, 0, 0, 0)
+            top.setSpacing(10)
+            title_col = QVBoxLayout()
+            title_col.setContentsMargins(0, 0, 0, 0)
+            title_col.setSpacing(2)
+            title_lbl = QLabel(title)
+            title_lbl.setStyleSheet(
+                f"QLabel{{font-size:13px;font-weight:700;color:{TEXT};background:transparent;border:none;}}"
+            )
+            note_lbl = QLabel(note)
+            note_lbl.setWordWrap(False)
+            note_lbl.setStyleSheet(
+                f"QLabel{{font-size:11px;color:{TEXT_FAINT};background:transparent;border:none;}}"
+            )
+            title_col.addWidget(title_lbl)
+            title_col.addWidget(note_lbl)
+            top.addLayout(title_col, 1)
+
+            status = QLabel()
+            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            status.setFixedHeight(24)
+            status.setMinimumWidth(74)
+            top.addWidget(status, 0, Qt.AlignmentFlag.AlignTop)
+
+            check_btn = QPushButton("Kiểm tra")
+            check_btn.setFixedHeight(28)
+            check_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            check_btn.setStyleSheet(self._soft_button_style(radius=7, font_size=11))
+            check_btn.clicked.connect(lambda _=False, s=service: self._api_run_health_check(s))
+            top.addWidget(check_btn, 0, Qt.AlignmentFlag.AlignTop)
+            if guide and service in {"genmax", "elevenlabs", "gemini", "deepseek"}:
+                top.addWidget(_api_guide_btn(service), 0, Qt.AlignmentFlag.AlignTop)
+            row_v.addLayout(top)
+
+            row_v.addWidget(field)
+            detail = QLabel("")
+            detail.setVisible(False)
+            detail.setWordWrap(True)
+            detail.setStyleSheet(
+                f"QLabel{{font-size:11px;color:{TEXT_FAINT};background:transparent;border:none;}}"
+            )
+            row_v.addWidget(detail)
+
+            self._api_status_widgets[service] = {
+                "badge": status,
+                "detail": detail,
+                "button": check_btn,
+                "field": field,
+            }
+            if hasattr(field, "textChanged"):
+                field.textChanged.connect(
+                    lambda *_args, s=service, f=field: (
+                        self._api_set_status(
+                            s,
+                            "unknown" if _widget_text(f) else "missing",
+                            "Chờ kiểm tra." if _widget_text(f) else "",
+                        ),
+                        self._api_schedule_health_check(s),
+                    )
+                )
+            self._api_set_status(
+                service,
+                "unknown" if _widget_text(field) else "missing",
+                "Chờ kiểm tra." if _widget_text(field) else "",
+            )
+
+            if not last:
+                sep = QWidget()
+                sep.setFixedHeight(1)
+                sep.setStyleSheet(f"QWidget{{background:{BORDER_SOFT};border:none;}}")
+                row_v.addWidget(sep)
+            return row
+
         header_row = QWidget()
         header_row.setStyleSheet("QWidget{background:transparent;border:none;}")
         header_lay = QHBoxLayout(header_row)
@@ -2078,7 +2310,7 @@ class SettingsDialog(QDialog):
         header_lay.setSpacing(10)
         header_lay.addWidget(self._page_header(
             "api", "API",
-            "Nhập key một lần — các trang khác chỉ chọn cách dùng, không nhập lại.",
+            "Nhập một lần, dùng toàn app.",
         ), 1)
         self._api_check_all_btn = QPushButton("Kiểm tra lại tất cả")
         self._api_check_all_btn.setFixedHeight(34)
@@ -2088,26 +2320,31 @@ class SettingsDialog(QDialog):
         v.addWidget(header_row)
 
         # ── NHÓM 1: Giọng đọc (TTS) ────────────────────────────────
-        v.addWidget(self._section_label_with_icon("voices", "Giọng đọc (TTS)"))
+        v.addWidget(self._section_label_with_icon("voices", "TTS"))
         grp_tts, glay_tts = self._group()
 
-        self.genmax_key = _line_key(api_values["genmax"], "sk_...")
+        self.genmax_key = _line_key(api_values["genmax"], "GenMax API key")
         self._pv_gm_key = self.genmax_key
-        self._row(glay_tts, "① GenMax", _field_row(self.genmax_key, "genmax"),
-                  "Chủ đạo — TTS, STT, Auto Video.")
+        glay_tts.addWidget(_provider_card(
+            "genmax", "GenMax", self.genmax_key,
+            "Chính",
+        ))
 
         el_key_text = "\n".join([k for k in el_saved[:3] if str(k).strip()])
         if not el_key_text and api_values["elevenlabs"]:
             el_key_text = api_values["elevenlabs"]
-        self.el_keys = _multi_key(el_key_text, "Mỗi dòng 1 ElevenLabs API key — tối đa 3 key")
+        self.el_keys = _multi_key(el_key_text, "1-3 ElevenLabs key")
         self._pv_el_key = self.el_keys
-        self._row(glay_tts, "② ElevenLabs", _field_row(self.el_keys, "elevenlabs"),
-                  "Fallback cuối — paste tối đa 3 key, tool tự thử key tiếp theo khi lỗi/hết quota.", last=True)
+        glay_tts.addWidget(_provider_card(
+            "elevenlabs", "ElevenLabs", self.el_keys,
+            "Fallback",
+            last=True,
+        ))
 
         v.addWidget(grp_tts)
 
         # Dịch vụ legacy — ẩn mặc định
-        _coll_tts, _coll_tts_inner = self._add_collapsible(v, "Dịch vụ TTS legacy")
+        _coll_tts, _coll_tts_inner = self._add_collapsible(v, "TTS legacy")
         grp_extra_tts, glay_extra_tts = self._group()
         self._pv_ll_key = _line_key(api_values["lucylab"], "sk_live_...")
         self._row(glay_extra_tts, "LucyLab", _field_row(self._pv_ll_key, None),
@@ -2115,42 +2352,35 @@ class SettingsDialog(QDialog):
         _coll_tts_inner.addWidget(grp_extra_tts)
 
         # ── NHÓM 2: AI — Kịch bản & Enhance ───────────────────────
-        v.addWidget(self._section_label_with_icon("spark", "AI — Kịch bản & Enhance"))
+        v.addWidget(self._section_label_with_icon("spark", "AI"))
         grp_ai, glay_ai = self._group()
 
-        self.claude_key = _line_key(api_values["claude"], "sk-ant-...")
+        self.claude_key = _line_key(api_values["claude"], "Claude API key")
         self._pv_claude_key = self.claude_key
-        self._row(glay_ai, "① Claude", _field_row(self.claude_key, "claude"),
-                  "Chủ đạo — enhance & viết kịch bản (khuyến nghị).")
+        glay_ai.addWidget(_provider_card(
+            "claude", "Claude", self.claude_key,
+            "Chính",
+            guide=False,
+        ))
 
-        self.gemini_key = _line_key(api_values["gemini"], "AIza...")
+        self.gemini_key = _line_key(api_values["gemini"], "Gemini API key")
         self._pv_script_gemini_key = self.gemini_key
-        self._row(glay_ai, "② Gemini", _field_row(self.gemini_key, "gemini"),
-                  "Fallback miễn phí — TTS Enhance, STT và gợi ý prompt.")
+        glay_ai.addWidget(_provider_card(
+            "gemini", "Gemini", self.gemini_key,
+            "Fallback",
+        ))
 
-        self.ds_key = _line_key(api_values["deepseek"], "sk-...")
+        self.ds_key = _line_key(api_values["deepseek"], "DeepSeek API key")
         self._pv_deepseek_key = self.ds_key
-        self._row(glay_ai, "③ DeepSeek", _field_row(self.ds_key, "deepseek"),
-                  "Fallback tự động khi Claude lỗi.", last=True)
+        glay_ai.addWidget(_provider_card(
+            "deepseek", "DeepSeek", self.ds_key,
+            "Fallback",
+            last=True,
+        ))
 
         v.addWidget(grp_ai)
 
-        # ── NHÓM 3: Thông báo ───────────────────────────────────────
-        v.addWidget(self._section_label_with_icon("message", "Thông báo"))
-        grp_notif, glay_notif = self._group()
-
-        self.telegram_bot_token = _line_key(api_values["telegram_bot_token"], "Bot token")
-        self._row(glay_notif, "Telegram Bot", _field_row(self.telegram_bot_token, "telegram"))
-
-        self.telegram_chat_id = _line_key(api_values["telegram_chat_id"], "Chat ID", password=False)
-        self._row(glay_notif, "Telegram Chat ID", self.telegram_chat_id,
-                  "Nhận thông báo khi render xong.", last=True)
-
-        v.addWidget(grp_notif)
-
         v.addStretch()
-        if hasattr(self.telegram_chat_id, "textChanged"):
-            self.telegram_chat_id.textChanged.connect(lambda *_: self._api_schedule_health_check("telegram"))
         QTimer.singleShot(900, lambda: self._api_run_health_check("__all__"))
         return page
 
@@ -2162,25 +2392,25 @@ class SettingsDialog(QDialog):
         outer.setSpacing(0)
 
         outer.addWidget(self._page_header(
-            "prompts", "Prompts",
-            "Prompt hệ thống cho kịch bản Chat và TTS enhance.",
+            "prompts", "Prompt",
+            "Ưu tiên TTS Enhance. Kịch bản để trong tab phụ.",
         ))
 
         _select_bg = theme_tokens(self._theme_mode)["SELECTION_BG"]
         _prompt_card_ss = (
-            f"QFrame{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};border-radius:12px;}}"
+            f"QFrame{{background:{SURFACE};border:1px solid {BORDER_SOFT};border-radius:12px;}}"
         )
         _prompt_card_edit_ss = (
             f"QFrame{{background:{SURFACE};border:2px solid {ACCENT};border-radius:12px;}}"
         )
         _prompt_text_ss = (
-            f"QTextEdit{{font-size:13px;color:{TEXT};"
-            f"background:transparent;border:none;padding:16px 18px;"
+            f"QTextEdit{{font-size:13px;font-weight:400;color:{TEXT};"
+            f"background:{SURFACE};border:none;padding:18px 20px;"
             f"selection-background-color:{_select_bg};}}"
         )
         _prompt_text_edit_ss = (
-            f"QTextEdit{{font-size:13px;color:{TEXT};"
-            f"background:{SURFACE};border:none;padding:16px 18px;"
+            f"QTextEdit{{font-size:13px;font-weight:400;color:{TEXT};"
+            f"background:{SURFACE};border:none;padding:18px 20px;"
             f"selection-background-color:{_select_bg};}}"
         )
         _secondary_btn_ss = (
@@ -2217,19 +2447,15 @@ class SettingsDialog(QDialog):
                     f"QPushButton:hover{{background:{CONTROL_HV};color:{TEXT};}}")
 
         btn_tab_chat = QPushButton("Kịch bản")
-        btn_tab_chat.setIcon(ui_icon("script", 14))
-        btn_tab_chat.setIconSize(icon_size(14))
         btn_tab_chat.setFixedHeight(36)
         btn_tab_chat.setStyleSheet(
-            _subtab_style(True) +
+            _subtab_style(False) +
             "QPushButton{border-radius:8px;}"
         )
         btn_tab_tts = QPushButton("TTS Enhance")
-        btn_tab_tts.setIcon(ui_icon("tts", 14))
-        btn_tab_tts.setIconSize(icon_size(14))
         btn_tab_tts.setFixedHeight(36)
         btn_tab_tts.setStyleSheet(
-            _subtab_style(False) +
+            _subtab_style(True) +
             "QPushButton{border-radius:8px;}"
         )
 
@@ -2252,8 +2478,8 @@ class SettingsDialog(QDialog):
 
         btn_tab_chat.clicked.connect(lambda: _switch_subtab(0))
         btn_tab_tts.clicked.connect(lambda: _switch_subtab(1))
-        tab_row.addWidget(btn_tab_chat)
         tab_row.addWidget(btn_tab_tts)
+        tab_row.addWidget(btn_tab_chat)
         tab_row.addStretch()
         tab_shell = QWidget()
         tab_shell.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};border-radius:10px;}}")
@@ -2262,7 +2488,7 @@ class SettingsDialog(QDialog):
         tab_shell_lay.setSpacing(2)
         tab_shell_lay.addLayout(tab_row)
         tab_shell.setFixedHeight(42)
-        tab_shell.setMaximumWidth(286)
+        tab_shell.setMaximumWidth(260)
         outer.addWidget(tab_shell)
         outer.addSpacing(12)
 
@@ -2389,22 +2615,17 @@ class SettingsDialog(QDialog):
             name: item["prompt"]
             for name, item in self._ep_style_data.items()
         }
-        ep_temp_map = {
-            name: item["temperature"]
-            for name, item in self._ep_style_data.items()
-        }
-
         def _ep_tab_style(active: bool) -> str:
             if active:
                 return (f"QPushButton{{background:{SURFACE};color:{ACCENT};"
-                        f"border:1px solid {BORDER_SOFT};border-radius:9px;"
-                        "font-size:12px;font-weight:600;padding:6px 10px;}")
+                        f"border:1px solid {BORDER_SOFT};border-radius:10px;"
+                        "font-size:13px;font-weight:600;padding:7px 14px;}")
             return (f"QPushButton{{background:transparent;color:{TEXT_MUTE};"
-                    "border:none;border-radius:9px;"
-                    "font-size:12px;font-weight:500;padding:6px 10px;}"
+                    "border:none;border-radius:10px;"
+                    "font-size:13px;font-weight:500;padding:7px 14px;}"
                     f"QPushButton:hover{{background:{CONTROL_HV};}}")
 
-        _saved_ep   = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        _saved_ep   = self.settings.get("enhance_prompt", DEFAULT_PROMPT_FUNNY)
         _active_ep  = (
             self.settings.get("enhance_style_name", "")
             if self.settings.get("enhance_style_name", "") in self._ep_prompts_map
@@ -2418,19 +2639,13 @@ class SettingsDialog(QDialog):
         self._ep_active_style = _active_ep
 
         def _switch_ep_tab(name: str):
+            if name != self._ep_active_style:
+                self._commit_current_prompt_style()
             for n, b in self._ep_style_tabs.items():
                 b.setStyleSheet(_ep_tab_style(n == name))
             self.prompt.setPlainText(self._ep_prompts_map[name])
             self._ep_active_style = name
             self.settings["enhance_style_name"] = name
-            # Sync theo setup đã lưu của chính preset đó.
-            if hasattr(self, "_settings_temp_slider"):
-                t = ep_temp_map.get(name, self.settings.get("enhance_style_temperature", 0.3))
-                self._settings_temp_slider.setValue(int(t * 100))
-                if hasattr(self, "_settings_temp_val_lbl"):
-                    self._settings_temp_val_lbl.setText(f"{t:.2f}")
-                self.settings["enhance_style_temperature"] = t
-                self.settings["enhance_style_creative"] = t >= 0.5
 
         for name, prompt_text in self._ep_prompts_map.items():
             tb = QPushButton(name)
@@ -2459,9 +2674,13 @@ class SettingsDialog(QDialog):
 
         self.prompt = QTextEdit()
         self.prompt.setPlainText(self._ep_prompts_map.get(_active_ep, _saved_ep))
-        self.prompt.setReadOnly(True)
-        self.prompt.setMinimumHeight(320)
-        self.prompt.setStyleSheet(_prompt_text_ss)
+        self.prompt.setReadOnly(False)
+        self.prompt.setAcceptRichText(False)
+        self.prompt.setMinimumHeight(420)
+        self.prompt.setStyleSheet(_prompt_text_edit_ss)
+        prompt_font = QFont("Menlo")
+        prompt_font.setPointSize(12)
+        self.prompt.setFont(prompt_font)
         ep_right.addWidget(self.prompt, 1)
 
         ep_div2 = QFrame(); ep_div2.setFrameShape(QFrame.Shape.HLine)
@@ -2476,9 +2695,12 @@ class SettingsDialog(QDialog):
         btn_cancel_ep.setStyleSheet(_secondary_btn_ss)
         ep_foot.addWidget(btn_cancel_ep)
         ep_foot.addStretch()
-        btn_edit_ep = QPushButton("Chỉnh sửa")
-        btn_edit_ep.setIcon(ui_icon("prompts", 14))
-        btn_edit_ep.setIconSize(icon_size(14))
+        hint_ep = QLabel("Sửa trực tiếp trong ô prompt, rồi bấm Lưu.")
+        hint_ep.setStyleSheet(
+            f"QLabel{{font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;}}"
+        )
+        ep_foot.addWidget(hint_ep)
+        btn_edit_ep = QPushButton("Lưu prompt")
         btn_edit_ep.setFixedHeight(30)
         btn_edit_ep.setStyleSheet(_primary_btn_ss)
         ep_foot.addWidget(btn_edit_ep)
@@ -2489,105 +2711,39 @@ class SettingsDialog(QDialog):
         _ep_snapshot: list[str] = [_saved_ep]
 
         def _toggle_edit_ep():
-            if self.prompt.isReadOnly():
-                _ep_snapshot[0] = self.prompt.toPlainText()
-                self.prompt.setReadOnly(False)
-                self.prompt.setStyleSheet(_prompt_text_edit_ss)
-                ep_card.setStyleSheet(_prompt_card_edit_ss)
-                btn_edit_ep.setText("Lưu")
-                btn_edit_ep.setStyleSheet(_save_btn_ss)
-                btn_cancel_ep.setText("Hủy")
-                self.prompt.setFocus()
-            else:
-                self._commit_current_prompt_style()
-                save_settings(self.settings)
-                self.prompt.setReadOnly(True)
-                self.prompt.setStyleSheet(_prompt_text_ss)
-                ep_card.setStyleSheet(_prompt_card_ss)
-                btn_edit_ep.setText("Chỉnh sửa")
-                btn_edit_ep.setStyleSheet(_primary_btn_ss)
-                btn_cancel_ep.setText("Về mặc định")
+            self._commit_current_prompt_style()
+            save_settings(self.settings)
+            _ep_snapshot[0] = self.prompt.toPlainText()
+            hint_ep.setText("Đã lưu prompt.")
+            QTimer.singleShot(1800, lambda: hint_ep.setText("Sửa trực tiếp trong ô prompt, rồi bấm Lưu."))
 
         def _cancel_or_reset_ep():
-            if not self.prompt.isReadOnly():
-                self.prompt.setPlainText(_ep_snapshot[0])
-                self.prompt.setReadOnly(True)
-                self.prompt.setStyleSheet(_prompt_text_ss)
-                ep_card.setStyleSheet(_prompt_card_ss)
-                btn_edit_ep.setText("Chỉnh sửa")
-                btn_edit_ep.setStyleSheet(_primary_btn_ss)
-                btn_cancel_ep.setText("Về mặc định")
-            else:
-                self.prompt.setPlainText(DEFAULT_PROMPT)
-                self._ep_active_style = "Nghiêm túc"
-                self.settings["enhance_prompt"] = DEFAULT_PROMPT
-                self.settings["enhance_style_name"] = "Nghiêm túc"
-                self.settings["enhance_style_temperature"] = 0.3
-                self.settings["enhance_style_creative"] = False
-                overrides = self.settings.get("prompt_preset_overrides", {})
-                if isinstance(overrides, dict):
-                    overrides.pop("Nghiêm túc", None)
-                save_settings(self.settings)
+            name = getattr(self, "_ep_active_style", "Viral") or "Viral"
+            if name in {"Nghiêm túc", "Hài hước", "Vivid"}:
+                name = "Viral"
+            default_prompt = PROMPTS.get(name, DEFAULT_PROMPT_FUNNY)
+            self.prompt.setPlainText(default_prompt)
+            self.settings["enhance_prompt"] = default_prompt
+            self.settings["enhance_style_name"] = name
+            self.settings["enhance_style_temperature"] = 0.4
+            self.settings["enhance_style_creative"] = False
+            overrides = self.settings.get("prompt_preset_overrides", {})
+            if isinstance(overrides, dict):
+                overrides.pop(name, None)
+            if name in self._ep_prompts_map:
+                self._ep_prompts_map[name] = default_prompt
+            save_settings(self.settings)
+            hint_ep.setText("Đã đưa prompt về mặc định.")
+            QTimer.singleShot(1800, lambda: hint_ep.setText("Sửa trực tiếp trong ô prompt, rồi bấm Lưu."))
 
         btn_edit_ep.clicked.connect(_toggle_edit_ep)
         btn_cancel_ep.clicked.connect(_cancel_or_reset_ep)
-
-        # ── Mức độ sáng tạo — group card ──────────────────────────
-        vt.addSpacing(12)
-        vt.addWidget(self._section_label_with_icon("spark", "Mức độ sáng tạo"))
-        grp_temp, glay_temp = self._group()
-
-        temp_slider_w = QWidget()
-        temp_slider_w.setStyleSheet("QWidget{background:transparent;border:none;}")
-        temp_h = QHBoxLayout(temp_slider_w)
-        temp_h.setContentsMargins(0, 0, 0, 0)
-        temp_h.setSpacing(10)
-        lbl_calm = QLabel("Chính xác")
-        lbl_calm.setStyleSheet(f"QLabel{{font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;}}")
-        temp_h.addWidget(lbl_calm)
-        self._settings_temp_slider = QSlider(Qt.Orientation.Horizontal)
-        self._settings_temp_slider.setRange(0, 100)
-        # Khi mở lại Settings, luôn ưu tiên giá trị user đã lưu.
-        # Preset chỉ set default lúc user bấm đổi style, không được ghi đè
-        # slider đã chỉnh thủ công.
-        _saved_temp = ep_temp_map.get(_active_ep, self.settings.get("enhance_style_temperature", None))
-        if _saved_temp is None or str(_saved_temp).strip() == "":
-            _cur_temp = float(ep_temp_map.get(_active_ep, 0.3))
-        else:
-            _cur_temp = float(_saved_temp)
-        self._settings_temp_slider.setValue(int(_cur_temp * 100))
-        self._settings_temp_slider.setFixedHeight(20)
-        self._settings_temp_slider.setStyleSheet(
-            f"QSlider::groove:horizontal{{height:4px;background:{SEG_BG};border-radius:2px;}}"
-            "QSlider::handle:horizontal{width:18px;height:18px;margin:-7px 0;"
-            f"background:{ACCENT};border-radius:9px;border:none;}}"
-            f"QSlider::sub-page:horizontal{{background:{ACCENT};border-radius:2px;}}"
-        )
-        temp_h.addWidget(self._settings_temp_slider, 1)
-        lbl_creative = QLabel("Sáng tạo")
-        lbl_creative.setStyleSheet(f"QLabel{{font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;}}")
-        temp_h.addWidget(lbl_creative)
-        self._settings_temp_val_lbl = QLabel(f"{_cur_temp:.2f}")
-        self._settings_temp_val_lbl.setFixedWidth(32)
-        self._settings_temp_val_lbl.setStyleSheet(
-            f"QLabel{{font-size:12px;font-weight:600;color:{ACCENT};"
-            "background:transparent;border:none;}"
-        )
-        temp_h.addWidget(self._settings_temp_val_lbl)
-        self._row(glay_temp, "Mức độ", temp_slider_w, last=True)
-        vt.addWidget(grp_temp)
-
-        def _on_settings_temp(val: int):
-            t = val / 100.0
-            self._settings_temp_val_lbl.setText(f"{t:.2f}")
-            self.settings["enhance_style_temperature"] = t
-            self.settings["enhance_style_creative"] = t >= 0.5
-        self._settings_temp_slider.valueChanged.connect(_on_settings_temp)
 
         # ── Wire stacked widget ────────────────────────────────────
         self._prompts_stacked.addWidget(page_chat)   # index 0
         self._prompts_stacked.addWidget(page_tts)    # index 1
         outer.addWidget(self._prompts_stacked, 1)
+        _switch_subtab(1)
 
         return page
 
@@ -2614,13 +2770,8 @@ class SettingsDialog(QDialog):
             name: item["prompt"]
             for name, item in self._ep_style_data.items()
         }
-        ep_temp_map = {
-            name: item["temperature"]
-            for name, item in self._ep_style_data.items()
-        }
-
         # Tìm tab đang active
-        _saved = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        _saved = self.settings.get("enhance_prompt", DEFAULT_PROMPT_FUNNY)
         _active = (
             self.settings.get("enhance_style_name", "")
             if self.settings.get("enhance_style_name", "") in self._ep_prompts_map
@@ -2646,18 +2797,13 @@ class SettingsDialog(QDialog):
                     f"QPushButton:hover{{background:{CONTROL_HV};}}")
 
         def _switch(name: str):
+            if name != self._ep_active_style:
+                self._commit_current_prompt_style()
             for n, b in self._ep_style_tabs.items():
                 b.setStyleSheet(_tab_style(n == name))
             self.prompt.setPlainText(self._ep_prompts_map[name])
             self._ep_active_style = name
             self.settings["enhance_style_name"] = name
-            if hasattr(self, "_settings_temp_slider"):
-                t = ep_temp_map.get(name, self.settings.get("enhance_style_temperature", 0.3))
-                self._settings_temp_slider.setValue(int(t * 100))
-                if hasattr(self, "_settings_temp_val_lbl"):
-                    self._settings_temp_val_lbl.setText(f"{t:.2f}")
-                self.settings["enhance_style_temperature"] = t
-                self.settings["enhance_style_creative"] = t >= 0.5
 
         # Thêm tabs mới
         for name, prompt_text in self._ep_prompts_map.items():
@@ -2706,7 +2852,7 @@ class SettingsDialog(QDialog):
             h.setContentsMargins(14, 8, 14, 8)
             h.setSpacing(8)
 
-            label = QLabel(f"{style.get('icon', '')}  {style.get('name', '').strip()}")
+            label = QLabel(style.get("name", "").strip())
             label.setStyleSheet(
                 f"QLabel{{font-size:13px;color:{TEXT};background:transparent;border:none;}}"
             )
@@ -2822,10 +2968,7 @@ class SettingsDialog(QDialog):
             styles = self.settings.setdefault("custom_styles", [])
             styles.append(result)
             self.settings["enhance_prompt"] = result["prompt"]
-            self.settings["enhance_style_name"] = (
-                f"{result.get('icon', '')}  {result.get('name', '')}"
-                if result.get("icon") else result.get("name", "")
-            )
+            self.settings["enhance_style_name"] = result.get("name", "")
             self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
             self.settings["enhance_style_creative"] = result.get("creative", False)
             self.prompt.setPlainText(result["prompt"])
@@ -2850,10 +2993,7 @@ class SettingsDialog(QDialog):
             )
             if current_matches:
                 self.settings["enhance_prompt"] = result["prompt"]
-                self.settings["enhance_style_name"] = (
-                    f"{result.get('icon', '')}  {result.get('name', '')}"
-                    if result.get("icon") else result.get("name", "")
-                )
+                self.settings["enhance_style_name"] = result.get("name", "")
                 self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
                 self.settings["enhance_style_creative"] = result.get("creative", False)
                 self.prompt.setPlainText(result["prompt"])
@@ -2880,11 +3020,11 @@ class SettingsDialog(QDialog):
                 or self.prompt.toPlainText().strip() == removed.get("prompt", "").strip()
             )
             if current_matches:
-                self.settings["enhance_prompt"] = DEFAULT_PROMPT
-                self.settings["enhance_style_name"] = "Nghiêm túc"
-                self.settings["enhance_style_temperature"] = 0.3
-                self.settings["enhance_style_creative"] = False
-                self.prompt.setPlainText(DEFAULT_PROMPT)
+                self.settings["enhance_prompt"] = DEFAULT_PROMPT_FUNNY
+                self.settings["enhance_style_name"] = "Viral"
+                self.settings["enhance_style_temperature"] = 0.7
+                self.settings["enhance_style_creative"] = True
+                self.prompt.setPlainText(DEFAULT_PROMPT_FUNNY)
             self._refresh_custom_styles()
             self._refresh_custom_style_manager()
             save_settings(self.settings)
@@ -2919,7 +3059,7 @@ class SettingsDialog(QDialog):
         )
         hdr_h.addWidget(hdr_lbl)
         hdr_h.addStretch()
-        btn_add = QPushButton("＋  Thêm giọng")
+        btn_add = QPushButton("Thêm giọng")
         btn_add.setFixedHeight(28)
         btn_add.setStyleSheet(
             f"QPushButton{{background:{ACCENT};color:white;border:none;border-radius:8px;"
@@ -2970,7 +3110,7 @@ class SettingsDialog(QDialog):
         row2 = QHBoxLayout(); row2.setSpacing(8)
         l2 = QLabel("Voice ID:"); l2.setFixedWidth(80); l2.setStyleSheet(lbl_style)
         self._v_inp_id = _field("pNInz6obpgDQGcFmaJgB", mono=True)
-        self._v_btn_check = QPushButton("🔍 Kiểm tra")
+        self._v_btn_check = QPushButton("Kiểm tra")
         self._v_btn_check.setFixedHeight(30)
         self._v_btn_check.setStyleSheet(
             f"QPushButton{{background:{CONTROL_BG};color:{TEXT};border:1px solid {BORDER_SOFT};border-radius:8px;"
@@ -3075,16 +3215,19 @@ class SettingsDialog(QDialog):
     def _v_check_voice(self):
         vid = self._v_inp_id.text().strip()
         if not vid:
-            self._v_check_status.setText("⚠️ Nhập Voice ID trước")
+            self._v_check_status.setText("Nhập Voice ID trước.")
             self._v_check_status.setStyleSheet(
                 "QLabel{font-size:12px;color:#ff9500;padding:4px 0 0 88px;"
                 "background:transparent;border:none;}"
             )
             self._v_check_status.setVisible(True)
             return
-        api_keys = self.settings.get("el_api_keys", [])
+        api_keys = _elevenlabs_key_pool(
+            _widget_text(getattr(self, "el_keys", _NullEdit())),
+            self.settings,
+        )
         self._v_btn_check.setEnabled(False)
-        self._v_check_status.setText("⏳ Đang kiểm tra…")
+        self._v_check_status.setText("Đang kiểm tra...")
         self._v_check_status.setStyleSheet(
             "QLabel{font-size:12px;color:#8e8e93;padding:4px 0 0 88px;"
             "background:transparent;border:none;}"
@@ -3114,7 +3257,7 @@ class SettingsDialog(QDialog):
             self._v_inp_lang.setVisible(True)
             self._v_lang_badge.setVisible(False)
             self._v_inp_lang.setCurrentIndex(0)  # "— Tự động"
-            note = "🌐 Đa ngôn ngữ (~29 thứ tiếng) — chọn ngôn ngữ mặc định nếu cần"
+            note = "Đa ngôn ngữ (~29 thứ tiếng) — chọn ngôn ngữ mặc định nếu cần."
 
         elif len(langs) == 1:
             # Mono → ẩn combo, hiện badge
@@ -3128,7 +3271,7 @@ class SettingsDialog(QDialog):
             self._v_lang_badge.setText(badge_text)
             self._v_inp_lang.setVisible(False)
             self._v_lang_badge.setVisible(True)
-            note = f"✅ Giọng hỗ trợ: {badge_text}"
+            note = f"Giọng hỗ trợ: {badge_text}."
 
         else:
             # Một số ngôn ngữ cụ thể → lọc combo chỉ hiện các ngôn ngữ đó
@@ -3141,7 +3284,7 @@ class SettingsDialog(QDialog):
                 self._v_inp_lang.addItem(lbl, code)
             self._v_inp_lang.setCurrentIndex(0)
             lang_names = " / ".join(lang_label_map.get(c, c) for c in langs)
-            note = f"✅ Giọng hỗ trợ: {lang_names}"
+            note = f"Giọng hỗ trợ: {lang_names}."
 
         self._v_check_status.setText(note)
         self._v_check_status.setStyleSheet(
@@ -3152,13 +3295,13 @@ class SettingsDialog(QDialog):
     def _v_on_voice_check_error(self, msg: str):
         self._v_btn_check.setEnabled(True)
         if msg == "no_key":
-            text = "⚠️ Chưa có ElevenLabs API key — thêm key vào tab API"
+            text = "Chưa có ElevenLabs API key — thêm key vào tab API."
             color = "#ff9500"
         elif msg == "invalid_key":
-            text = "⚠️ API key ElevenLabs không hợp lệ — cần key thật từ elevenlabs.io (không phải GenMax key)"
+            text = "API key ElevenLabs không hợp lệ — cần key thật từ elevenlabs.io (không phải GenMax key)."
             color = "#ff9500"
         else:
-            text = f"❌ {msg}"
+            text = msg
             color = "#ff3b30"
         self._v_check_status.setText(text)
         self._v_check_status.setStyleSheet(
@@ -3212,7 +3355,10 @@ class SettingsDialog(QDialog):
         vid = (vid or "").strip()
         if not vid:
             return
-        api_keys = self.settings.get("el_api_keys", [])
+        api_keys = _elevenlabs_key_pool(
+            _widget_text(getattr(self, "el_keys", _NullEdit())),
+            self.settings,
+        )
         if not api_keys:
             QMessageBox.warning(
                 self,
@@ -3282,7 +3428,7 @@ class SettingsDialog(QDialog):
 
         favs = self.settings.get("favorite_voices", [])
         if not favs:
-            empty = QLabel("Chưa có giọng yêu thích.\nNhấn  ＋ Thêm giọng  để bắt đầu.")
+            empty = QLabel("Chưa có giọng yêu thích.\nNhấn Thêm giọng để bắt đầu.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setStyleSheet(
                 f"QLabel{{font-size:13px;color:{TEXT_FAINT};padding:36px 20px;"
@@ -3553,7 +3699,7 @@ class SettingsDialog(QDialog):
         active = getattr(self, f"_v_{section}_active_lang", "all")
 
         # ── "Yêu thích" chip ──
-        fav_btn = QPushButton("⭐  Yêu thích")
+        fav_btn = QPushButton("Yêu thích")
         fav_btn.setCheckable(True)
         fav_btn.setChecked(active == "__fav__")
         fav_btn.setFixedHeight(26)
@@ -3683,12 +3829,12 @@ class SettingsDialog(QDialog):
         # ── Star / Favorite button ──
         favs = self.settings.get("favorite_voice_ids", [])
         is_fav = vid in favs
-        star_btn = QPushButton("⭐" if is_fav else "☆")
-        star_btn.setFixedSize(28, 28)
+        star_btn = QPushButton("Đã lưu" if is_fav else "Lưu")
+        star_btn.setFixedSize(54, 28)
         star_btn.setToolTip("Thêm/xóa khỏi yêu thích")
         star_btn.setStyleSheet(
             "QPushButton{background:transparent;border:none;"
-            "font-size:14px;padding:0;}"
+            "font-size:12px;padding:0;font-weight:500;}"
             f"QPushButton:hover{{background:{CONTROL_HV};border-radius:6px;}}"
         )
         def _toggle_fav(checked, v_id=vid, v_name=vname, v_lang=lang, btn=star_btn):
@@ -3700,13 +3846,13 @@ class SettingsDialog(QDialog):
                 self.settings["favorite_voices"] = [
                     v for v in favs_full if v.get("id") != v_id
                 ]
-                btn.setText("☆")
+                btn.setText("Lưu")
             else:
                 favs_now.append(v_id)
                 # Thêm vào favorite_voices nếu chưa có
                 if not any(v.get("id") == v_id for v in favs_full):
                     favs_full.append({"id": v_id, "name": v_name, "lang": v_lang})
-                btn.setText("⭐")
+                btn.setText("Đã lưu")
             from app_utils import save_settings
             save_settings(self.settings)
             # Sync picker combo trong main window (nếu đang mở)
@@ -3941,22 +4087,28 @@ class SettingsDialog(QDialog):
         fh.setSpacing(8)
         self.out_dir = QLineEdit(self.settings.get("output_dir", DEFAULT_OUT))
         self.out_dir.setReadOnly(True)
+        self.out_dir.setFixedHeight(32)
         self.out_dir.setStyleSheet(
             f"QLineEdit{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};"
-            f"border-radius:6px;padding:4px 8px;font-size:12px;color:{TEXT};}}"
+            f"border-radius:8px;padding:0 10px;font-size:13px;color:{TEXT};}}"
         )
         btn_browse = QPushButton("Chọn…")
-        btn_browse.setFixedWidth(64)
-        btn_browse.setFixedHeight(28)
+        btn_browse.setFixedWidth(74)
+        btn_browse.setFixedHeight(32)
         btn_browse.setStyleSheet(
             f"QPushButton{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};"
-            f"border-radius:6px;font-size:12px;color:{TEXT};}}"
+            f"border-radius:8px;font-size:13px;color:{TEXT};}}"
             f"QPushButton:hover{{background:{CONTROL_HV};}}"
         )
         btn_browse.clicked.connect(self._browse)
         fh.addWidget(self.out_dir)
         fh.addWidget(btn_browse)
-        self._row(glay, "Thư mục lưu", folder_w)
+        self._row(
+            glay,
+            "Thư mục gốc",
+            folder_w,
+            "TTS tự lưu vào thư mục con output/tts/ngày để file không bị trộn.",
+        )
 
         # Auto-open folder sau khi xuất
         self._auto_open_folder = QCheckBox()
@@ -4761,6 +4913,12 @@ class SettingsDialog(QDialog):
         current = getattr(self, "_pv_voices", {}).get("genmax", _NullEdit()).text().strip()
         if current:
             ids.append(current)
+        for item in self.settings.get("favorite_voices", []):
+            if not isinstance(item, dict):
+                continue
+            voice_id = item.get("id", "").strip()
+            if voice_id and voice_id not in ids:
+                ids.append(voice_id)
         for item in self._pv_voice_presets().get("genmax", []):
             if not isinstance(item, dict):
                 continue
@@ -5236,6 +5394,7 @@ class SettingsDialog(QDialog):
             cfg["eleven_v3_style_enabled"],
             cfg["lucylab_endpoint"],
             str(cache_path),
+            cfg.get("elevenlabs_api_keys", []),
         ))
         worker.done.connect(lambda path, s=self: s._pv_safe_call(lambda: s._pv_play_preview_file(path)))
         worker.error.connect(lambda msg, s=self: s._pv_safe_call(lambda: s._pv_preview_error(msg)))
@@ -5250,10 +5409,12 @@ class SettingsDialog(QDialog):
             "elevenlabs": _first_key_from_widget(getattr(self, "_pv_el_key", _NullEdit())),
             "lucylab": getattr(self, "_pv_ll_key", _NullEdit()).text().strip(),
         }
+        elevenlabs_keys = _split_api_keys(getattr(self, "_pv_el_key", _NullEdit()).toPlainText() if hasattr(getattr(self, "_pv_el_key", None), "toPlainText") else _widget_text(getattr(self, "_pv_el_key", _NullEdit())))
         return {
             "provider": provider,
             "voice_id": voice_id,
             "api_key": key_map.get(provider, ""),
+            "elevenlabs_api_keys": elevenlabs_keys,
             "genmax_provider": (
                 getattr(self, "_pv_gm_provider", _NullEdit()).currentText().strip()
                 if hasattr(getattr(self, "_pv_gm_provider", None), "currentText") else "elevenlabs"
@@ -5319,6 +5480,7 @@ class SettingsDialog(QDialog):
             cfg["eleven_v3_style_enabled"],
             cfg["lucylab_endpoint"],
             str(cache_path),
+            cfg.get("elevenlabs_api_keys", []),
         ))
         if not hasattr(self, "_pv_prefetch_workers"):
             self._pv_prefetch_workers = {}
@@ -5560,7 +5722,7 @@ class SettingsDialog(QDialog):
         # Tile icons có màu (giống Ventura+ System Settings) — sections
         # phân tách bằng khoảng trống nhẹ, không cần section label text.
         sidebar = QWidget()
-        sidebar.setFixedWidth(200)
+        sidebar.setFixedWidth(210)
         sidebar.setStyleSheet(f"QWidget{{background:{self._SB_BG};}}")
         sb_layout = QVBoxLayout(sidebar)
         sb_layout.setContentsMargins(10, 16, 10, 12)
@@ -5636,7 +5798,7 @@ class SettingsDialog(QDialog):
         pages = [self._page_api(), self._page_prompts(), self._page_voices(), self._page_pipeline(), self._page_output()]
         for p in pages:
             # Wrap mỗi page trong ScrollArea — không bao giờ tràn màn hình
-            p.setMaximumWidth(724)
+            p.setMaximumWidth(860)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
@@ -5820,6 +5982,7 @@ class SettingsDialog(QDialog):
         if hasattr(self, "_pv_provider"):
             _providers = ["genmax", "elevenlabs", "lucylab"]
             prov = _providers[self._pv_provider.currentIndex()]
+            el_keys_joined = ",".join(self.settings.get("el_api_keys", [])[:3])
             _write_env_local({
                 "TTS_PROVIDER":        prov,
                 "GENMAX_VOICE_ID":     getattr(self, "_pv_voices", {}).get("genmax",     _NullEdit()).text().strip(),
@@ -5835,6 +5998,9 @@ class SettingsDialog(QDialog):
                 "GENMAX_POLL_TIMEOUT_MS": "300000",
                 "GENMAX_MAX_RETRIES": "7",
                 "ELEVENLABS_API_KEY":  _first_key_from_widget(getattr(self, "_pv_el_key", _NullEdit())),
+                "ELEVENLABS_API_KEYS": el_keys_joined,
+                "ELEVENLABS_API_KEY_2": self.settings.get("el_api_keys", ["", ""])[1] if len(self.settings.get("el_api_keys", [])) > 1 else "",
+                "ELEVENLABS_API_KEY_3": self.settings.get("el_api_keys", ["", "", ""])[2] if len(self.settings.get("el_api_keys", [])) > 2 else "",
                 "ELEVENLABS_MODEL_ID":  getattr(self, "_pv_el_model", _NullEdit()).text().strip(),
                 "VIETNAMESE_API_KEY":  getattr(self, "_pv_ll_key",  _NullEdit()).text().strip(),
                 "LUCYLAB_ENDPOINT":     getattr(self, "_pv_ll_endpoint", _NullEdit()).text().strip(),

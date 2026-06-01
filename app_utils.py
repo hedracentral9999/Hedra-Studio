@@ -5,6 +5,7 @@ import subprocess
 import traceback
 import re
 import uuid
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,23 +15,53 @@ import requests
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from app_constants import DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY, VOICE_ID
+from app_constants import DEFAULT_PROMPT_FUNNY, VOICE_ID
 from version import LICENSE_VERIFY_URL, VERSION
 
 # ── Telegram feedback config ──────────────────────────────────────────
 # Packaged releases must never bundle local developer credentials.
-# In a frozen app, only environment variables are honored. Source/dev runs can
-# still use an ignored telegram_config.py file for local testing.
+# Frozen apps read an external per-machine support config, so feedback works
+# without exposing the bot token in Settings, the app bundle, or release DMGs.
+def _read_external_support_config() -> tuple[str, str]:
+    paths: list[Path] = []
+    if sys.platform == "darwin":
+        paths.append(Path.home() / "Library" / "Application Support" / "Hedra Studio" / "support_config.json")
+    elif sys.platform == "win32":
+        paths.append(Path(os.environ.get("APPDATA", str(Path.home()))) / "Hedra Studio" / "support_config.json")
+    else:
+        paths.append(Path.home() / ".hedra_studio" / "support_config.json")
+
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        token = str(data.get("telegram_bot_token") or data.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        chat = str(data.get("telegram_chat_id") or data.get("TELEGRAM_CHAT_ID") or "").strip()
+        if token and chat:
+            return token, chat
+    return "", ""
+
+
 def _load_telegram_config() -> tuple[str, str]:
-    env_token = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
-    env_chat = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
+    env_token = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "").strip()
+    env_chat = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "").strip()
+    if env_token and env_chat:
+        return env_token, env_chat
+
+    ext_token, ext_chat = _read_external_support_config()
+    if ext_token and ext_chat:
+        return ext_token, ext_chat
+
     if getattr(sys, "frozen", False):
         return env_token, env_chat
+
+    # Source/dev runs can still use ignored telegram_config.py for local tests.
     try:
         cfg = importlib.import_module("telegram_config")
         return (
-            str(getattr(cfg, "TELEGRAM_BOT_TOKEN", env_token) or ""),
-            str(getattr(cfg, "TELEGRAM_CHAT_ID", env_chat) or ""),
+            str(getattr(cfg, "TELEGRAM_BOT_TOKEN", env_token) or "").strip(),
+            str(getattr(cfg, "TELEGRAM_CHAT_ID", env_chat) or "").strip(),
         )
     except Exception:
         return env_token, env_chat
@@ -330,7 +361,7 @@ def _default_settings() -> dict:
         "telegram_bot_token":       "",
         "telegram_chat_id":         "",
         "output_dir":               DEFAULT_OUT,
-        "enhance_prompt":           DEFAULT_PROMPT,
+        "enhance_prompt":           DEFAULT_PROMPT_FUNNY,
         "default_speed":            1.0,
         "selected_voice_id":        VOICE_ID,
         "selected_voice_name":      "Adam - Dominant, Firm",
@@ -338,11 +369,15 @@ def _default_settings() -> dict:
         "av_voice_presets":         {},
         "custom_styles":            [],
         "prompt_preset_overrides":  {},
-        "enhance_style_name":       "Nghiêm túc",
-        "enhance_style_temperature": 0.3,
-        "enhance_style_creative":   False,
+        "enhance_style_name":       "Viral",
+        "enhance_style_temperature": 0.7,
+        "enhance_style_creative":   True,
         "language_code":            "vi",
         "tts_language_code":        "vi",
+        "eleven_v3_style_enabled":  True,
+        "genmax_tts_enabled":       True,
+        "genmax_tts_timeout_seconds": 90,
+        "genmax_runtime_probe":     {},
         "favorite_voice_ids":       [VOICE_ID],
         "favorite_voices":          [dict(DEFAULT_ADAM_VOICE)],
         "tts_voice_id":             VOICE_ID,
@@ -441,6 +476,29 @@ def _normalize_output_dir(value) -> str:
     return text
 
 
+def get_tool_output_dir(settings: dict | None, tool: str, day: datetime | None = None) -> str:
+    """Return the dated output folder for a tool, e.g. output/tts/2026-06-01."""
+    root = DEFAULT_OUT
+    if isinstance(settings, dict):
+        root = _normalize_output_dir(settings.get("output_dir"))
+    safe_tool = re.sub(r"[^A-Za-z0-9_-]+", "-", str(tool or "tool").strip().lower()).strip("-") or "tool"
+    stamp = (day or datetime.now()).strftime("%Y-%m-%d")
+    return str(Path(root) / safe_tool / stamp)
+
+
+def suggest_tts_filename(text: str, now: datetime | None = None) -> str:
+    """Create a readable, collision-resistant default filename from TTS text."""
+    plain = re.sub(r"\[[^\]]+\]", " ", str(text or ""))
+    plain = re.sub(r"[*_`~]+", " ", plain)
+    plain = plain.replace("đ", "d").replace("Đ", "D")
+    plain = unicodedata.normalize("NFKD", plain).encode("ascii", "ignore").decode("ascii")
+    plain = plain.lower()
+    words = re.findall(r"[a-z0-9]+", plain)
+    stem = "_".join(words[:6]).strip("_") or "ban_doc"
+    stamp = (now or datetime.now()).strftime("%H%M%S")
+    return f"{stem}_{stamp}"
+
+
 def _backfill_settings(s: dict) -> dict:
     defaults = _default_settings()
     if "el_api_key" in s and "el_api_keys" not in s:
@@ -448,6 +506,21 @@ def _backfill_settings(s: dict) -> dict:
     for key, default in defaults.items():
         if key not in s:
             s[key] = default
+    style_name = str(s.get("enhance_style_name") or "").strip()
+    prompt_text = str(s.get("enhance_prompt") or "")
+    legacy_builtin_prompt = (
+        not style_name
+        and (
+            "AUDIO TAGS" in prompt_text
+            or "EMOTIONAL TAGS" in prompt_text
+            or "Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS" in prompt_text
+        )
+    )
+    if style_name in {"Nghiêm túc", "Hài hước", "Vivid"} or legacy_builtin_prompt:
+        s["enhance_prompt"] = DEFAULT_PROMPT_FUNNY
+        s["enhance_style_name"] = "Viral"
+        s["enhance_style_temperature"] = 0.7
+        s["enhance_style_creative"] = True
     if not str(s.get("selected_voice_id", "")).strip():
         s["selected_voice_id"] = VOICE_ID
     if not str(s.get("selected_voice_name", "")).strip() or str(s.get("selected_voice_name", "")).strip() == "Adam":

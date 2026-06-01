@@ -15,9 +15,10 @@ from PyQt6.QtWidgets import (
     QTabWidget, QScrollArea, QStackedWidget, QFileDialog,
     QMessageBox, QSizePolicy, QSpacerItem, QListWidget,
     QListWidgetItem, QMenu, QGridLayout, QComboBox, QDialog, QCheckBox, QToolButton,
+    QAbstractButton,
     QStyledItemDelegate,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QSize, QRectF
 from PyQt6.QtGui import QIcon, QFont, QAction, QPixmap, QColor, QPainter, QDesktopServices
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -30,13 +31,13 @@ from app_constants import (
 )
 from app_utils import (
     DATA_DIR, DEFAULT_OUT,
-    get_auto_video_env_local, is_auto_video_unlocked, is_chat_script_unlocked, load_settings, reveal_file, save_settings,
-    validate_pro_license_key, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, perf_log,
+    get_auto_video_env_local, get_tool_output_dir, is_auto_video_unlocked, is_chat_script_unlocked, load_settings, reveal_file, save_settings,
+    suggest_tts_filename, validate_pro_license_key, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, perf_log,
 )
 from app_workers import (
-    Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker,
+    Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker, GenMaxVoiceProbeWorker,
     UpdateChecker, UpdateDownloader, _CreditsChecker,
-    SpeechToTextWorker, words_to_srt,
+    SpeechToTextWorker, humanize_tts_error, words_to_srt,
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from app_icons import icon_size, ui_icon
@@ -118,6 +119,38 @@ class _ApplePopupCombo(QComboBox):
         super().showPopup()
 
 
+class _AppleSwitch(QAbstractButton):
+    """Small macOS-style switch for binary settings."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(38, 22)
+
+    def sizeHint(self):
+        return QSize(38, 22)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        checked = self.isChecked()
+        enabled = self.isEnabled()
+
+        track = QRectF(1, 2, 36, 18)
+        track_color = QColor(ACCENT if checked else CONTROL_DN)
+        if not enabled:
+            track_color = QColor(CONTROL_BG)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(track, 9, 9)
+
+        knob_x = 19 if checked else 3
+        knob = QRectF(knob_x, 4, 14, 14)
+        painter.setBrush(QColor("#ffffff" if enabled else TEXT_FAINT))
+        painter.drawEllipse(knob)
+
+
 # ── Main window ────────────────────────────────────────────────────
 class MainWindow(QWidget):
     def __init__(self, settings: dict):
@@ -135,6 +168,8 @@ class MainWindow(QWidget):
         self._closing = False
         self._credits_worker = None
         self._credits_refresh_pending = False
+        self._genmax_probe_worker = None
+        self._genmax_probe_pending_voice = ""
         self._perf_started = time.perf_counter()
         self._os_log_buffer: list[str] = []
         self._os_log_dropped = 0
@@ -673,7 +708,7 @@ class MainWindow(QWidget):
         style_lbl.setStyleSheet(f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;border:none;")
         strip_lay.addWidget(style_lbl)
 
-        active_name = self._find_active_style_name(self.settings.get("enhance_prompt", DEFAULT_PROMPT))
+        active_name = self._find_active_style_name(self.settings.get("enhance_prompt", DEFAULT_PROMPT_FUNNY))
         self._style_combo = _ApplePopupCombo()
         self._style_combo.setFixedHeight(30)
         self._style_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
@@ -740,8 +775,42 @@ class MainWindow(QWidget):
         strip_lay.addWidget(self._lang_combo)
         self._tts_update_lang_for_voice(self._tts_voice_combo.currentData() or "")
 
+        gm_wrap = QWidget()
+        gm_wrap.setStyleSheet("QWidget{background:transparent;border:none;}")
+        gm_lay = QHBoxLayout(gm_wrap)
+        gm_lay.setContentsMargins(0, 0, 0, 0)
+        gm_lay.setSpacing(8)
+        gm_label = QLabel("GenMax")
+        gm_label.setStyleSheet(
+            f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;border:none;"
+        )
+        gm_lay.addWidget(gm_label)
+        self._tts_genmax_check = _AppleSwitch()
+        self._tts_genmax_check.setChecked(bool(self.settings.get("genmax_tts_enabled", True)))
+        self._tts_genmax_check.setToolTip("Bật để app test demo ngắn ở nền; demo OK thì ưu tiên GenMax, lỗi thì dùng ElevenLabs.")
+        self._tts_genmax_check.toggled.connect(self._set_tts_genmax_enabled)
+        gm_lay.addWidget(self._tts_genmax_check)
+        strip_lay.addWidget(gm_wrap)
+
+        v3_wrap = QWidget()
+        v3_wrap.setStyleSheet("QWidget{background:transparent;border:none;}")
+        v3_lay = QHBoxLayout(v3_wrap)
+        v3_lay.setContentsMargins(0, 0, 0, 0)
+        v3_lay.setSpacing(8)
+        v3_label = QLabel("Nhấn nhá v3")
+        v3_label.setStyleSheet(
+            f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;border:none;"
+        )
+        v3_lay.addWidget(v3_label)
+        self._tts_v3_check = _AppleSwitch()
+        self._tts_v3_check.setChecked(bool(self.settings.get("eleven_v3_style_enabled", True)))
+        self._tts_v3_check.setToolTip("Bật để AI thêm tag, dấu câu và nhịp đọc phù hợp ElevenLabs v3.")
+        self._tts_v3_check.toggled.connect(self._set_tts_v3_enabled)
+        v3_lay.addWidget(self._tts_v3_check)
+        strip_lay.addWidget(v3_wrap)
+
         strip_lay.addSpacing(6)
-        self._btn_preview = QPushButton("Xem kịch bản")
+        self._btn_preview = QPushButton("Xem bản đọc")
         self._btn_preview.setFixedHeight(30)
         self._btn_preview.setStyleSheet(self._compact_secondary_style())
         self._btn_preview.clicked.connect(self._do_preview)
@@ -752,6 +821,7 @@ class MainWindow(QWidget):
         self.btn_gen.setStyleSheet(self._compact_primary_style())
         self.btn_gen.clicked.connect(self._generate)
         strip_lay.addWidget(self.btn_gen)
+        self._sync_tts_audio_button()
         layout.addWidget(strip)
 
         body = QWidget()
@@ -766,26 +836,29 @@ class MainWindow(QWidget):
         left_l.addWidget(self._pane_heading("Kịch bản", "Paste hoặc chỉnh nội dung trước khi tạo giọng."))
         self.text_input = QTextEdit()
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
+        self.text_input.setMinimumHeight(180)
         self.text_input.setStyleSheet(self._editor_style())
         self.text_input.textChanged.connect(self._on_script_changed)
         left_l.addWidget(self.text_input, 1)
 
         self._preview_box = QWidget()
         self._preview_box.setVisible(False)
+        self._preview_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._preview_box.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
         pv_lay = QVBoxLayout(self._preview_box)
         pv_lay.setContentsMargins(12, 10, 12, 12)
         pv_lay.setSpacing(6)
-        pv_lay.addWidget(self._pane_heading("Bản đã xử lý", "Có thể chỉnh trước khi tạo audio."))
+        pv_lay.addWidget(self._pane_heading("Bản đọc", "Sửa ở đây. Tạo audio sẽ dùng đúng nội dung này."))
         self.preview_text = QTextEdit()
-        self.preview_text.setPlaceholderText("Bản sau khi AI xử lý sẽ hiện ở đây...")
-        self.preview_text.setMinimumHeight(130)
+        self.preview_text.setPlaceholderText("Bản đọc sau khi AI xử lý sẽ hiện ở đây...")
+        self.preview_text.setMinimumHeight(360)
+        self.preview_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.preview_text.setStyleSheet(self._editor_style(True))
-        pv_lay.addWidget(self.preview_text)
+        pv_lay.addWidget(self.preview_text, 1)
         self._preview_status = QLabel("")
         self._preview_status.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
         pv_lay.addWidget(self._preview_status)
-        left_l.addWidget(self._preview_box)
+        left_l.addWidget(self._preview_box, 4)
         self._enhanced_cache = ""
         body_h.addWidget(left, 7)
 
@@ -816,7 +889,7 @@ class MainWindow(QWidget):
         self._audio_title_lbl.setStyleSheet(f"font-size:22px;font-weight:700;color:{TEXT_FAINT};background:transparent;border:none;")
         audio_panel_l.addWidget(self._audio_title_lbl)
 
-        self._audio_detail_lbl = QLabel("Nhập kịch bản rồi nhấn Tạo audio.")
+        self._audio_detail_lbl = QLabel("Bấm Xem bản đọc trước, rồi tạo audio.")
         self._audio_detail_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._audio_detail_lbl.setWordWrap(True)
         self._audio_detail_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
@@ -876,39 +949,8 @@ class MainWindow(QWidget):
         speed_row.addWidget(self.speed_val)
         sb.addLayout(speed_row)
 
-        creative_row = QHBoxLayout()
-        creative_row.setSpacing(8)
-        creative_row.addWidget(QLabel("Sáng tạo"))
-        self.creativity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.creativity_slider.setRange(0, 100)
-        cur_temp = self.settings.get("enhance_style_temperature", 0.3)
-        self.creativity_slider.setValue(int(cur_temp * 100))
-        creative_row.addWidget(self.creativity_slider, 1)
-        self.creativity_val = QLabel(f"{cur_temp:.2f}")
-        self.creativity_val.setFixedWidth(36)
-        self.creativity_val.setStyleSheet(f"color:{ACCENT};font-weight:700;background:transparent;border:none;")
-        creative_row.addWidget(self.creativity_val)
-        self.creativity_tier = QLabel(self._tier_label(cur_temp))
-        self.creativity_tier.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
-        creative_row.addWidget(self.creativity_tier)
-        sb.addLayout(creative_row)
-
-        self._creativity_detail = QLabel(self._creativity_detail_text(cur_temp))
-        self._creativity_detail.setWordWrap(True)
-        self._creativity_detail.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
-        sb.addWidget(self._creativity_detail)
-
-        def _on_creativity_changed(value: int):
-            t = value / 100.0
-            self.creativity_val.setText(f"{t:.2f}")
-            self.creativity_tier.setText(self._tier_label(t))
-            self._creativity_detail.setText(self._creativity_detail_text(t))
-            self.settings["enhance_style_temperature"] = t
-            self.settings["enhance_style_creative"] = t >= 0.5
-        self.creativity_slider.valueChanged.connect(_on_creativity_changed)
-
         self.filename_input = QLineEdit()
-        self.filename_input.setPlaceholderText("box_650k_quang_cao")
+        self.filename_input.setPlaceholderText("Tự đặt theo bản đọc nếu để trống")
         sb.addWidget(self.filename_input)
         right_l.addWidget(settings_box)
         self._last_audio_path = ""
@@ -916,6 +958,7 @@ class MainWindow(QWidget):
 
         body_h.addWidget(right, 5)
         layout.addWidget(body, 1)
+        QTimer.singleShot(0, lambda: self._start_genmax_voice_probe(force=True))
         return page
 
     # ── Tab 3: Speech-to-Text ────────────────────────────────────
@@ -1345,11 +1388,44 @@ class MainWindow(QWidget):
         self._av_apply_lock_state()
 
     # ── TTS tab handlers ───────────────────────────────────────────
+    def _set_tts_genmax_enabled(self, enabled: bool):
+        self.settings["genmax_tts_enabled"] = bool(enabled)
+        save_settings(self.settings)
+        if enabled:
+            self._preview_status.setText("GenMax đã bật. App đang test demo ngắn ở nền để quyết định khi tạo audio.")
+            self._preview_status.setStyleSheet(
+                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
+            )
+            self._start_genmax_voice_probe(force=True)
+        else:
+            self._preview_status.setText("GenMax đã tắt. Tạo audio sẽ dùng ElevenLabs v3.")
+            self._preview_status.setStyleSheet(
+                f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;"
+            )
+
+    def _set_tts_v3_enabled(self, enabled: bool):
+        self.settings["eleven_v3_style_enabled"] = bool(enabled)
+        save_settings(self.settings)
+        current_preview = getattr(self, "_enhanced_cache", "").strip()
+        if not current_preview and hasattr(self, "preview_text"):
+            current_preview = self.preview_text.toPlainText().strip()
+        if current_preview:
+            self._preview_status.setText("Nhấn nhá v3 đã đổi. Bản đọc hiện tại vẫn giữ nguyên; nhấn Xem bản đọc để tạo lại.")
+            self._preview_status.setStyleSheet(
+                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
+            )
+        self._sync_tts_audio_button()
+
     def _all_styles(self) -> list[dict]:
         """Trả về toàn bộ styles: built-in + custom."""
         overrides = self.settings.get("prompt_preset_overrides", {})
         if not isinstance(overrides, dict):
             overrides = {}
+        if "Viral" not in overrides:
+            if "Vivid" in overrides:
+                overrides["Viral"] = overrides.get("Vivid")
+            elif "Hài hước" in overrides:
+                overrides["Viral"] = overrides.get("Hài hước")
 
         def _builtin_style(name: str, default_prompt: str, default_temp: float) -> dict:
             ov = overrides.get(name, {})
@@ -1370,8 +1446,7 @@ class MainWindow(QWidget):
             }
 
         built = [
-            _builtin_style("Nghiêm túc", DEFAULT_PROMPT, 0.3),
-            _builtin_style("Hài hước", DEFAULT_PROMPT_FUNNY, 0.7),
+            _builtin_style("Viral", DEFAULT_PROMPT_FUNNY, 0.7),
         ]
         custom = []
         for s in self.settings.get("custom_styles", []):
@@ -1393,12 +1468,14 @@ class MainWindow(QWidget):
 
     def _find_active_style_name(self, current_prompt: str) -> str:
         saved_name = self.settings.get("enhance_style_name", "")
+        if saved_name in {"Hài hước", "Nghiêm túc", "Vivid"}:
+            saved_name = "Viral"
         if saved_name and any(s["name"] == saved_name for s in self._all_styles()):
             return saved_name
         for s in self._all_styles():
             if s["prompt"] == current_prompt:
                 return s["name"]
-        return "Nghiêm túc"
+        return "Viral"
 
     def _build_style_buttons(self, layout: QHBoxLayout, active_name: str):
         """Xây (hoặc rebuild) các nút phong cách — built-in + custom."""
@@ -1485,7 +1562,7 @@ class MainWindow(QWidget):
 
     def _rebuild_style_buttons(self):
         """Gọi sau khi Settings saved để sync custom styles."""
-        current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT)
+        current_prompt = self.settings.get("enhance_prompt", DEFAULT_PROMPT_FUNNY)
         active_name    = self._find_active_style_name(current_prompt)
         self._populate_style_combo(active_name)
         self._sync_creativity_control(self.settings.get("enhance_style_temperature", 0.3))
@@ -1528,10 +1605,7 @@ class MainWindow(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
             self.settings.setdefault("custom_styles", []).append(result)
-            style_name = (
-                f"{result.get('icon', '')}  {result.get('name', '')}"
-                if result.get("icon") else result.get("name", "")
-            )
+            style_name = result.get("name", "")
             self.settings["enhance_prompt"] = result["prompt"]
             self.settings["enhance_style_name"] = style_name
             self.settings["enhance_style_temperature"] = result.get("temperature", 0.3)
@@ -1572,6 +1646,7 @@ class MainWindow(QWidget):
                 self.settings["tts_voice_id"] = vid
                 self.settings["tts_voice_name"] = vname
                 self._tts_update_lang_for_voice(vid)
+                self._start_genmax_voice_probe(force=True)
             else:
                 self.settings["av_voice_id"] = vid
                 self.settings["av_voice_name"] = vname
@@ -2040,11 +2115,127 @@ rm -f "$DMG" 2>/dev/null
         self._managed_threads.add(worker)
         self._credits_worker = worker
         worker.start()
+        QTimer.singleShot(0, self._start_genmax_voice_probe)
+
+    def _genmax_probe_entry(self, voice_id: str) -> dict:
+        probes = self.settings.get("genmax_runtime_probe", {})
+        if not isinstance(probes, dict):
+            return {}
+        entry = probes.get(str(voice_id or "").strip(), {})
+        return entry if isinstance(entry, dict) else {}
+
+    def _start_genmax_voice_probe(self, *, force: bool = False):
+        if self._closing or not bool(self.settings.get("genmax_tts_enabled", True)):
+            return
+        if not str(self.settings.get("genmax_api_key", "") or "").strip():
+            return
+        voice_id = str(self.settings.get("tts_voice_id", "") or "").strip()
+        if not voice_id:
+            return
+        entry = self._genmax_probe_entry(voice_id)
+        checked_at = int(entry.get("checked_at", 0) or 0)
+        if not force and checked_at and time.time() - checked_at < 1800:
+            return
+        if self._is_thread_running(self._genmax_probe_worker):
+            self._genmax_probe_pending_voice = voice_id
+            return
+        self._genmax_probe_pending_voice = ""
+        worker = GenMaxVoiceProbeWorker(voice_id, self.settings)
+        if hasattr(self, "_preview_status"):
+            self._preview_status.setText("Đang test demo GenMax ở nền...")
+            self._preview_status.setStyleSheet(
+                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
+            )
+
+        def _on_done(result: dict, _worker=worker):
+            vid = str(result.get("voice_id") or voice_id).strip()
+            probes = self.settings.setdefault("genmax_runtime_probe", {})
+            if not isinstance(probes, dict):
+                probes = {}
+                self.settings["genmax_runtime_probe"] = probes
+            probes[vid] = {
+                "ok": bool(result.get("ok")),
+                "checked_at": int(time.time()),
+                "provider": str(result.get("provider") or "elevenlabs"),
+                "model": str(result.get("model") or "eleven_v3"),
+                "language": str(result.get("language") or self.settings.get("tts_language_code") or "vi"),
+                "error": str(result.get("error") or ""),
+            }
+            save_settings(self.settings)
+            if vid == str(self.settings.get("tts_voice_id", "") or "").strip() and hasattr(self, "_preview_status"):
+                if result.get("ok"):
+                    self._preview_status.setText("GenMax demo OK. Tạo audio sẽ ưu tiên GenMax, lỗi thì chuyển ElevenLabs.")
+                    self._preview_status.setStyleSheet(
+                        f"font-size:11px;color:{SUCCESS};background:transparent;border:none;"
+                    )
+                else:
+                    err = str(result.get("error") or "").lower()
+                    if "provider_under_maintenance" in err or "maintenance" in err:
+                        msg = "GenMax đang bảo trì. Tạo audio sẽ dùng ElevenLabs v3."
+                    elif "timeout" in err or "quá lâu" in err:
+                        msg = "GenMax demo quá lâu. Tạo audio sẽ dùng ElevenLabs v3."
+                    else:
+                        msg = "GenMax demo lỗi. Tạo audio sẽ dùng ElevenLabs v3."
+                    self._preview_status.setText(msg)
+                    self._preview_status.setStyleSheet(
+                        f"font-size:11px;color:{WARNING};background:transparent;border:none;"
+                    )
+
+        def _on_finished(_worker=worker):
+            if self._genmax_probe_worker is _worker:
+                self._genmax_probe_worker = None
+            pending = self._genmax_probe_pending_voice
+            self._genmax_probe_pending_voice = ""
+            if pending and pending != voice_id:
+                QTimer.singleShot(0, lambda: self._start_genmax_voice_probe(force=True))
+
+        worker.done.connect(_on_done)
+        worker.finished.connect(_on_finished)
+        self._managed_threads.add(worker)
+        self._genmax_probe_worker = worker
+        worker.start()
+
+    def _tts_preview_ready(self) -> bool:
+        return bool(getattr(self, "_enhanced_cache", "").strip())
+
+    def _sync_tts_audio_button(self):
+        if not hasattr(self, "btn_gen"):
+            return
+        ready = self._tts_preview_ready()
+        self.btn_gen.setEnabled(ready)
+        self.btn_gen.setToolTip("Tạo audio từ Bản đọc đang hiển thị." if ready else "Nhấn Xem bản đọc trước để kiểm tra bản đã xử lý.")
+
+    def _on_preview_text_changed(self):
+        self._enhanced_cache = self.preview_text.toPlainText()
+        self._sync_tts_audio_button()
+
+    def _set_tts_review_mode(self, enabled: bool):
+        if not hasattr(self, "text_input") or not hasattr(self, "_preview_box"):
+            return
+        if enabled:
+            self.text_input.setMaximumHeight(260)
+            self.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+            self._preview_box.setMinimumHeight(420)
+            self._preview_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        else:
+            self.text_input.setMaximumHeight(16777215)
+            self.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            self._preview_box.setMinimumHeight(0)
 
     def _generate(self):
         text = self.text_input.toPlainText().strip()
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
+            return
+        preview_text = getattr(self, "_enhanced_cache", "").strip()
+        if not preview_text:
+            self._sync_tts_audio_button()
+            QMessageBox.warning(
+                self,
+                "Cần xem kịch bản trước",
+                "Nhấn Xem bản đọc để tool xử lý kịch bản trước, rồi mới tạo audio.",
+            )
+            self._btn_preview.setFocus()
             return
 
         # Kiểm tra TTS key (GenMax hoặc ElevenLabs)
@@ -2058,11 +2249,7 @@ rm -f "$DMG" 2>/dev/null
                                 "Vào Cài đặt → API để thêm.")
             return
 
-        filename = self.filename_input.text().strip()
-        if not filename:
-            QMessageBox.warning(self, "Thiếu tên file", "Nhập tên file trước khi generate nhé!")
-            self.filename_input.setFocus()
-            return
+        filename = self.filename_input.text().strip() or suggest_tts_filename(preview_text)
         safe_filename = os.path.basename(filename).strip()
         if safe_filename.lower().endswith(".mp3"):
             safe_filename = safe_filename[:-4].strip()
@@ -2071,7 +2258,7 @@ rm -f "$DMG" 2>/dev/null
             QMessageBox.warning(self, "Tên file không hợp lệ", "Nhập lại tên file ngắn gọn hơn nhé!")
             self.filename_input.setFocus()
             return
-        out_dir = self.settings.get("output_dir", DEFAULT_OUT)
+        out_dir = get_tool_output_dir(self.settings, "tts")
         audio_path = os.path.join(out_dir, safe_filename + ".mp3")
         srt_path = os.path.splitext(audio_path)[0] + ".srt"
         existing = [p for p in (audio_path, srt_path) if os.path.exists(p)]
@@ -2105,7 +2292,7 @@ rm -f "$DMG" 2>/dev/null
             self._audio_title_lbl.setStyleSheet(
                 f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
             )
-            self._audio_detail_lbl.setText("Tool đang xử lý kịch bản và tạo file đọc.")
+            self._audio_detail_lbl.setText("Tool đang tạo audio từ bản đọc đã duyệt.")
         self.tts_status_lbl.setText("Đang khởi động")
         self.tts_status_lbl.setStyleSheet(f"color:{WARNING};font-size:12px;background:transparent;border:none;")
         self._btn_play_audio.setEnabled(False)
@@ -2113,14 +2300,7 @@ rm -f "$DMG" 2>/dev/null
         if hasattr(self, "_btn_export_srt"):
             self._btn_export_srt.setEnabled(False)
 
-        # Nếu đã có preview text (user đã xem trước) → dùng luôn, không enhance lại
-        preview_text = getattr(self, "_enhanced_cache", "").strip()
-        if preview_text:
-            self.worker = _TTSOnlyWorker(preview_text, speed,
-                                         safe_filename, self.settings)
-        else:
-            # Chưa preview → enhance + TTS như cũ
-            self.worker = Worker(text, speed, safe_filename, self.settings)
+        self.worker = _TTSOnlyWorker(preview_text, speed, safe_filename, self.settings)
 
         self.worker.status.connect(self._on_tts_status)
         self.worker.done.connect(self._on_done)
@@ -2151,7 +2331,9 @@ rm -f "$DMG" 2>/dev/null
         self._btn_preview.setEnabled(False)
         self._btn_preview.setText("Đang xử lý...")
         self._enhanced_cache = ""
+        self._sync_tts_audio_button()
         self._preview_box.setVisible(True)
+        self._set_tts_review_mode(True)
         self.preview_text.setPlainText("")
         self._preview_status.setText("AI đang xử lý kịch bản...")
         self._preview_status.setStyleSheet(
@@ -2166,35 +2348,43 @@ rm -f "$DMG" 2>/dev/null
     def _on_preview_done(self, enhanced: str):
         self._enhanced_cache = enhanced
         self.preview_text.setPlainText(enhanced)
-        self._preview_status.setText("Đã xử lý xong. Chỉnh nếu cần rồi nhấn Tạo audio.")
+        if hasattr(self, "filename_input") and not self.filename_input.text().strip():
+            self.filename_input.setText(suggest_tts_filename(enhanced))
+        self._preview_status.setText("Đây là bản sẽ dùng để tạo audio. Chỉnh trong ô này nếu cần.")
         self._preview_status.setStyleSheet(
             f"font-size:11px;color:{SUCCESS};background:transparent;border:none;"
         )
         self._btn_preview.setEnabled(True)
-        self._btn_preview.setText("Xem kịch bản")
+        self._btn_preview.setText("Xem bản đọc")
         # Khi user chỉnh sửa preview → cập nhật cache
         try:
             self.preview_text.textChanged.disconnect()
         except TypeError:
             pass
-        self.preview_text.textChanged.connect(
-            lambda: setattr(self, "_enhanced_cache", self.preview_text.toPlainText())
-        )
+        self.preview_text.textChanged.connect(self._on_preview_text_changed)
+        self._sync_tts_audio_button()
+        self.preview_text.setFocus()
 
     def _on_preview_error_msg(self, msg: str):
+        self._enhanced_cache = ""
+        self._set_tts_review_mode(False)
+        self._sync_tts_audio_button()
         self._preview_status.setText(msg)
         self._preview_status.setStyleSheet(
             f"font-size:11px;color:{DESTRUCTIVE};background:transparent;border:none;"
         )
         self._btn_preview.setEnabled(True)
-        self._btn_preview.setText("Xem kịch bản")
+        self._btn_preview.setText("Xem bản đọc")
 
     def _on_script_changed(self):
         """Khi sửa kịch bản gốc → reset preview để tránh gen sai."""
-        if getattr(self, "_enhanced_cache", ""):
-            self._enhanced_cache = ""
+        self._enhanced_cache = ""
+        if hasattr(self, "preview_text"):
             self.preview_text.setPlainText("")
-            self._preview_status.setText("Kịch bản đã thay đổi. Nhấn lại Xem kịch bản để cập nhật.")
+        self._set_tts_review_mode(False)
+        self._sync_tts_audio_button()
+        if hasattr(self, "_preview_status"):
+            self._preview_status.setText("Kịch bản đã thay đổi. Nhấn lại Xem bản đọc để cập nhật.")
             self._preview_status.setStyleSheet(
                 f"font-size:11px;color:{WARNING};background:transparent;border:none;"
             )
@@ -2205,14 +2395,21 @@ rm -f "$DMG" 2>/dev/null
             f"color:{WARNING}; font-size:11px; background:transparent;"
         )
         if hasattr(self, "_audio_title_lbl") and not getattr(self, "_last_audio_path", ""):
-            self._audio_title_lbl.setText("Đang tạo audio")
+            title = "Đang tạo audio"
+            if "GenMax render lỗi" in msg or "fallback" in msg:
+                title = "Fallback ElevenLabs"
+            elif "render bằng GenMax" in msg:
+                title = "Đang render GenMax"
+            elif "render bằng ElevenLabs" in msg:
+                title = "Đang render ElevenLabs"
+            self._audio_title_lbl.setText(title)
             self._audio_title_lbl.setStyleSheet(
                 f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
             )
             self._audio_detail_lbl.setText(msg)
 
     def _on_done(self, path: str):
-        self.btn_gen.setEnabled(True)
+        self._sync_tts_audio_button()
         self.tts_status_lbl.setText("Tạo audio thành công")
         self.tts_status_lbl.setStyleSheet(
             f"color:{SUCCESS}; font-size:12px; font-weight:600; background:transparent;"
@@ -2300,18 +2497,19 @@ rm -f "$DMG" 2>/dev/null
         )
 
     def _on_error(self, msg: str):
-        self.btn_gen.setEnabled(True)
+        self._sync_tts_audio_button()
         self.tts_status_lbl.setText("Có lỗi xảy ra")
         self.tts_status_lbl.setStyleSheet(
             f"color:{DESTRUCTIVE}; font-size:12px; font-weight:600; background:transparent;"
         )
         clean_msg = re.sub(r"(sk-[A-Za-z0-9_\\-]{8,}|sk_[A-Za-z0-9_\\-]{8,}|[A-Fa-f0-9]{32,})", "***", str(msg or ""))
-        short_msg = clean_msg.replace("\n", " · ").strip()
-        if len(short_msg) > 260:
-            short_msg = short_msg[:257].rstrip() + "..."
+        friendly = humanize_tts_error(clean_msg)
+        short_msg = f"{friendly['detail']} {friendly['action']}".strip()
+        if len(short_msg) > 320:
+            short_msg = short_msg[:317].rstrip() + "..."
         if hasattr(self, "_audio_icon_lbl"):
             self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
-            self._audio_title_lbl.setText("Tạo audio lỗi")
+            self._audio_title_lbl.setText(friendly["title"])
             self._audio_title_lbl.setStyleSheet(
                 f"font-size:22px;font-weight:700;color:{DESTRUCTIVE};background:transparent;border:none;"
             )
@@ -2323,7 +2521,11 @@ rm -f "$DMG" 2>/dev/null
             old_srt = os.path.splitext(getattr(self, "_last_audio_path", ""))[0] + ".srt"
             self._last_srt_path = old_srt if os.path.exists(old_srt) else ""
             self._btn_export_srt.setEnabled(bool(self._last_srt_path))
-        QMessageBox.critical(self, "Lỗi", msg)
+        QMessageBox.critical(
+            self,
+            friendly["title"],
+            f"{friendly['detail']}\n\nCách xử lý: {friendly['action']}",
+        )
 
     def _open_feedback(self):
         dlg = FeedbackDialog(
@@ -3779,6 +3981,8 @@ rm -f "$DMG" 2>/dev/null
             "ai_review_thumbnail": bool(self.settings.get("one_shot_ai_review_thumbnail", True)),
             "prepend_thumbnail_cover": True,
             "batch_concurrency": "auto",
+            "batch_review_before_render": True,
+            "batch_clean_export": True,
             "settings": self.settings,
         }
 
@@ -3943,6 +4147,8 @@ rm -f "$DMG" 2>/dev/null
             label = f"{publish_label} · {final_name}{speed}{cost_part}{title_part}{reason_part}"
         elif item.get("cancelled"):
             label = f"Đã dừng · {name}"
+        elif item.get("needs_review"):
+            label = f"Cần review · {name} · {item.get('thumbnail_title', '')} · {item.get('error', '')}"
         else:
             self._os_batch_failed = getattr(self, "_os_batch_failed", 0) + 1
             label = f"Lỗi · {name} · {item.get('error', 'Lỗi không rõ')}"

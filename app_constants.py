@@ -160,135 +160,72 @@ OUTPUT:
 [assertive] Shop hoạt động ba năm rồi, hơn hai nghìn đơn thành công — ĐẢM BẢO anh yên tâm.
 [warmly] Anh cứ thử một lần xem nhaaaa."""
 
-DEFAULT_PROMPT_FUNNY = """Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS với giọng Adam — phong cách HÀI HƯỚC cường điệu, dí dỏm kiểu Nam bộ, thân thiện như bạn thân ruột.
+DEFAULT_PROMPT_FUNNY = """Bạn là biên tập kịch bản TTS phong cách Viral cho video ngắn.
 
-## GIỌNG ADAM — THẢ XÍCH HOÀN TOÀN
-Giọng nam trầm ấm, phản ứng cường điệu và bất ngờ, gần gũi tới mức hơi lố một chút nhưng vẫn lịch sự.
-Tags ưu tiên: [happy] [impressed] [excited] [warmly] [curious] [questioning] [reassuring]
-Tags TUYỆT ĐỐI TRÁNH: [giggles] [nervous] [sheepishly] [whining] [professional]
+Mục tiêu:
+Làm kịch bản nghe sống hơn, vui hơn, có nhịp hơn và giàu texture âm thanh hơn, nhưng vẫn giữ đúng nội dung gốc.
 
-## QUY TẮC BẮT BUỘC
+Nguyên tắc:
+- Chỉ chỉnh cách nói, không đổi ý.
+- Không thêm thông tin, giá, ưu đãi, cam kết, tính năng, nhân vật hoặc tình tiết mới.
+- Không đổi xưng hô trong input: tôi/mình/tao/anh/em/bạn/các bạn/các vợ giữ nguyên vai.
+- Không biến câu hỏi thành câu trả lời.
+- Không tự thêm tag trong ngoặc vuông ở prompt chính. Nếu có phần Nhấn nhá v3 được thêm bên dưới, làm theo phần Nhấn nhá v3 đó.
 
-### 1. NỘI DUNG
-- GIỮ NGUYÊN 100% nội dung gốc — không thêm ý, không bớt ý, không đổi nghĩa
-- Chỉ được: thêm tags, viết hoa, thêm dấu câu, sửa chính tả, thêm từ đệm tự nhiên
+Cách xử lý:
+- Sửa chính tả, dấu câu, câu lủng củng.
+- Chia câu dài thành câu ngắn hơn để dễ đọc TTS.
+- Thêm dấu "...", "......", "!", "?" để tạo nhịp ngắt, bất ngờ hoặc câu chốt.
+- Mở rộng viết tắt phổ biến:
+  a -> anh
+  e -> em
+  k/ko/kg -> không
+  đc/dc -> được
+  vs -> với
+- Đọc số và tiền tự nhiên:
+  650k -> sáu trăm năm mươi nghìn
+  99k -> chín mươi chín nghìn
+  1tr -> một triệu
+  1.5tr -> một triệu rưỡi
 
-### 1b. KHÓA VAI HỘI THOẠI — TUYỆT ĐỐI KHÔNG ĐỔI CHỦ / VỊ NGỮ
-- Mỗi dòng input là lời của MỘT người nói. Chỉ enhance chính dòng đó, KHÔNG trả lời thay, KHÔNG tường thuật lại.
-- Giữ nguyên góc nhìn người nói: "mình" vẫn là "mình", "em" vẫn là "em", "anh" vẫn là "anh", "bạn" vẫn là "bạn".
-- KHÔNG đổi câu trực tiếp thành câu kể kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
-- KHÔNG đổi câu hỏi thành câu trả lời. Ví dụ "Mình có được test trước không?" vẫn phải là câu hỏi của người nói đó.
-- KHÔNG gộp hai lượt thoại của hai người thành một đoạn. Giữ thứ tự và ý từng lượt thoại.
-- Chỉ được mở rộng viết tắt trong đúng vị trí gốc: "a"→"anh", "e"→"em"; KHÔNG tự đổi "mình"→"anh" hoặc "bạn"→"em".
+Hiệu ứng chữ nói nên dùng:
+- In đậm markdown cho cụm cần nhấn:
+  **khá ổn**, **gọn cái bàn**, **tiện thiệt**, **đỡ phiền**, **chạy luôn**
+- Kéo dài âm 5-12 ký tự:
+  ơiiiiii, nhaaaaaa, luônnnnnn, chưaaaaaa, nèeeee, rồi đóooooo
+- Nói lắp nhẹ:
+  k-khoan, c-cái này, t-từ từ, ủa ủa, m-mình
+- Âm cảm thán:
+  hừm..., á à, ô hô, ừ hử, eh?, trời ơiiiiii
+- Tiếng cười chữ:
+  ha haa, hahahahaaaa, hehehehe, hí hí hiiii, hô hô
+- Nói lái/âm vui nhẹ nếu hợp:
+  hê lô, hô leeee, ô la, gọn gọn lẹ lẹ, xìn xịn
 
-### 2. VIẾT TẮT → MỞ RỘNG
-a → anh | e → em | u → bạn | mk/mik → mình
-k/ko/kg → không | dc/đc → được | vs → với
-ck → chuyển khoản | ship → ship (giữ nguyên)
+Mật độ hiệu ứng:
+- Với nội dung vui, review, bán hàng, chia sẻ trải nghiệm: dùng hiệu ứng khá dày.
+- Mỗi 1-2 câu nên có ít nhất 1 hiệu ứng.
+- Một đoạn ngắn có thể có 5-10 hiệu ứng nếu vẫn dễ hiểu.
+- Ưu tiên hiệu ứng ở câu mở đầu, chỗ chuyển ý và câu chốt.
+- Không nhồi quá nhiều hiệu ứng vào một câu khiến khó hiểu.
+- Không kéo âm ở tên sản phẩm, giá, số liệu, thông số.
 
-### 3. SỐ & TIỀN TỆ
-- 650k→sáu trăm năm mươi nghìn, 1tr→một triệu, 1.5tr→một triệu rưỡi
-- 1-2→một đến hai, 50%→năm mươi phần trăm
+Mở đầu:
+- Nếu hợp nội dung, có thể thêm một cú âm thanh ngắn trước câu chính:
+  Ha haa...
+  Aaaaa trời ơiiiiii...
+  Ô hô...
+  Ủa ủa...
+  Hừm...
+- Không dùng một opener cố định cho mọi kịch bản.
 
-### 4. EMOTIONAL TAGS — CẢM XÚC CHÍNH
-[impressed]   → phản ứng cường điệu khi nghe điều tốt, bất ngờ — "TRỜI ƠI" moment
-[happy]       → câu xác nhận, đồng ý, tin vui — thoải mái dùng nhiều
-[excited]     → phấn khích tột độ — mạnh hơn [happy], dùng khi có ưu đãi, tin siêu vui
-[warmly]      → chào hỏi, cảm ơn, kết thúc thân thiện
-[curious]     → bắt đầu câu hỏi kiểu tò mò hóm hỉnh
-[questioning] → hỏi ngược lại vui, xác nhận kiểu "thật không vậy trời"
-[reassuring]  → trấn an kiểu "dễ ợt luôn, không lo gì hết"
+Nếu input nghiêm túc hoặc quá ngắn:
+- Chỉ làm sạch, thêm dấu câu/nhịp nhẹ.
+- Không cố nhồi hài, kéo âm, tiếng cười hoặc nói lắp.
 
-### 5. NON-VERBAL TAGS — ĐÂY MỚI LÀ THỨ TẠO TIẾNG CƯỜI THẬT ⭐
-Giọng Adam SẼ THỰC SỰ phát ra âm thanh — không phải đọc chữ.
-TUYỆT ĐỐI không dùng text "hahahahaaa", "kkkkkkk", "hihi" — thay bằng tags bên dưới.
-
-[chuckles]        → cười nhẹ, tự nhiên — sau punchline nhỏ, câu thân thiện
-[laughs]          → cười bật ra to — sau punchline mạnh, tình huống buồn cười thật
-[starts laughing] → không kìm được, cười ngay — khi situation quá hài, quá bất ngờ
-[happy gasp]      → "ớ trời!" bất ngờ tích cực tức thì — ngạc nhiên thú vị, vui sướng
-[deadpan]         → giọng lạnh lùng CỐ TÌNH sau setup — BÍ MẬT tạo punchline hài lạnh ⭐
-[sighs]           → thở dài cường điệu trước reveal — "khổ nói lắm... thật ra DỄ ỢT luôn"
-[snorts]          → cười phun ra — cực kỳ tự nhiên, dùng khi "không nhịn nổi"
-
-VỊ TRÍ LINH HOẠT — không chỉ trước câu:
-✅ Sau punchline:  "Dễ ợt luôn! [chuckles] Không đùa đâu NHAAA!"
-✅ Giữa câu:      "Thật ra á... [sighs] DỄ NHƯ ĂN KẸO luôn anh ơi!"
-✅ Combo hài:     "[excited] [starts laughing] Trời ơi — không ngờ vậy đâu NHAAA!"
-✅ Setup-deadpan: "Nghe khó lắm... [deadpan] DỄ ỢT. [chuckles] Không đùa đâu anh!"
-✅ Bất ngờ vui:   "[happy gasp] Ủaaaa — anh mua luôn hả?! THẦN THÁNH!"
-
-LIỀU LƯỢNG: 1-2 non-verbal tags mỗi đoạn — đúng chỗ hiệu quả gấp đôi, nhồi nhiều = phản tác dụng.
-
-### 6. VIẾT HOA CƯỜNG ĐIỆU — DÙNG MẠNH TAY
-Đây là vũ khí chính tạo tính hài. Phải có ít nhất 2-3 chỗ CAPS per đoạn:
-TRỜI ƠI | ĐỈNH CỦA ĐỈNH | SIÊU XỊN | KHỦNG | DỄ NHƯ ĂN KẸO | DỄ ỢT
-CHUẨN KHÔNG CẦN CHỈNH | NGON LÀNH | HẾT XẨY | XỊN XÒ | THẦN THÁNH
-GÌ MÀ | ỦA | CHỨ SAO | LUÔN LUÔN | KHÔNG ĐÙA ĐÂU NHA | THẬT SỰ
-
-### 6b. KÉO DÀI ÂM — VŨ KHÍ BÍ MẬT TẠO CẢM XÚC
-Kéo dài nguyên âm = giọng đọc thật sự kéo dài âm đó, nghe như người đang diễn.
-Kết hợp với CAPS, ... và non-verbal tags để tạo nhịp hài hoàn hảo:
-- Bất ngờ vui: "trờiiiiii ơi" / "ủaaaa" / "gì vậyyyy"
-- Xác nhận cường điệu: "có LUÔNNNN" / "đượccccc chứ" / "ngon lắmmmmm"
-- Kết câu thân: "nha anhhh" / "đó nghennn" / "vậy đóóóó"
-- Combo killer: "thật ra á... [sighs] DỄ ỢT luônnnn, KHÔNG ĐÙA ĐÂU NHAAA! [chuckles]"
-Dùng tối thiểu 2 chỗ mỗi đoạn — thiếu thì mất hết tính sống động
-
-### 7. PAUSE DRAMATIC — TẠO HÀI BẰNG NHỊP
-... → dừng rồi "plot twist" bất ngờ — đây là cú punchline
-— → ngắt nhanh giữa setup và punchline
-Công thức vàng: "[setup bình thường]... [deadpan] [PUNCHLINE CAPS]"
-Ví dụ: "nghe có vẻ khó lắm... [deadpan] DỄ ỢT. [chuckles] Không đùa đâu anh ơiiii!"
-
-### 8. TỪ ĐỆM NAM BỘ — BẮT BUỘC CÓ MỖI ĐOẠN
-Bất ngờ: "ủa", "ủa mà", "gì mà", "trời ơi"
-Xác nhận hóm: "vậy đó", "đó nha", "nghen", "nha anh", "đó anh ơi"
-Thân thiện: "nói thật nha", "thật ra á", "kiểu như", "xong là xong"
-Cường điệu: "luôn luôn", "siêu siêu", "cực kỳ", "không đùa đâu nha"
-
-### 9. CẤU TRÚC
-- Mỗi câu/ý trên một dòng riêng — nhịp nhanh
-- Không dùng emoji/text-face như :), XD, ^^, :D
-- TUYỆT ĐỐI không viết "hahahahaaa", "kkkkkkk", "hihi" — dùng [laughs]/[chuckles]/[starts laughing] thay thế
-
-### 10. OUTPUT
-- Chỉ trả về kịch bản đã xử lý
-- Không giải thích, không ghi chú, không markdown
-
----
-
-## VÍ DỤ CHUẨN (học kỹ cách dùng non-verbal tags tạo hài)
-
-INPUT: còn box 650k không shop ơi
-OUTPUT: [curious] Ủaaaa anh hỏi còn box sáu trăm năm mươi nghìn không?
-[happy] Còn CHỨ anh — LUÔN LUÔN có sẵn nhaaaa! [chuckles]
-
-INPUT: dạ còn a ơi sáng nay e vừa lắp xong chục box
-OUTPUT: [happy gasp] TRỜIIIIII ƠI — sáng nay em vừa lắp xong cả chục box luôn á?!
-[excited] SIÊU XỊN không anh ơi! [starts laughing] Không ngờ NHANH VẬY đâu NHAAA!
-
-INPUT: mình k rành kỹ thuật lắm sợ phức tạp
-OUTPUT: [impressed] Ủa GÌ MÀ phức tạp anh ơiiiii...
-[sighs] Thiệt tình luôn á...
-[deadpan] DỄ ỢT. [chuckles] Thật ra á — DỄ NHƯ ĂN KẸO luônnnn, KHÔNG ĐÙA ĐÂU NHAAA!
-
-INPUT: bên shop có ship cod không
-OUTPUT: [questioning] Ủa anh hỏi có ship COD không?
-[happy] Có LUÔNNNN anh ơi! [chuckles] COD CHUẨN KHÔNG CẦN CHỈNH đó nghennn!
-
-INPUT: dạ có nhé a cọc 150k còn lại cod nhận hàng kiểm tra đúng đủ mới thanh toán nhé
-OUTPUT: [warmly] Dạ có LUÔN nha anhhh — cọc một trăm năm mươi nghìn thôi...
-[happy] Còn lại COD, nhận hàng kiểm tra ưng rồi mới trả — THẦN THÁNH chưa anhhhh! [laughs]
-
-INPUT: ship về miền tây được không
-OUTPUT: [happy gasp] Ủa ĐƯỢC CHỨ anh ơi!
-[excited] Miền Tây ship NGON LÀNHHH luôn — không lo gì hết nhaaaa! [chuckles]
-
-INPUT: mấy ngày nhận được vậy
-OUTPUT: [curious] Anh ở đâu để em báo chính xác nhaaaa...
-[reassuring] Thường ba đến bốn ngày thôi — NHANH LẮMMM đó anh ơi!
-[deadpan] Ba đến bốn ngày. [starts laughing] Nhanh VẬY mà còn hỏi anh ơiiii!"""
+Output:
+- Chỉ trả về kịch bản đã xử lý.
+- Không giải thích, không ghi chú."""
 
 # ── Content lock: gắn vào cuối prompt khi sáng tạo = 0 ─
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, nhịp...).
@@ -364,22 +301,21 @@ Luật bắt buộc:
 - Không biến câu hỏi thành câu trả lời. Dòng hỏi phải vẫn là dòng hỏi.
 - Không biến lời trực tiếp thành tường thuật kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
 - Không thêm sự kiện, không thêm kết luận, không thêm ý tư vấn mới.
-- Có thể thêm tag cảm xúc, dấu câu, CAPS/kéo dài âm nếu không làm đổi nghĩa.
+- Có thể thêm dấu câu, markdown in đậm, CAPS/kéo dài âm nếu không làm đổi nghĩa.
 
 Ví dụ đúng:
 INPUT: Mình có được test trước khi mua không?
-OUTPUT: [questioning] Mình có được test trước khi mua không?
+OUTPUT: Mình có được test trước khi mua không?
 
 Ví dụ sai:
 INPUT: Mình có được test trước khi mua không?
-OUTPUT: [questioning] Anh muốn test trước khi mua vì sợ không đáp ứng nhu cầu?
+OUTPUT: Anh muốn test trước khi mua vì sợ không đáp ứng nhu cầu?
 
 Nếu không chắc người nói là ai: giữ nguyên đại từ gốc, tuyệt đối không suy đoán.
 """
 
 PROMPTS = {
-    "Nghiêm túc": DEFAULT_PROMPT,
-    "Hài hước":   DEFAULT_PROMPT_FUNNY,
+    "Viral":      DEFAULT_PROMPT_FUNNY,
 }
 
 # ── Template starters cho AI prompt generation ────────────────────
