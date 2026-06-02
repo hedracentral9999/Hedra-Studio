@@ -35,7 +35,7 @@ from app_utils import (
     suggest_tts_filename, validate_pro_license_key, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, perf_log,
 )
 from app_workers import (
-    Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker, GenMaxVoiceProbeWorker,
+    Worker, _TTSOnlyWorker, PreviewWorker, GeminiWorker,
     UpdateChecker, UpdateDownloader, _CreditsChecker,
     SpeechToTextWorker, humanize_tts_error, words_to_srt,
 )
@@ -168,8 +168,6 @@ class MainWindow(QWidget):
         self._closing = False
         self._credits_worker = None
         self._credits_refresh_pending = False
-        self._genmax_probe_worker = None
-        self._genmax_probe_pending_voice = ""
         self._perf_started = time.perf_counter()
         self._os_log_buffer: list[str] = []
         self._os_log_dropped = 0
@@ -775,23 +773,6 @@ class MainWindow(QWidget):
         strip_lay.addWidget(self._lang_combo)
         self._tts_update_lang_for_voice(self._tts_voice_combo.currentData() or "")
 
-        gm_wrap = QWidget()
-        gm_wrap.setStyleSheet("QWidget{background:transparent;border:none;}")
-        gm_lay = QHBoxLayout(gm_wrap)
-        gm_lay.setContentsMargins(0, 0, 0, 0)
-        gm_lay.setSpacing(8)
-        gm_label = QLabel("GenMax")
-        gm_label.setStyleSheet(
-            f"font-size:12px;font-weight:600;color:{TEXT};background:transparent;border:none;"
-        )
-        gm_lay.addWidget(gm_label)
-        self._tts_genmax_check = _AppleSwitch()
-        self._tts_genmax_check.setChecked(bool(self.settings.get("genmax_tts_enabled", True)))
-        self._tts_genmax_check.setToolTip("Bật để app test demo ngắn ở nền; demo OK thì ưu tiên GenMax, lỗi thì dùng ElevenLabs.")
-        self._tts_genmax_check.toggled.connect(self._set_tts_genmax_enabled)
-        gm_lay.addWidget(self._tts_genmax_check)
-        strip_lay.addWidget(gm_wrap)
-
         v3_wrap = QWidget()
         v3_wrap.setStyleSheet("QWidget{background:transparent;border:none;}")
         v3_lay = QHBoxLayout(v3_wrap)
@@ -958,7 +939,6 @@ class MainWindow(QWidget):
 
         body_h.addWidget(right, 5)
         layout.addWidget(body, 1)
-        QTimer.singleShot(0, lambda: self._start_genmax_voice_probe(force=True))
         return page
 
     # ── Tab 3: Speech-to-Text ────────────────────────────────────
@@ -1388,21 +1368,6 @@ class MainWindow(QWidget):
         self._av_apply_lock_state()
 
     # ── TTS tab handlers ───────────────────────────────────────────
-    def _set_tts_genmax_enabled(self, enabled: bool):
-        self.settings["genmax_tts_enabled"] = bool(enabled)
-        save_settings(self.settings)
-        if enabled:
-            self._preview_status.setText("GenMax đã bật. App đang test demo ngắn ở nền để quyết định khi tạo audio.")
-            self._preview_status.setStyleSheet(
-                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
-            )
-            self._start_genmax_voice_probe(force=True)
-        else:
-            self._preview_status.setText("GenMax đã tắt. Tạo audio sẽ dùng ElevenLabs v3.")
-            self._preview_status.setStyleSheet(
-                f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;"
-            )
-
     def _set_tts_v3_enabled(self, enabled: bool):
         self.settings["eleven_v3_style_enabled"] = bool(enabled)
         save_settings(self.settings)
@@ -1646,7 +1611,6 @@ class MainWindow(QWidget):
                 self.settings["tts_voice_id"] = vid
                 self.settings["tts_voice_name"] = vname
                 self._tts_update_lang_for_voice(vid)
-                self._start_genmax_voice_probe(force=True)
             else:
                 self.settings["av_voice_id"] = vid
                 self.settings["av_voice_name"] = vname
@@ -2084,19 +2048,17 @@ rm -f "$DMG" 2>/dev/null
         if self._closing:
             return
         el_keys    = self.settings.get("el_api_keys", [])
-        genmax_key = self.settings.get("genmax_api_key", "")
         has_el  = bool(el_keys)
-        has_gm  = bool(genmax_key)
-        if not has_el and not has_gm:
+        if not has_el:
             self._credits_refresh_pending = False
-            self.credits_lbl.setText("⚠️  Chưa có TTS API key — vào Cài đặt → API")
+            self.credits_lbl.setText("⚠️  Chưa có ElevenLabs API key — vào Cài đặt → API")
             return
         if self._is_thread_running(self._credits_worker):
             self._credits_refresh_pending = True
             return
         self._credits_refresh_pending = False
         self.credits_lbl.setText("Credits: đang tải...")
-        worker = _CreditsChecker(el_keys, genmax_key)
+        worker = _CreditsChecker(el_keys, "")
 
         def _on_done(text: str):
             if not self._closing and hasattr(self, "credits_lbl"):
@@ -2115,86 +2077,6 @@ rm -f "$DMG" 2>/dev/null
         self._managed_threads.add(worker)
         self._credits_worker = worker
         worker.start()
-        QTimer.singleShot(0, self._start_genmax_voice_probe)
-
-    def _genmax_probe_entry(self, voice_id: str) -> dict:
-        probes = self.settings.get("genmax_runtime_probe", {})
-        if not isinstance(probes, dict):
-            return {}
-        entry = probes.get(str(voice_id or "").strip(), {})
-        return entry if isinstance(entry, dict) else {}
-
-    def _start_genmax_voice_probe(self, *, force: bool = False):
-        if self._closing or not bool(self.settings.get("genmax_tts_enabled", True)):
-            return
-        if not str(self.settings.get("genmax_api_key", "") or "").strip():
-            return
-        voice_id = str(self.settings.get("tts_voice_id", "") or "").strip()
-        if not voice_id:
-            return
-        entry = self._genmax_probe_entry(voice_id)
-        checked_at = int(entry.get("checked_at", 0) or 0)
-        if not force and checked_at and time.time() - checked_at < 1800:
-            return
-        if self._is_thread_running(self._genmax_probe_worker):
-            self._genmax_probe_pending_voice = voice_id
-            return
-        self._genmax_probe_pending_voice = ""
-        worker = GenMaxVoiceProbeWorker(voice_id, self.settings)
-        if hasattr(self, "_preview_status"):
-            self._preview_status.setText("Đang test demo GenMax ở nền...")
-            self._preview_status.setStyleSheet(
-                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
-            )
-
-        def _on_done(result: dict, _worker=worker):
-            vid = str(result.get("voice_id") or voice_id).strip()
-            probes = self.settings.setdefault("genmax_runtime_probe", {})
-            if not isinstance(probes, dict):
-                probes = {}
-                self.settings["genmax_runtime_probe"] = probes
-            probes[vid] = {
-                "ok": bool(result.get("ok")),
-                "checked_at": int(time.time()),
-                "provider": str(result.get("provider") or "elevenlabs"),
-                "model": str(result.get("model") or "eleven_v3"),
-                "language": str(result.get("language") or self.settings.get("tts_language_code") or "vi"),
-                "error": str(result.get("error") or ""),
-            }
-            save_settings(self.settings)
-            if vid == str(self.settings.get("tts_voice_id", "") or "").strip() and hasattr(self, "_preview_status"):
-                if result.get("ok"):
-                    self._preview_status.setText("GenMax demo OK. Tạo audio sẽ ưu tiên GenMax, lỗi thì chuyển ElevenLabs.")
-                    self._preview_status.setStyleSheet(
-                        f"font-size:11px;color:{SUCCESS};background:transparent;border:none;"
-                    )
-                else:
-                    err = str(result.get("error") or "").lower()
-                    if "provider_under_maintenance" in err or "maintenance" in err:
-                        msg = "GenMax đang bảo trì. Tạo audio sẽ dùng ElevenLabs v3."
-                    elif "timeout" in err or "quá lâu" in err:
-                        msg = "GenMax demo quá lâu. Tạo audio sẽ dùng ElevenLabs v3."
-                    else:
-                        msg = "GenMax demo lỗi. Tạo audio sẽ dùng ElevenLabs v3."
-                    self._preview_status.setText(msg)
-                    self._preview_status.setStyleSheet(
-                        f"font-size:11px;color:{WARNING};background:transparent;border:none;"
-                    )
-
-        def _on_finished(_worker=worker):
-            if self._genmax_probe_worker is _worker:
-                self._genmax_probe_worker = None
-            pending = self._genmax_probe_pending_voice
-            self._genmax_probe_pending_voice = ""
-            if pending and pending != voice_id:
-                QTimer.singleShot(0, lambda: self._start_genmax_voice_probe(force=True))
-
-        worker.done.connect(_on_done)
-        worker.finished.connect(_on_finished)
-        self._managed_threads.add(worker)
-        self._genmax_probe_worker = worker
-        worker.start()
-
     def _tts_preview_ready(self) -> bool:
         return bool(getattr(self, "_enhanced_cache", "").strip())
 
@@ -2238,14 +2120,11 @@ rm -f "$DMG" 2>/dev/null
             self._btn_preview.setFocus()
             return
 
-        # Kiểm tra TTS key (GenMax hoặc ElevenLabs)
-        has_tts = bool(self.settings.get("genmax_api_key") or self.settings.get("el_api_keys"))
+        # TTS chạy trực tiếp bằng ElevenLabs v3.
+        has_tts = bool(self.settings.get("el_api_keys"))
         if not has_tts:
             QMessageBox.warning(self, "Thiếu TTS API Key",
-                                "Cần ít nhất một TTS API Key:\n\n"
-                                "GenMax API Key (rẻ hơn, khuyến nghị)\n"
-                                "  hoặc\n"
-                                "ElevenLabs API Key\n\n"
+                                "Cần ElevenLabs API Key để tạo audio.\n\n"
                                 "Vào Cài đặt → API để thêm.")
             return
 
@@ -2396,11 +2275,7 @@ rm -f "$DMG" 2>/dev/null
         )
         if hasattr(self, "_audio_title_lbl") and not getattr(self, "_last_audio_path", ""):
             title = "Đang tạo audio"
-            if "GenMax render lỗi" in msg or "fallback" in msg:
-                title = "Fallback ElevenLabs"
-            elif "render bằng GenMax" in msg:
-                title = "Đang render GenMax"
-            elif "render bằng ElevenLabs" in msg:
+            if "render bằng ElevenLabs" in msg:
                 title = "Đang render ElevenLabs"
             self._audio_title_lbl.setText(title)
             self._audio_title_lbl.setStyleSheet(

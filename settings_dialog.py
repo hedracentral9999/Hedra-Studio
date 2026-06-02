@@ -38,11 +38,12 @@ def _auto_video_env_enabled(settings: dict | None = None) -> bool:
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
 _EL_V3_STYLE_RULES = (
-    ("[warmly]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn)", re.I)),
+    ("[happy]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn|ok|ổn|được)", re.I)),
     ("[curious]", re.compile(r"(\?|bạn có biết|vì sao|tại sao|liệu|điều gì xảy ra)", re.I)),
     ("[impressed]", re.compile(r"(đột phá|kỷ lục|ấn tượng|mới nhất|ra mắt|tăng mạnh|vượt trội|thành công)", re.I)),
     ("[thoughtful]", re.compile(r"(nhưng|tuy nhiên|vấn đề|rủi ro|cảnh báo|sự thật|đáng chú ý|bất ngờ)", re.I)),
-    ("[professional]", re.compile(r"(\d|%|usd|đô|triệu|tỷ|nghìn|benchmark|api|ai|model|mô hình)", re.I)),
+    ("[reassuring]", re.compile(r"(yên tâm|không lo|đỡ|ổn rồi|an toàn|dễ|gọn)", re.I)),
+    ("[speaking fast]", re.compile(r"(nhanh|gấp|liền|ngay|chạy luôn|xong là)", re.I)),
 )
 
 def _style_eleven_v3_text(text: str) -> str:
@@ -2323,13 +2324,6 @@ class SettingsDialog(QDialog):
         v.addWidget(self._section_label_with_icon("voices", "TTS"))
         grp_tts, glay_tts = self._group()
 
-        self.genmax_key = _line_key(api_values["genmax"], "GenMax API key")
-        self._pv_gm_key = self.genmax_key
-        glay_tts.addWidget(_provider_card(
-            "genmax", "GenMax", self.genmax_key,
-            "Chính",
-        ))
-
         el_key_text = "\n".join([k for k in el_saved[:3] if str(k).strip()])
         if not el_key_text and api_values["elevenlabs"]:
             el_key_text = api_values["elevenlabs"]
@@ -2337,7 +2331,7 @@ class SettingsDialog(QDialog):
         self._pv_el_key = self.el_keys
         glay_tts.addWidget(_provider_card(
             "elevenlabs", "ElevenLabs", self.el_keys,
-            "Fallback",
+            "Chính",
             last=True,
         ))
 

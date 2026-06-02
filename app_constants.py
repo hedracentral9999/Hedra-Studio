@@ -241,7 +241,7 @@ def get_creativity_guide(temperature: float) -> str:
 
 GHI ĐÈ mọi quy tắc khác. CHỈ làm những việc sau:
 - Sửa chính tả, mở rộng viết tắt (a→anh, k→không...)
-- Thêm tags [happy], [curious]...
+- Thêm tag chỉ khi phần Nhấn nhá v3 đang bật; nếu tắt thì không thêm bất kỳ [tag] nào
 - Thêm CAPS, nhịp (...), kéo dài âm (nhaaa)
 - KHÔNG thêm từ mới, KHÔNG đổi câu, KHÔNG đảo ý
 - KHÔNG đổi chủ ngữ / vị ngữ / người nói / người nghe

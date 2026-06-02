@@ -174,39 +174,13 @@ def _estimated_words_from_text(text: str) -> list[dict]:
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
 _EL_V3_STYLE_RULES = (
-    ("[warmly]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn)", re.I)),
+    ("[happy]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn|ok|ổn|được)", re.I)),
     ("[curious]", re.compile(r"(\?|bạn có biết|vì sao|tại sao|liệu|điều gì xảy ra)", re.I)),
     ("[impressed]", re.compile(r"(đột phá|kỷ lục|ấn tượng|mới nhất|ra mắt|tăng mạnh|vượt trội|thành công)", re.I)),
     ("[thoughtful]", re.compile(r"(nhưng|tuy nhiên|vấn đề|rủi ro|cảnh báo|sự thật|đáng chú ý|bất ngờ)", re.I)),
-    ("[professional]", re.compile(r"(\d|%|usd|đô|triệu|tỷ|nghìn|benchmark|api|ai|model|mô hình)", re.I)),
+    ("[reassuring]", re.compile(r"(yên tâm|không lo|đỡ|ổn rồi|an toàn|dễ|gọn)", re.I)),
+    ("[speaking fast]", re.compile(r"(nhanh|gấp|liền|ngay|chạy luôn|xong là)", re.I)),
 )
-
-_TTS_PROVIDER_MODES = {"auto", "genmax", "elevenlabs"}
-
-
-def _normalise_tts_provider_mode(value: str | None) -> str:
-    mode = str(value or "").strip().lower()
-    aliases = {
-        "tự động": "auto",
-        "tu dong": "auto",
-        "el": "elevenlabs",
-        "11labs": "elevenlabs",
-        "eleven": "elevenlabs",
-    }
-    mode = aliases.get(mode, mode)
-    return mode if mode in _TTS_PROVIDER_MODES else "auto"
-
-
-def _tts_should_try_fallback(error: Exception | str) -> bool:
-    code = humanize_tts_error(str(error)).get("code")
-    return code in {
-        "credit_or_billing",
-        "rate_limited",
-        "voice_needs_plan",
-        "missing_elevenlabs_key",
-        "missing_genmax_key",
-    }
-
 
 def _tts_supports_v3_tags(provider: str, model: str) -> bool:
     provider = str(provider or "").strip().lower()
@@ -214,35 +188,19 @@ def _tts_supports_v3_tags(provider: str, model: str) -> bool:
     return "eleven_v3" in model or (provider == "elevenlabs" and model in {"", "eleven_v3"})
 
 
-def _genmax_probe_entry(settings: dict, voice_id: str) -> dict:
-    probes = settings.get("genmax_runtime_probe", {})
-    if not isinstance(probes, dict):
-        return {}
-    entry = probes.get(str(voice_id or "").strip(), {})
-    return entry if isinstance(entry, dict) else {}
-
-
-def _genmax_runtime_ready(settings: dict, voice_id: str, has_genmax_key: bool | None = None) -> bool:
-    if not settings.get("genmax_tts_enabled", True):
-        return False
-    if not str(voice_id or "").strip():
-        return False
-    if has_genmax_key is None:
-        has_genmax_key = bool(str(settings.get("genmax_api_key", "") or "").strip())
-    if not has_genmax_key:
-        return False
-    return bool(_genmax_probe_entry(settings, voice_id).get("ok"))
-
-
 def _tts_v3_prompt() -> str:
-    return """ELEVENLABS V3 DELIVERY:
-- Đây là phần duy nhất được phép thêm audio tags trong ngoặc vuông.
-- Được phép dùng audio tags phổ biến như [curious], [warmly], [professional], [thoughtful], [impressed], [reassuring], [assertive], [excited], [laughs], [chuckles] khi thật sự hợp câu.
-- Dùng dấu câu, xuống dòng và "..." để tạo nhịp đọc tự nhiên.
+    return """NHẤN NHÁ V3 — ELEVENLABS ENHANCE:
+- Đây là phần duy nhất được phép thêm audio tags dạng [tag].
+- Chỉ dùng các tag này: [laughing], [chuckles], [excited], [surprised], [curious], [happy], [reassuring], [thoughtful], [deadpan], [speaking fast], [whisper], [sighs], [impressed].
+- Tag phải mô tả âm thanh/giọng đọc thật. Không dùng tag hành động hoặc hình ảnh như standing, grinning, pacing, music.
+- Giữ nguyên nội dung và vai nói. KHÔNG thêm thông tin mới, KHÔNG bịa tình tiết, KHÔNG đổi câu hỏi thành câu trả lời.
+- Được chỉnh ở lớp biểu diễn: thêm tag, CAPS cho 1-3 cụm quan trọng, dấu câu, xuống dòng, "...", "......", "—", nói lắp nhẹ và kéo dài âm nếu hợp phong cách chính.
+- Dùng câu ngắn và ngắt dòng giữa các ý để Eleven v3 đọc tự nhiên hơn; tránh câu quá dài không có dấu câu.
+- Không dùng SSML như <break /> hoặc <phoneme>; Eleven v3 dùng audio tag + dấu câu.
 - Nếu prompt chính dùng style Viral, giữ mật độ hiệu ứng chữ nói của prompt chính; không rút ngắn kéo âm.
-- Có thể kéo âm 5-12 ký tự nếu hợp văn nói, ví dụ nhaaaaaa, ơiiiiii, luônnnnnn.
-- Không spam tag, không lặp một opener cố định, không biến nội dung nghiêm túc thành hài nếu prompt chính không yêu cầu.
-- Nếu prompt chính đã định phong cách riêng, ưu tiên prompt chính."""
+- Có thể kéo âm 5-12 ký tự nếu hợp văn nói, ví dụ nhaaaaaa, ơiiiiii, luônnnnnn, chưaaaaaa.
+- Tag đặt trước câu, sau câu, hoặc giữa câu đúng khoảnh khắc; mỗi câu không cần có tag.
+- Không spam tag. Một đoạn ngắn thường 2-5 tag là đủ; chỉ dày hơn khi input vốn vui, nhanh, hoặc cần diễn rõ."""
 
 def _split_api_keys(value) -> list[str]:
     if isinstance(value, (list, tuple)):
@@ -379,7 +337,7 @@ def _eleven_v3_style_enabled(settings: dict) -> bool:
     return str(value).strip().lower() not in ("0", "false", "no", "off")
 
 class VoiceFetcher(QThread):
-    """Fetch danh sách voices — ưu tiên GenMax nếu có key, fallback ElevenLabs."""
+    """Fetch danh sách voices từ ElevenLabs."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
@@ -387,21 +345,10 @@ class VoiceFetcher(QThread):
         super().__init__()
         self.api_key    = api_key
         self.api_keys   = _elevenlabs_key_pool(api_key)
-        self.genmax_key = genmax_key
+        self.genmax_key = ""
 
     def run(self):
         try:
-            if self.genmax_key:
-                r = requests.get(
-                    "https://api.genmax.io/v1/default-voices?page_size=100",
-                    headers={"xi-api-key": self.genmax_key},
-                    timeout=10,
-                )
-                if r.status_code == 200:
-                    voices = r.json().get("voices", [])
-                    voices.sort(key=lambda v: v.get("name", "").lower())
-                    self.done.emit(voices)
-                    return
             last_err = "Thiếu ElevenLabs API key"
             for key in self.api_keys:
                 r = requests.get(
@@ -423,7 +370,7 @@ class VoiceFetcher(QThread):
 
 
 class SharedVoiceFetcher(QThread):
-    """Fetch voices từ Shared Voice Library — ưu tiên GenMax, fallback ElevenLabs."""
+    """Fetch voices từ ElevenLabs Shared Voice Library."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
@@ -435,7 +382,7 @@ class SharedVoiceFetcher(QThread):
         self.language   = language
         self.search     = search
         self.page_size  = page_size
-        self.genmax_key = genmax_key
+        self.genmax_key = ""
 
     def run(self):
         try:
@@ -444,17 +391,6 @@ class SharedVoiceFetcher(QThread):
                 params["required_languages"] = self.language
             if self.search:
                 params["search"] = self.search
-            if self.genmax_key:
-                r = requests.get(
-                    "https://api.genmax.io/v1/shared-voices",
-                    headers={"xi-api-key": self.genmax_key},
-                    params=params,
-                    timeout=12,
-                )
-                if r.status_code == 200:
-                    voices = r.json().get("voices", [])
-                    self.done.emit(voices)
-                    return
             last_err = "Thiếu ElevenLabs API key"
             for key in self.api_keys:
                 r = requests.get(
@@ -505,84 +441,6 @@ class AudioPreviewDownloader(QThread):
                 self.error.emit(f"HTTP {r.status_code}")
         except Exception as e:
             self.error.emit(str(e))
-
-
-class GenMaxVoiceProbeWorker(QThread):
-    """Render một demo rất ngắn để biết GenMax hiện có render được voice v3 này không."""
-    done = pyqtSignal(dict)
-
-    def __init__(self, voice_id: str, settings: dict):
-        super().__init__()
-        self.voice_id = str(voice_id or "").strip()
-        self.s = dict(settings or {})
-
-    def run(self):
-        provider = "elevenlabs"
-        model = "eleven_v3"
-        language = str(self.s.get("tts_language_code") or self.s.get("language_code") or "vi").strip() or "vi"
-        try:
-            gm_key = str(self.s.get("genmax_api_key", "") or "").strip()
-            if not gm_key:
-                raise RuntimeError("Thiếu GenMax API key")
-            if not self.voice_id:
-                raise RuntimeError("Thiếu Voice ID")
-
-            body = {
-                "text": "[excited] Test giọng v3 nhaaa... nghe ổn là mình chạy GenMax.",
-                "provider": provider,
-                "model_id": model,
-                "language_code": language,
-                "with_transcript": False,
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "speed": 1.0,
-                },
-            }
-            res = requests.post(
-                f"https://api.genmax.io/v1/text-to-speech/{self.voice_id}",
-                headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
-                json=body,
-                timeout=12,
-            )
-            if res.status_code == 200 and res.content:
-                self.done.emit({"voice_id": self.voice_id, "ok": True, "provider": provider, "model": model, "language": language})
-                return
-            if res.status_code != 202:
-                raise RuntimeError(f"GenMax {res.status_code}: {res.text[:180]}")
-
-            task_id = res.json().get("id")
-            if not task_id:
-                raise RuntimeError("GenMax không trả task_id")
-            deadline = time.time() + 22
-            while time.time() < deadline:
-                time.sleep(2)
-                poll = requests.get(
-                    f"https://api.genmax.io/v1/history/{task_id}",
-                    headers={"xi-api-key": gm_key},
-                    timeout=8,
-                )
-                if poll.status_code != 200:
-                    continue
-                pdata = poll.json()
-                status = pdata.get("status", "")
-                if status == "completed":
-                    if not (pdata.get("result") or {}).get("audio_url", ""):
-                        raise RuntimeError("GenMax không trả audio_url")
-                    self.done.emit({"voice_id": self.voice_id, "ok": True, "provider": provider, "model": model, "language": language})
-                    return
-                if status in ("failed", "error"):
-                    raise RuntimeError(f"GenMax demo thất bại: {status}")
-            raise RuntimeError("GenMax demo quá lâu")
-        except Exception as e:
-            self.done.emit({
-                "voice_id": self.voice_id,
-                "ok": False,
-                "provider": provider,
-                "model": model,
-                "language": language,
-                "error": str(e),
-            })
 
 
 class AddSharedVoiceWorker(QThread):
@@ -1182,54 +1040,7 @@ class Worker(QThread):
 
     def _tts(self, text: str) -> bytes:
         env = _read_pipeline_env()
-        provider = _normalise_tts_provider_mode(self.s.get("tts_provider_mode", "auto"))
-        if provider == "genmax" and not self.s.get("genmax_tts_enabled", True):
-            provider = "elevenlabs"
-        if provider == "auto":
-            voice_id = self._voice_for("elevenlabs", env)
-            gm_key_available = bool(env.get("GENMAX_API_KEY", "").strip() or self.s.get("genmax_api_key", "").strip())
-            if _genmax_runtime_ready(self.s, voice_id, gm_key_available):
-                order = ["genmax", "elevenlabs"]
-                self.status.emit("GenMax demo OK -> đang render bằng GenMax.")
-            else:
-                order = ["elevenlabs"]
-                if self.s.get("genmax_tts_enabled", True) and gm_key_available:
-                    probe = _genmax_probe_entry(self.s, voice_id)
-                    if probe:
-                        probe_error = str(probe.get("error") or "").lower()
-                        if "provider_under_maintenance" in probe_error or "maintenance" in probe_error:
-                            reason = "đang bảo trì"
-                        elif "timeout" in probe_error or "quá lâu" in probe_error:
-                            reason = "demo quá lâu"
-                        else:
-                            reason = "demo lỗi"
-                    else:
-                        reason = "demo chưa xong"
-                    self.status.emit(f"GenMax {reason} -> render bằng ElevenLabs v3.")
-                else:
-                    self.status.emit("Render bằng ElevenLabs v3.")
-        else:
-            order = [provider]
-
-        errors: list[str] = []
-        for item in order:
-            try:
-                if item == "genmax":
-                    return self._tts_genmax(text, env)
-                if item == "elevenlabs":
-                    return self._tts_elevenlabs(text, env)
-            except Exception as e:
-                errors.append(f"{item}: {e}")
-                if item == "genmax" and item != order[-1]:
-                    next_provider = order[order.index(item) + 1]
-                    self.status.emit(f"⚠️ GenMax render lỗi -> fallback {next_provider}.")
-                    continue
-                if item != order[-1] and _tts_should_try_fallback(e):
-                    next_provider = order[order.index(item) + 1]
-                    self.status.emit(f"⚠️ {item} lỗi: {humanize_tts_error(str(e))['title']} — thử {next_provider}...")
-                    continue
-                break
-        raise Exception("Tất cả TTS provider đều lỗi:\n" + "\n".join(errors))
+        return self._tts_elevenlabs(text, env)
 
     @staticmethod
     def _env_bool(value: str | None, default: bool = False) -> bool:
@@ -1249,117 +1060,9 @@ class Worker(QThread):
         # Priority: per-tool voice from settings > env var > selected_voice_id fallback
         per_tool = self.s.get("tts_voice_id", "").strip()
         selected  = self.s.get("selected_voice_id", "").strip()
-        if provider == "genmax":
-            return per_tool or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
         if provider == "elevenlabs":
-            return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or env.get("GENMAX_VOICE_ID", "").strip() or VOICE_ID
+            return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or VOICE_ID
         return per_tool or selected or VOICE_ID
-
-    def _tts_genmax(self, text: str, env: dict) -> bytes:
-        gm_key = env.get("GENMAX_API_KEY", "").strip() or self.s.get("genmax_api_key", "").strip()
-        if not gm_key:
-            raise Exception("thiếu GenMax API key")
-        voice_id = self._voice_for("genmax", env)
-        probe = _genmax_probe_entry(self.s, voice_id)
-        gm_provider = (
-            str(probe.get("provider", "")).strip()
-            or env.get("GENMAX_PROVIDER", "").strip()
-            or self.s.get("genmax_provider", "elevenlabs")
-            or "elevenlabs"
-        )
-        gm_model = (
-            str(probe.get("model", "")).strip()
-            or env.get("GENMAX_MODEL_ID", "").strip()
-            or self.s.get("genmax_model_id", MODEL)
-            or MODEL
-        )
-        gm_language = (
-            str(probe.get("language", "")).strip()
-            or self._common_language(env)
-        )
-        supports_v3_tags = _tts_supports_v3_tags(gm_provider, gm_model)
-        tts_text = text if supports_v3_tags else self._clean_tts_text(text)
-        if not supports_v3_tags and tts_text != text:
-            self.status.emit("GenMax model này không dùng tag v3 — đã làm sạch tag trước khi tạo audio.")
-        self.status.emit(f"Đang render bằng GenMax [{gm_model}]...")
-        body: dict = {
-            "text": tts_text,
-            "provider": gm_provider,
-            "model_id": gm_model,
-            "language_code": gm_language,
-            "with_transcript": True,
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
-                "speed": self.speed,
-            },
-        }
-        res = requests.post(
-            f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
-            headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
-            json=body,
-            timeout=30,
-        )
-        if res.status_code == 200:
-            return res.content
-        if res.status_code != 202:
-            raise Exception(f"GenMax {res.status_code}: {res.text[:300]}")
-        task_id = res.json().get("id")
-        if not task_id:
-            raise Exception("GenMax không trả về task_id")
-        timeout_sec = int(self.s.get("genmax_tts_timeout_seconds", 90) or 90)
-        timeout_sec = max(30, min(timeout_sec, 600))
-        started_at = time.time()
-        deadline = started_at + timeout_sec
-        poll_interval = 2
-        poll_errors = 0
-        while time.time() < deadline:
-            time.sleep(poll_interval)
-            elapsed = int(time.time() - started_at)
-            self.status.emit(f"Đang chờ GenMax render audio... {elapsed}s")
-            try:
-                poll = requests.get(
-                    f"https://api.genmax.io/v1/history/{task_id}",
-                    headers={"xi-api-key": gm_key},
-                    timeout=15,
-                )
-            except requests.RequestException as e:
-                poll_errors += 1
-                if poll_errors >= 4:
-                    raise Exception(f"GenMax poll lỗi liên tiếp: {e}")
-                self.status.emit("GenMax đang phản hồi chậm — giữ job hiện tại, không tạo lại để tránh tốn credit.")
-                poll_interval = min(poll_interval + 1, 5)
-                continue
-            if poll.status_code != 200:
-                poll_errors += 1
-                if poll_errors >= 4:
-                    raise Exception(f"GenMax poll lỗi {poll.status_code}: {poll.text[:200]}")
-                self.status.emit("GenMax đang phản hồi không ổn định — tiếp tục chờ job hiện tại.")
-                poll_interval = min(poll_interval + 1, 5)
-                continue
-            poll_errors = 0
-            pdata = poll.json()
-            status = pdata.get("status", "")
-            if status == "completed":
-                audio_url = (pdata.get("result") or {}).get("audio_url", "")
-                if not audio_url:
-                    raise Exception("GenMax không trả về audio_url")
-                srt_url = self._find_url(
-                    pdata,
-                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
-                )
-                if srt_url:
-                    self.status.emit("Đang tải phụ đề SRT từ GenMax...")
-                    self._download_srt_url(srt_url)
-                self.status.emit("Đang tải audio từ GenMax...")
-                dl = requests.get(audio_url, timeout=30)
-                if dl.status_code != 200:
-                    raise Exception(f"GenMax download lỗi {dl.status_code}")
-                return dl.content
-            if status in ("failed", "error"):
-                raise Exception(f"GenMax render thất bại: {pdata}")
-            poll_interval = min(poll_interval + 1, 5)
-        raise Exception(f"GenMax timeout sau {timeout_sec} giây. Job đã được nhận nên app không tự tạo lại để tránh tốn credit.")
 
     def _tts_elevenlabs(self, text: str, env: dict) -> bytes:
         keys = _elevenlabs_key_pool(env, self.s)
@@ -1425,7 +1128,7 @@ class Worker(QThread):
             )
             raise Exception(
                 f"ElevenLabs còn ký tự free nhưng không render được voice '{voice_name}' qua API free "
-                "vì đây là shared/library voice. Chọn Adam/premade voice, hoặc dùng GenMax/nâng cấp ElevenLabs."
+                "vì đây là shared/library voice. Chọn Adam/premade voice hoặc nâng cấp ElevenLabs."
             )
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
