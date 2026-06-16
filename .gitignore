@@ -79,3 +79,15 @@ upload-gateway/
 
 # Docs (local reference only)
 docs/
+
+# Local / build artifacts (not for release)
+oneshot_engine/DEEPSEEK.md
+oneshot_engine/native/gpu-renderer/.build/
+tmp/
+releases/
+data/
+local/
+icon.icns
+.env
+_verify.py
+assets/cb.rnnn

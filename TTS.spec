@@ -12,7 +12,6 @@ datas = [
     ('assets/sf-symbols', 'assets/sf-symbols'),
     ('assets/fonts', 'assets/fonts'),
     ('luts', 'luts'),
-    ('knowledge/one-shot', 'knowledge/one-shot'),
     ('docs/tts', 'docs/tts'),
 ]
 datas += collect_data_files('faster_whisper')
