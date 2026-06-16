@@ -1,3 +1,0 @@
-module OneShotGPURenderPackageTests {
-    header "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/include/OneShotGPURenderPackageTests-Swift.h"
-}
