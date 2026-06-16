@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import sys
-import subprocess
-import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -31,47 +29,78 @@ from PyQt6.QtWidgets import (
 )
 
 from version import VERSION
-from .server import build_server
-from .store import DEFAULT_FEATURES, LicenseRecord, LicenseStore
+from .store import DEFAULT_FEATURES, LicenseRecord
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB = ROOT / "data" / "licenses.sqlite3"
-REMOTE_SSH_HOST = os.environ.get("HEDRA_LICENSE_ADMIN_SSH_HOST", "").strip()
-REMOTE_SSH_KEY = Path(os.environ.get("HEDRA_LICENSE_ADMIN_SSH_KEY", "~/.ssh/id_ed25519")).expanduser()
-REMOTE_ROOT = os.environ.get("HEDRA_LICENSE_ADMIN_REMOTE_ROOT", "~/hedra-license-server").strip()
 PUBLIC_VERIFY_BASE = os.environ.get("HEDRA_LICENSE_PUBLIC_BASE", "https://license.boxphonefarm.com.vn").strip()
+ADMIN_BASE = os.environ.get("HEDRA_LICENSE_ADMIN_BASE", PUBLIC_VERIFY_BASE).strip().rstrip("/")
+ADMIN_TOKEN_ENV = os.environ.get("HEDRA_LICENSE_ADMIN_TOKEN", "").strip()
+ADMIN_CONFIG_PATH = (
+    Path.home()
+    / "Library"
+    / "Application Support"
+    / "Hedra Studio"
+    / "license-admin.json"
+)
 
 
-class RemoteLicenseStore:
-    def _ssh(self, remote_command: str) -> subprocess.CompletedProcess:
-        if not REMOTE_SSH_HOST:
-            raise RuntimeError("Thiếu HEDRA_LICENSE_ADMIN_SSH_HOST để quản lý remote qua SSH.")
-        return subprocess.run(
-            [
-                "ssh",
-                "-i",
-                str(REMOTE_SSH_KEY),
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=8",
-                REMOTE_SSH_HOST,
-                remote_command,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
+def load_admin_config() -> dict:
+    try:
+        return json.loads(ADMIN_CONFIG_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+
+def save_admin_config(config: dict) -> None:
+    ADMIN_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ADMIN_CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class HttpLicenseStore:
+    def __init__(self, base_url: str = "", token: str = "") -> None:
+        config = load_admin_config()
+        self.base_url = (base_url or os.environ.get("HEDRA_LICENSE_ADMIN_BASE") or config.get("base_url") or ADMIN_BASE).strip().rstrip("/")
+        self.token = (token or ADMIN_TOKEN_ENV or config.get("token") or "").strip()
+
+    def configure(self, base_url: str, token: str) -> None:
+        self.base_url = (base_url or PUBLIC_VERIFY_BASE).strip().rstrip("/")
+        self.token = str(token or "").strip()
+        save_admin_config({"base_url": self.base_url, "token": self.token})
+
+    def _request(self, method: str, path: str, payload: dict | None = None, *, admin: bool = True) -> dict:
+        if admin and not self.token:
+            raise RuntimeError(
+                "Thiếu Admin token. Nhập token ở ô cấu hình rồi bấm Lưu cấu hình."
+            )
+        data = None
+        headers = {"User-Agent": f"HedraLicenseAdmin/{VERSION}"}
+        if payload is not None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        if admin:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=data,
+            headers=headers,
+            method=method,
         )
-
-    def _cli(self, args: list[str]) -> str:
-        quoted = " ".join(shlex.quote(arg) for arg in args)
-        result = self._ssh(f"cd {shlex.quote(REMOTE_ROOT)} && python3 -m license_server.cli {quoted}")
-        return result.stdout.strip()
+        try:
+            with urllib.request.urlopen(request, timeout=15) as res:
+                return json.loads(res.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            try:
+                message = json.loads(body).get("message") or body
+            except Exception:
+                message = body or exc.reason
+            raise RuntimeError(f"HTTP {exc.code}: {message}") from exc
 
     def init_db(self) -> None:
-        self._cli(["init"])
+        self.health()
 
     def create_license(
         self,
@@ -81,29 +110,22 @@ class RemoteLicenseStore:
         max_devices: int = 0,
         notes: str = "",
     ) -> str:
-        if isinstance(features, list):
-            features_text = ",".join(features)
-        else:
-            features_text = str(features or ",".join(DEFAULT_FEATURES))
-        return self._cli(
-            [
-                "create",
-                "--customer",
-                customer,
-                "--features",
-                features_text,
-                "--days",
-                str(days),
-                "--max-devices",
-                str(max_devices),
-                "--notes",
-                notes,
-            ]
-        ).splitlines()[-1].strip()
+        payload = {
+            "customer": customer,
+            "features": features or DEFAULT_FEATURES,
+            "days": days,
+            "max_devices": max_devices,
+            "notes": notes,
+        }
+        data = self._request("POST", "/v1/admin/licenses/create", payload)
+        key = str(data.get("key") or "").strip()
+        if not key:
+            raise RuntimeError(str(data.get("message") or "Server không trả về key."))
+        return key
 
     def list_licenses(self) -> list[LicenseRecord]:
-        payload = self._cli(["list"])
-        rows = json.loads(payload or "[]")
+        payload = self._request("GET", "/v1/admin/licenses")
+        rows = payload.get("licenses") or []
         return [
             LicenseRecord(
                 id=int(row.get("id") or 0),
@@ -122,18 +144,13 @@ class RemoteLicenseStore:
 
     def revoke_license(self, key_or_preview: str) -> bool:
         try:
-            self._cli(["revoke", key_or_preview])
-            return True
+            data = self._request("POST", "/v1/admin/licenses/revoke", {"key_preview": key_or_preview})
+            return bool(data.get("ok"))
         except Exception:
             return False
 
     def health(self) -> str:
-        request = urllib.request.Request(
-            f"{PUBLIC_VERIFY_BASE}/health",
-            headers={"User-Agent": f"HedraLicenseAdmin/{VERSION}"},
-        )
-        with urllib.request.urlopen(request, timeout=10) as res:
-            data = json.loads(res.read().decode("utf-8") or "{}")
+        data = self._request("GET", "/health", admin=False)
         if not data.get("ok"):
             raise RuntimeError(str(data))
         return "OK"
@@ -143,13 +160,16 @@ class LicenseAdminWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self._force_light_palette()
-        self.store = RemoteLicenseStore()
+        self.store = HttpLicenseStore()
         self.httpd = None
         self.server_thread = None
         self.setWindowTitle("Hedra License Admin")
         self.resize(1180, 760)
         self._build()
-        self.refresh()
+        if self.store.token:
+            self.refresh()
+        else:
+            self.server_status.setText("Remote: cần Admin token")
 
     def _build(self) -> None:
         root = QWidget()
@@ -238,7 +258,7 @@ class LicenseAdminWindow(QMainWindow):
         nav.setProperty("class", "navitem")
         side.addWidget(nav)
         side.addStretch()
-        side_ver = QLabel(f"v{VERSION}\nRemote MacAir · Cloudflare")
+        side_ver = QLabel(f"v{VERSION}\nCloudflare Admin API")
         side_ver.setProperty("class", "muted")
         side.addWidget(side_ver)
         shell.addWidget(sidebar)
@@ -253,7 +273,7 @@ class LicenseAdminWindow(QMainWindow):
         title_col = QVBoxLayout()
         title = QLabel("License Admin")
         title.setProperty("class", "title")
-        subtitle = QLabel("Tạo Pro key và quản lý key trực tiếp trên MacAir public qua Cloudflare.")
+        subtitle = QLabel("Tạo Pro key và quản lý key qua license admin API public, không phụ thuộc SSH.")
         subtitle.setProperty("class", "muted")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -265,6 +285,32 @@ class LicenseAdminWindow(QMainWindow):
         self.start_server_btn.clicked.connect(self.start_server)
         head.addWidget(self.start_server_btn)
         outer.addLayout(head)
+
+        config_card = QFrame()
+        config_card.setProperty("class", "card")
+        config_outer = QVBoxLayout(config_card)
+        config_outer.setContentsMargins(14, 14, 14, 14)
+        config_outer.setSpacing(10)
+        config_title = QLabel("Cấu hình admin API")
+        config_title.setProperty("class", "section")
+        config_outer.addWidget(config_title)
+        config_form = QGridLayout()
+        config_form.setHorizontalSpacing(10)
+        config_form.setVerticalSpacing(10)
+        self.admin_base = QLineEdit(self.store.base_url)
+        self.admin_base.setPlaceholderText("https://license.boxphonefarm.com.vn")
+        self.admin_token = QLineEdit(self.store.token)
+        self.admin_token.setPlaceholderText("Admin token")
+        self.admin_token.setEchoMode(QLineEdit.EchoMode.Password)
+        save_config_btn = QPushButton("Lưu cấu hình")
+        save_config_btn.clicked.connect(self.save_admin_config)
+        config_form.addWidget(QLabel("Base URL"), 0, 0)
+        config_form.addWidget(self.admin_base, 0, 1, 1, 3)
+        config_form.addWidget(QLabel("Admin token"), 0, 4)
+        config_form.addWidget(self.admin_token, 0, 5)
+        config_form.addWidget(save_config_btn, 0, 6)
+        config_outer.addLayout(config_form)
+        outer.addWidget(config_card)
 
         create_card = QFrame()
         create_card.setProperty("class", "card")
@@ -353,7 +399,7 @@ class LicenseAdminWindow(QMainWindow):
         self.revoke_btn.clicked.connect(self.revoke_selected)
         tools.addWidget(self.revoke_btn)
         tools.addStretch()
-        self.db_label = QLabel(f"{REMOTE_SSH_HOST}:{REMOTE_ROOT}/data/licenses.sqlite3")
+        self.db_label = QLabel(f"{self.store.base_url}/v1/admin/licenses")
         self.db_label.setProperty("class", "muted")
         tools.addWidget(self.db_label)
         outer.addLayout(tools)
@@ -382,6 +428,12 @@ class LicenseAdminWindow(QMainWindow):
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
         QApplication.setPalette(palette)
 
+    def save_admin_config(self) -> None:
+        self.store.configure(self.admin_base.text(), self.admin_token.text())
+        self.db_label.setText(f"{self.store.base_url}/v1/admin/licenses")
+        self.server_status.setText("Remote: đã lưu cấu hình")
+        self.start_server()
+
     def _sync_feature_all(self) -> None:
         enabled = not self.feature_all.isChecked()
         self.feature_chat.setEnabled(enabled)
@@ -407,7 +459,7 @@ class LicenseAdminWindow(QMainWindow):
                 notes=self.notes.text().strip(),
             )
         except Exception as exc:
-            QMessageBox.warning(self, "Không tạo được key", f"Không gọi được MacAir qua SSH:\n{exc}")
+            QMessageBox.warning(self, "Không tạo được key", f"Không gọi được admin API:\n{exc}")
             return
         self.last_key.setPlainText(key)
         QApplication.clipboard().setText(key)
@@ -425,7 +477,7 @@ class LicenseAdminWindow(QMainWindow):
         try:
             rows = self.store.list_licenses()
         except Exception as exc:
-            QMessageBox.warning(self, "Không tải được danh sách key", f"Không gọi được MacAir qua SSH:\n{exc}")
+            QMessageBox.warning(self, "Không tải được danh sách key", f"Không gọi được admin API:\n{exc}")
             rows = []
         self.table.setRowCount(len(rows))
         for r, record in enumerate(rows):
@@ -472,8 +524,10 @@ class LicenseAdminWindow(QMainWindow):
     def start_server(self) -> None:
         try:
             self.store.health()
+            if self.store.token:
+                self.store.list_licenses()
         except Exception as exc:
-            QMessageBox.warning(self, "Remote chưa sẵn sàng", f"Không gọi được license domain:\n{exc}")
+            QMessageBox.warning(self, "Remote chưa sẵn sàng", f"Không gọi được license admin API:\n{exc}")
             return
         endpoint = f"{PUBLIC_VERIFY_BASE}/v1/licenses/verify"
         QApplication.clipboard().setText(f"HEDRA_LICENSE_VERIFY_URL={endpoint}")

@@ -5,16 +5,15 @@ from PyQt6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QLineEdit, QFrame, QScrollArea, QStackedWidget,
     QGridLayout, QComboBox, QSizePolicy, QSpacerItem,
-    QFileDialog, QMessageBox, QWidget, QSlider,
+    QFileDialog, QMessageBox, QWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont
 
 from app_constants import (
     EMOJI_LIST, PROMPTS, PROMPT_TEMPLATES, GEMINI_CHAT_PROMPT,
     DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY, VOICE_ID, get_style, theme_tokens,
 )
-from app_icons import ui_icon, icon_size
 from app_workers import PromptGeneratorWorker, SuggestAnswersWorker, FeedbackSender
 
 def _theme_for(parent=None) -> tuple[str, dict[str, str]]:
@@ -84,7 +83,7 @@ class AddStyleDialog(QDialog):
         self.setWindowTitle("Thêm phong cách" if not existing else "Sửa phong cách")
         self.setMinimumSize(660, 760)
         self.resize(700, 820)
-        self._icon            = data.get("icon", "🎯")
+        self._icon            = ""
         self._result: dict    = {}
         self._ds_key          = ds_api_key
         self._gemini_key      = gemini_api_key
@@ -105,18 +104,11 @@ class AddStyleDialog(QDialog):
         hl.setContentsMargins(22, 14, 22, 14)
         hl.setSpacing(12)
 
-        badge = QLabel()
-        badge.setFixedSize(38, 38)
-        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        badge.setPixmap(ui_icon("prompts", 22, self._t["ACCENT"]).pixmap(icon_size(22)))
-        badge.setStyleSheet(f"QLabel{{background-color:{self._t['CONTROL_BG']};border:1px solid {self._t['BORDER_SOFT']};border-radius:10px;}}")
-        hl.addWidget(badge)
-
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
         title = QLabel("Thêm phong cách" if not data else "Sửa phong cách")
         title.setStyleSheet(f"font-size:17px;font-weight:700;color:{self._t['TEXT']};background:transparent;border:none;")
-        subtitle = QLabel("Tạo preset prompt riêng cho TTS Enhance. Preset này sẽ đồng bộ sang Cài đặt và tab TTS.")
+        subtitle = QLabel("Tạo phong cách đọc riêng. Phong cách này sẽ hiện trong tab TTS.")
         subtitle.setStyleSheet(f"font-size:12px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -133,25 +125,13 @@ class AddStyleDialog(QDialog):
         content.setContentsMargins(28, 22, 28, 22)
         content.setSpacing(18)
 
-        # ── Icon + Name ───────────────────────────────────────────
+        # ── Name ─────────────────────────────────────────────────
         info_card = QFrame()
         info_card.setStyleSheet(self._card_style())
         info = QVBoxLayout(info_card)
         info.setContentsMargins(14, 12, 14, 14)
         info.setSpacing(12)
 
-        top = QHBoxLayout()
-        top.setSpacing(12)
-        self._icon_btn = QPushButton(self._icon)
-        self._icon_btn.setFixedSize(42, 42)
-        self._icon_btn.setStyleSheet(
-            f"QPushButton{{font-size:20px;border:1px solid {self._t['BORDER_SOFT']};"
-            f"border-radius:10px;background-color:{self._t['CONTROL_BG']};color:{self._t['TEXT']};}}"
-            f"QPushButton:hover{{background-color:{self._t['CONTROL_HV']};}}"
-            f"QPushButton:pressed{{background-color:{self._t['CONTROL_DN']};}}"
-        )
-        self._icon_btn.clicked.connect(self._pick_icon)
-        top.addWidget(self._icon_btn)
         name_col = QVBoxLayout()
         name_col.setSpacing(4)
         name_lbl = QLabel("Tên hiển thị")
@@ -161,58 +141,9 @@ class AddStyleDialog(QDialog):
         self._name_edit.setStyleSheet(self._field_style())
         name_col.addWidget(name_lbl)
         name_col.addWidget(self._name_edit)
-        top.addLayout(name_col, 1)
-        info.addLayout(top)
+        info.addLayout(name_col)
 
-        # ── Temperature slider ────────────────────────────────────
-        cr_header = QHBoxLayout()
-        cr_lbl = QLabel("Mức sáng tạo")
-        cr_lbl.setStyleSheet(self._caption_label_style())
-        # Đọc giá trị cũ: ưu tiên temperature float, fallback từ creative bool
-        _init_temp = data.get("temperature",
-                              0.7 if data.get("creative", False) else 0.3)
-        self._temp_val = round(_init_temp, 2)
-
-        self._temp_lbl = QLabel(f"{self._temp_val:.2f}")
-        self._temp_lbl.setFixedWidth(36)
-        self._temp_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._temp_lbl.setStyleSheet(
-            f"font-size:13px;font-weight:600;color:{self._t['ACCENT']};"
-            "background:transparent;border:none;"
-        )
-        cr_header.addWidget(cr_lbl)
-        cr_header.addStretch()
-        cr_header.addWidget(self._temp_lbl)
-        info.addLayout(cr_header)
-
-        slider_row = QHBoxLayout()
-        lbl_l = QLabel("Chính xác")
-        lbl_r = QLabel("Sáng tạo")
-        for l in (lbl_l, lbl_r):
-            l.setStyleSheet(
-                f"font-size:11px;color:{self._t['TEXT_FAINT']};background:transparent;border:none;"
-            )
-        self._temp_slider = QSlider(Qt.Orientation.Horizontal)
-        self._temp_slider.setRange(0, 100)          # 0–100 = 0.00–1.00
-        self._temp_slider.setValue(int(self._temp_val * 100))
-        self._temp_slider.setTickInterval(10)
-        self._temp_slider.setStyleSheet(f"""
-            QSlider::groove:horizontal {{
-                height: 4px; background-color: {self._t['SEG_BG']}; border-radius: 2px;
-            }}
-            QSlider::handle:horizontal {{
-                width: 18px; height: 18px; margin: -7px 0;
-                background-color: {self._t['ACCENT']}; border-radius: 9px; border: 2px solid {self._t['SURFACE']};
-            }}
-            QSlider::sub-page:horizontal {{
-                background-color: {self._t['ACCENT']}; border-radius: 2px;
-            }}
-        """)
-        self._temp_slider.valueChanged.connect(self._on_temp_changed)
-        slider_row.addWidget(lbl_l)
-        slider_row.addWidget(self._temp_slider, 1)
-        slider_row.addWidget(lbl_r)
-        info.addLayout(slider_row)
+        self._temp_val = float(data.get("temperature", 0.4) or 0.4)
         content.addWidget(info_card)
 
         # ── AI Prompt Generator — inline wizard ──────────────────
@@ -232,7 +163,6 @@ class AddStyleDialog(QDialog):
         self._brief_edit.returnPressed.connect(self._ai_suggest_wiz)
         af.addWidget(self._brief_edit, 1)
         self._btn_suggest = QPushButton("Gợi ý")
-        self._btn_suggest.setIcon(ui_icon("spark", 14, "#ffffff"))
         self._btn_suggest.setFixedHeight(30)
         self._btn_suggest.setFixedWidth(88)
         self._btn_suggest.setStyleSheet(self._primary_button_style())
@@ -240,7 +170,7 @@ class AddStyleDialog(QDialog):
         af.addWidget(self._btn_suggest)
         content.addWidget(ai_frame)
 
-        # 7 câu hỏi inline — scroll area
+        # Câu hỏi inline — scroll area
         wizard_group = QFrame()
         wizard_group.setStyleSheet(self._card_style())
         wiz_v = QVBoxLayout(wizard_group)
@@ -298,7 +228,6 @@ class AddStyleDialog(QDialog):
         # Tạo Prompt button + status
         gen_row = QHBoxLayout()
         self._btn_gen = QPushButton("Tạo Prompt")
-        self._btn_gen.setIcon(ui_icon("spark", 14, "#ffffff"))
         self._btn_gen.setFixedHeight(34)
         self._btn_gen.setStyleSheet(self._primary_button_style())
         self._btn_gen.clicked.connect(self._generate_from_wizard)
@@ -314,7 +243,7 @@ class AddStyleDialog(QDialog):
         content.addWidget(self._ai_status)
 
         # ── Prompt textarea ───────────────────────────────────────
-        content.addWidget(self._section_title("System prompt", "Có thể sửa thủ công trước khi lưu."))
+        content.addWidget(self._section_title("Prompt phong cách", "Có thể sửa thủ công trước khi lưu."))
         prompt_card = QFrame()
         prompt_card.setStyleSheet(self._card_style())
         prompt_lay = QVBoxLayout(prompt_card)
@@ -323,7 +252,7 @@ class AddStyleDialog(QDialog):
         self._prompt = QTextEdit()
         self._prompt.setPlainText(data.get("prompt", ""))
         self._prompt.setPlaceholderText(
-            "Nhập thủ công hoặc nhấn Tạo Prompt để AI viết cho bạn..."
+            "Nhập thủ công hoặc nhấn Tạo Prompt để AI viết phong cách đọc cho bạn..."
         )
         self._prompt.setMinimumHeight(150)
         self._prompt.setStyleSheet(self._text_area_style())
@@ -535,6 +464,7 @@ class AddStyleDialog(QDialog):
             "region":  "Vùng miền", "tone":    "Tông",
             "product": "Sản phẩm/lĩnh vực",
             "keywords": "Từ ngữ đặc trưng", "avoid": "Tuyệt đối tránh",
+            "example": "Ví dụ đúng gu",
         }
         parts = [f"{lbl}: {answers[k]}" for k, lbl in labels.items() if answers.get(k)]
         full_desc = " | ".join(parts)
@@ -560,16 +490,6 @@ class AddStyleDialog(QDialog):
         self._btn_gen.setEnabled(True)
         self._btn_gen.setText("Tạo Prompt")
 
-    def _pick_icon(self):
-        dlg = EmojiPickerDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.chosen:
-            self._icon = dlg.chosen
-            self._icon_btn.setText(self._icon)
-
-    def _on_temp_changed(self, value: int):
-        self._temp_val = value / 100.0
-        self._temp_lbl.setText(f"{self._temp_val:.2f}")
-
     def _save(self):
         name   = self._name_edit.text().strip()
         prompt = self._prompt.toPlainText().strip()
@@ -581,11 +501,11 @@ class AddStyleDialog(QDialog):
                                 "Nhập prompt hoặc nhấn Tạo Prompt để AI viết nhé!")
             return
         self._result = {
-            "icon":        self._icon,
+            "icon":        "",
             "name":        name,
             "prompt":      prompt,
             "temperature": self._temp_val,
-            "creative":    self._temp_val >= 0.5,   # backward compat
+            "creative":    False,   # backward compat
         }
         self.accept()
 
@@ -665,7 +585,7 @@ class DropZone(QFrame):
 
 # ── Prompt Wizard dialog ───────────────────────────────────────────
 class PromptWizardDialog(QDialog):
-    """Wizard 7 câu hỏi chi tiết — AI tạo system prompt TTS tốt nhất."""
+    """Wizard hỏi nhanh để AI tạo prompt phong cách TTS."""
 
     _QUESTIONS = [
         # (key, label, chips, multi_select, placeholder)
@@ -687,6 +607,8 @@ class PromptWizardDialog(QDialog):
          [], False, 'Vd: "sis", "chị ơi", "xịn xò"...  (tùy chọn)'),
         ("avoid",    "7. Điều tuyệt đối tránh",
          [], False, 'Vd: không quá formal, không nói "quý khách"...  (tùy chọn)'),
+        ("example",  "8. Ví dụ đúng gu",
+         [], False, "Dán 1 đoạn bạn thấy đúng phong cách để AI học theo...  (tùy chọn)"),
     ]
 
     def __init__(self, parent=None, ds_api_key: str = "", gemini_api_key: str = ""):
@@ -716,7 +638,7 @@ class PromptWizardDialog(QDialog):
         h_lbl.setStyleSheet("background:transparent;border:none;")
         v.addWidget(h_lbl)
 
-        sub = QLabel("Bạn trả lời 7 câu hỏi — AI chỉ gợi ý thêm cho những câu bạn chưa điền.")
+        sub = QLabel("Bạn trả lời vài mục chính — AI chỉ gợi ý thêm cho những câu bạn chưa điền.")
         sub.setStyleSheet(
             f"font-size:12px;color:{self._t['TEXT_MUTE']};background:transparent;border:none;"
         )
@@ -766,7 +688,7 @@ class PromptWizardDialog(QDialog):
         sep.setStyleSheet(f"color:{self._t['BORDER_SOFT']};")
         v.addWidget(sep)
 
-        # Scroll area — 7 câu hỏi
+        # Scroll area — câu hỏi
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -986,6 +908,7 @@ class PromptWizardDialog(QDialog):
             "product":  "Sản phẩm/lĩnh vực",
             "keywords": "Từ ngữ đặc trưng",
             "avoid":    "Tuyệt đối tránh",
+            "example":  "Ví dụ đúng gu",
         }
         for key, lbl in labels.items():
             val = answers.get(key, "").strip()
@@ -1171,4 +1094,8 @@ class FeedbackDialog(QDialog):
     def _on_send_error(self, err: str):
         self._btn_send.setEnabled(True)
         self._btn_send.setText("📨  Gửi phản hồi")
-        self._status_lbl.setText(f"❌  {err[:60]}")
+        msg = err
+        if "Telegram token/chat id" in err or "token/chat" in err:
+            msg = "Chưa có cấu hình feedback nội bộ trên máy này."
+        self._status_lbl.setText(f"❌  {msg[:80]}")
+        self._status_lbl.setToolTip(err)

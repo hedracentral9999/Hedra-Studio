@@ -1,0 +1,7 @@
+{
+  "name": "no_lut",
+  "label": "Không LUT",
+  "description": "Giữ nguyên màu gốc, không áp dụng LUT.",
+  "path": "",
+  "fallback_paths": []
+}

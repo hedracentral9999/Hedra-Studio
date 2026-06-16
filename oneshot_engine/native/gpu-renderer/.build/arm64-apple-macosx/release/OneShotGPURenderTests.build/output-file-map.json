@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/OneShotGPURenderTests.d",
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/OneShotGPURenderTests.o",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/primary.swiftdeps"
+  },
+  "/Users/admin/oneshot/native/gpu-renderer/Tests/OneShotGPURenderTests/CubeLUTTests.swift": {
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/CubeLUTTests.swift.o",
+    "swiftmodule": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/CubeLUTTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/CubeLUTTests.swiftdeps",
+    "diagnostics": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURenderTests.build/CubeLUTTests.dia"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "no_noise",
+  "label": "Không lọc",
+  "description": "Giữ nguyên audio gốc, không áp dụng noise filter.",
+  "filter": ""
+}

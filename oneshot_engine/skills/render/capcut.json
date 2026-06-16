@@ -1,0 +1,7 @@
+{
+  "name": "capcut",
+  "label": "Chất lượng cao (GPU)",
+  "description": "GPU Metal + VT encode. Lanczos + unsharp + LUT + color. 16 Mbps. Fallback CPU ultrafast.",
+  "video_enhance": "scale={w}:{h}:flags=lanczos:force_original_aspect_ratio=increase,crop={w}:{h},unsharp=5:5:0.8:3:3:0.4,eq=contrast=1.05:saturation=1.10:brightness=0.02,format=yuv420p",
+  "encoder_x264": ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", "6"]
+}

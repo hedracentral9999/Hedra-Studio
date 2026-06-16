@@ -2,6 +2,7 @@ import sys
 import os
 import multiprocessing
 import traceback
+import faulthandler
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,19 @@ def _early_startup_log(message: str) -> None:
         pass
 
 
+def _install_native_crash_log() -> None:
+    """Capture Python/native fatal signals that bypass sys.excepthook."""
+    try:
+        log_dir = Path.home() / "Library" / "Application Support" / "Hedra Studio"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        crash_stream = open(log_dir / "native-crash.log", "a", encoding="utf-8", buffering=1)
+        crash_stream.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] pid={os.getpid()} native diagnostics enabled\n")
+        faulthandler.enable(file=crash_stream, all_threads=True)
+        globals()["_NATIVE_CRASH_STREAM"] = crash_stream
+    except Exception:
+        pass
+
+
 def _process_role() -> str:
     argv = " ".join(sys.argv)
     if "multiprocessing.resource_tracker" in argv:
@@ -27,6 +41,7 @@ def _process_role() -> str:
 
 
 multiprocessing.freeze_support()
+_install_native_crash_log()
 if getattr(sys, "frozen", False) and _process_role() != "main":
     _early_startup_log(f"PYINSTALLER_HELPER_EXIT role={_process_role()} argv={sys.argv!r}")
     sys.exit(0)

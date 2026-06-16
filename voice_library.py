@@ -49,9 +49,23 @@ class VoiceLibraryDialog(QDialog):
 
     def __init__(self, parent, api_key: str, genmax_key: str = ""):
         super().__init__(parent)
-        self.api_key    = api_key
-        self.genmax_key = genmax_key
         settings = getattr(parent, "settings", {}) if parent is not None else {}
+        pool = []
+        for source in (
+            api_key,
+            settings.get("el_api_keys", []) if isinstance(settings, dict) else [],
+            settings.get("el_api_key", "") if isinstance(settings, dict) else "",
+        ):
+            if isinstance(source, (list, tuple)):
+                parts = source
+            else:
+                parts = re.split(r"[\s,;]+", str(source or ""))
+            for part in parts:
+                key = str(part or "").strip()
+                if key and key not in pool:
+                    pool.append(key)
+        self.api_key    = ",".join(pool[:3]) if pool else api_key
+        self.genmax_key = genmax_key
         self._theme_mode = settings.get("app_theme", "system") if isinstance(settings, dict) else "system"
         self._t = theme_tokens(self._theme_mode)
         self._workers: list = []

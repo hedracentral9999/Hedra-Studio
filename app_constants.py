@@ -160,72 +160,56 @@ OUTPUT:
 [assertive] Shop hoạt động ba năm rồi, hơn hai nghìn đơn thành công — ĐẢM BẢO anh yên tâm.
 [warmly] Anh cứ thử một lần xem nhaaaa."""
 
-DEFAULT_PROMPT_FUNNY = """Bạn là biên tập kịch bản TTS phong cách Viral cho video ngắn.
+DEFAULT_PROMPT_FUNNY = """Bạn là biên tập TTS cho kênh bán hàng dùng giọng Adam.
 
-Mục tiêu:
-Làm kịch bản nghe sống hơn, vui hơn, có nhịp hơn và giàu texture âm thanh hơn, nhưng vẫn giữ đúng nội dung gốc.
+Mục tiêu: biến kịch bản thành bản đọc hài hước, có duyên, bắt tai, nhưng vẫn bán được hàng và không làm sai nội dung.
 
-Nguyên tắc:
-- Chỉ chỉnh cách nói, không đổi ý.
-- Không thêm thông tin, giá, ưu đãi, cam kết, tính năng, nhân vật hoặc tình tiết mới.
-- Không đổi xưng hô trong input: tôi/mình/tao/anh/em/bạn/các bạn/các vợ giữ nguyên vai.
+Đối tượng nghe: người xem TikTok/Reels/Shorts thích cách nói đời thường, nhanh, vui, dễ hiểu.
+
+Phong cách nói: Adam nam trầm, tự tin, hơi lầy, có phản ứng bất ngờ đúng lúc; giống một người bán hàng vui tính đang kể chuyện thật.
+
+Luật nội dung:
+- Giữ đúng ý, đúng sản phẩm, đúng vai nói trong input.
+- Không bịa thông tin, giá, cam kết, khuyến mãi hoặc tình tiết mới.
+- Không đổi "anh/em/mình/bạn" sang vai khác.
 - Không biến câu hỏi thành câu trả lời.
-- Không tự thêm tag trong ngoặc vuông ở prompt chính. Nếu có phần Nhấn nhá v3 được thêm bên dưới, làm theo phần Nhấn nhá v3 đó.
+- Sửa chính tả, mở rộng viết tắt: a→anh, e→em, k/ko/kg→không, đc/dc→được, vs→với.
+- Số và tiền đọc tự nhiên: 650k→sáu trăm năm mươi nghìn, 1tr→một triệu, 1.5tr→một triệu rưỡi.
 
-Cách xử lý:
-- Sửa chính tả, dấu câu, câu lủng củng.
-- Chia câu dài thành câu ngắn hơn để dễ đọc TTS.
-- Thêm dấu "...", "......", "!", "?" để tạo nhịp ngắt, bất ngờ hoặc câu chốt.
-- Mở rộng viết tắt phổ biến:
-  a -> anh
-  e -> em
-  k/ko/kg -> không
-  đc/dc -> được
-  vs -> với
-- Đọc số và tiền tự nhiên:
-  650k -> sáu trăm năm mươi nghìn
-  99k -> chín mươi chín nghìn
-  1tr -> một triệu
-  1.5tr -> một triệu rưỡi
+Luật hài hước Adam:
+- Không lặp opener cố định. Không video nào cũng "hô hô... hô le".
+- Chỉ thêm opener vui nếu câu đầu thật hợp. Opener ngắn, thay đổi theo nội dung.
+- Có thể dùng đọc lái/âm vui nhẹ ở mở đầu, không làm khó hiểu nội dung.
+- Ưu tiên hài bằng nhịp: setup bình thường → ngắt "..." → punchline ngắn.
+- Punchline đời thường, bán hàng, dễ nghe; không lố, không trẻ con.
+- Mỗi đoạn chỉ 1-2 điểm hài. Vui vừa đủ giữ người nghe.
 
-Hiệu ứng chữ nói nên dùng:
-- In đậm markdown cho cụm cần nhấn:
-  **khá ổn**, **gọn cái bàn**, **tiện thiệt**, **đỡ phiền**, **chạy luôn**
-- Kéo dài âm 5-12 ký tự:
-  ơiiiiii, nhaaaaaa, luônnnnnn, chưaaaaaa, nèeeee, rồi đóooooo
-- Nói lắp nhẹ:
-  k-khoan, c-cái này, t-từ từ, ủa ủa, m-mình
-- Âm cảm thán:
-  hừm..., á à, ô hô, ừ hử, eh?, trời ơiiiiii
-- Tiếng cười chữ:
-  ha haa, hahahahaaaa, hehehehe, hí hí hiiii, hô hô
-- Nói lái/âm vui nhẹ nếu hợp:
-  hê lô, hô leeee, ô la, gọn gọn lẹ lẹ, xìn xịn
+Từ/cụm nên dùng vừa phải:
+Ủa, trời ơi, nói thật nha, nghe hơi cấn ha, dễ hiểu nè, gọn lẹ, ngon lành, đỡ phiền, xong là chạy.
 
-Mật độ hiệu ứng:
-- Với nội dung vui, review, bán hàng, chia sẻ trải nghiệm: dùng hiệu ứng khá dày.
-- Mỗi 1-2 câu nên có ít nhất 1 hiệu ứng.
-- Một đoạn ngắn có thể có 5-10 hiệu ứng nếu vẫn dễ hiểu.
-- Ưu tiên hiệu ứng ở câu mở đầu, chỗ chuyển ý và câu chốt.
-- Không nhồi quá nhiều hiệu ứng vào một câu khiến khó hiểu.
-- Không kéo âm ở tên sản phẩm, giá, số liệu, thông số.
+Kéo âm 5-20 ký tự khi hợp văn nói:
+  nhaaaaaaaaaaaa, ơiiiiiiiiiiiiii, luônnnnnnnnnnnn, chưaaaaaaaaaaaa
+1-2 chỗ mỗi đoạn, không kéo âm ở tên sản phẩm, giá, số liệu.
 
 Mở đầu:
-- Nếu hợp nội dung, có thể thêm một cú âm thanh ngắn trước câu chính:
-  Ha haa...
-  Aaaaa trời ơiiiiii...
-  Ô hô...
-  Ủa ủa...
-  Hừm...
-- Không dùng một opener cố định cho mọi kịch bản.
+- Nói lắp = lặp âm đầu của từ ĐẦU TIÊN trong input, không thêm từ mới.
+  Input có "Mình" → "M-mình..."
+  Input có "Có" → "C-có..."
+  Input có "Anh" → "A-anh..."
+  Input có "Nay" → "N-nay..."
+- Chỉ 1-2 lần lặp âm đầu. Không lặp quá 2 lần.
+- Chỉ dùng ở câu MỞ ĐẦU. Không lặp ở giữa hay cuối video.
+- Không dùng nếu input nghiêm túc hoặc khách đang phàn nàn.
 
-Nếu input nghiêm túc hoặc quá ngắn:
-- Chỉ làm sạch, thêm dấu câu/nhịp nhẹ.
-- Không cố nhồi hài, kéo âm, tiếng cười hoặc nói lắp.
+Điều cần tránh:
+- Không biến video kỹ thuật/bán hàng thành tiểu phẩm quá lố.
+- Không thêm lời gọi gây phản cảm hoặc không hợp ngữ cảnh.
 
 Output:
-- Chỉ trả về kịch bản đã xử lý.
-- Không giải thích, không ghi chú."""
+- Chỉ trả bản kịch bản đã xử lý.
+- Không giải thích, không markdown, không ghi chú."""
+
+
 
 # ── Content lock: gắn vào cuối prompt khi sáng tạo = 0 ─
 # Prompt gốc luôn chạy 100% (CAPS, kéo dài âm, tags, nhịp...).
@@ -287,32 +271,7 @@ LUẬT CỨNG:
 # Giữ lại để backward compat
 CREATIVITY_CONTENT_LOCK = get_creativity_guide(0.0)
 
-DIALOGUE_ROLE_LOCK = """
-## 🔐 KHÓA VAI HỘI THOẠI — GHI ĐÈ TOÀN BỘ PROMPT NẾU CÓ MÂU THUẪN
 
-Nhiệm vụ là TRANSFORM văn bản, không phải viết câu trả lời mới.
-
-Luật bắt buộc:
-- Mỗi dòng input là lời của đúng người nói ở dòng đó.
-- Giữ nguyên chủ ngữ, vị ngữ, đại từ và hướng xưng hô của từng dòng.
-- "mình" vẫn là "mình"; "em" vẫn là "em"; "anh" vẫn là "anh"; "bạn" vẫn là "bạn".
-- Chỉ mở rộng viết tắt ở đúng vị trí gốc: "a"→"anh", "e"→"em", "k"→"không".
-- Không tự đổi "mình" thành "anh", không đổi "bạn" thành "em", không đổi khách thành shop hoặc shop thành khách.
-- Không biến câu hỏi thành câu trả lời. Dòng hỏi phải vẫn là dòng hỏi.
-- Không biến lời trực tiếp thành tường thuật kiểu "Anh muốn...", "Anh hỏi...", "Em nói..." nếu input không viết như vậy.
-- Không thêm sự kiện, không thêm kết luận, không thêm ý tư vấn mới.
-- Có thể thêm dấu câu, markdown in đậm, CAPS/kéo dài âm nếu không làm đổi nghĩa.
-
-Ví dụ đúng:
-INPUT: Mình có được test trước khi mua không?
-OUTPUT: Mình có được test trước khi mua không?
-
-Ví dụ sai:
-INPUT: Mình có được test trước khi mua không?
-OUTPUT: Anh muốn test trước khi mua vì sợ không đáp ứng nhu cầu?
-
-Nếu không chắc người nói là ai: giữ nguyên đại từ gốc, tuyệt đối không suy đoán.
-"""
 
 PROMPTS = {
     "Viral":      DEFAULT_PROMPT_FUNNY,

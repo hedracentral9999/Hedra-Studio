@@ -1,0 +1,86 @@
+{
+  "theme": {
+    "preset": "custom",
+    "variables": {
+      "--primary": "#ff6a00",
+      "--primary-light": "#ffbf80",
+      "--primary-dark": "#9a3900",
+      "--accent": "#8fa8ff",
+      "--accent-light": "#dbe3ff",
+      "--info": "#4fd0ff",
+      "--success": "#68f2b4",
+      "--bg-dark": "#07111e"
+    },
+    "customVariables": {
+      "--primary": "#ff6a00",
+      "--primary-light": "#ffbf80",
+      "--primary-dark": "#9a3900",
+      "--accent": "#8fa8ff",
+      "--accent-light": "#dbe3ff",
+      "--info": "#4fd0ff",
+      "--success": "#68f2b4",
+      "--bg-dark": "#07111e"
+    }
+  },
+  "bgm": {
+    "mode": "custom",
+    "preset": "ambient",
+    "volume": 0.3,
+    "custom": {
+      "name": "meta.mp3",
+      "path": "preview-assets/bgm/meta.mp3",
+      "url": "preview-assets/bgm/meta.mp3"
+    }
+  },
+  "subtitles": {
+    "enabled": false,
+    "color": "#ffffff",
+    "fontSize": 18,
+    "bottom": 152,
+    "maxLines": 1
+  },
+  "visuals": {
+    "colorMode": "dark",
+    "backgroundColor": "#07111e",
+    "gridEnabled": false,
+    "gridLight": "#8fa8ff",
+    "iconGlow": "#ff6a00",
+    "iconBacklight": "#4fd0ff",
+    "iconLight": "#68f2b4",
+    "backgroundFx": "particles",
+    "customValues": {
+      "backgroundColor": "#07111e",
+      "gridLight": "#8fa8ff",
+      "iconGlow": "#ff6a00",
+      "iconBacklight": "#4fd0ff",
+      "iconLight": "#68f2b4"
+    }
+  },
+  "slides": {
+    "deletedIds": [],
+    "scriptLines": [
+      "Crypto đang lệch pha khi ETF bán mạnh nhưng Bitcoin vẫn giữ vùng hỗ trợ chính.",
+      "Bitcoin dao động quanh bảy mươi ba đến bảy mươi bốn nghìn đô la. Mốc bảy mươi nghìn vẫn được giữ. Vùng tám mươi nghìn vẫn là kháng cự gần.",
+      "Vốn hóa crypto ở mức hai phẩy bốn chín nghìn tỷ đô la. Bitcoin ETF bị rút ròng một phẩy bốn hai tỷ đô la. Dòng tiền tổ chức đang thận trọng.",
+      "Ethereum ETF mất hai trăm bốn mươi mốt triệu đô la. XRP ETF hút vào mười lăm phẩy hai triệu đô la. Solana ETF vẫn dương hai phẩy ba sáu triệu đô la.",
+      "Rủi ro lớn nhất đến từ eo biển Hormuz. Iran muốn thu phí tàu dầu khoảng một đô la mỗi thùng. Iran yêu cầu thanh toán bằng Bitcoin. Stablecoin có thể bị phong tỏa nên Bitcoin được chọn.",
+      "Nếu Hormuz không thông trước tháng tám, dầu có thể nóng lại. Khi lạm phát tăng, Fed khó nới lỏng hơn. Theo dõi kênh để cập nhật crypto, vĩ mô và dòng tiền ETF mỗi ngày."
+    ],
+    "transitionSounds": [
+      "dramatic",
+      "sweep",
+      "bass",
+      "rise",
+      "chord",
+      "minimal"
+    ],
+    "revealSounds": [
+      "sparkle",
+      "pop",
+      "blip",
+      "bubble",
+      "tick",
+      "bell"
+    ]
+  }
+}

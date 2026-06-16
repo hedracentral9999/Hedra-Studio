@@ -1,0 +1,31 @@
+{
+  "": {
+    "dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/OneShotGPURender.d",
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/OneShotGPURender.o",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/primary.swiftdeps"
+  },
+  "/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Arguments.swift": {
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Arguments.swift.o",
+    "swiftmodule": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Arguments~partial.swiftmodule",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Arguments.swiftdeps",
+    "diagnostics": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Arguments.dia"
+  },
+  "/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/CubeLUT.swift": {
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/CubeLUT.swift.o",
+    "swiftmodule": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/CubeLUT~partial.swiftmodule",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/CubeLUT.swiftdeps",
+    "diagnostics": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/CubeLUT.dia"
+  },
+  "/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Renderer.swift": {
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Renderer.swift.o",
+    "swiftmodule": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Renderer~partial.swiftmodule",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Renderer.swiftdeps",
+    "diagnostics": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/Renderer.dia"
+  },
+  "/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/main.swift": {
+    "object": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/main.swift.o",
+    "swiftmodule": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/main.swiftdeps",
+    "diagnostics": "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/release/OneShotGPURender.build/main.dia"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "standard",
+  "label": "Nhanh (Hedra gốc)",
+  "description": "Bicubic + CRF 20. Tối ưu tốc độ cho M1 Pro.",
+  "video_enhance": "scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},format=yuv420p",
+  "encoder_x264": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "6"]
+}

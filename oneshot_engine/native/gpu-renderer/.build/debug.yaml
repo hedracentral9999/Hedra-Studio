@@ -1,0 +1,146 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "OneShotGPURender-arm64-apple-macosx-debug.module": ["<OneShotGPURender-arm64-apple-macosx-debug.module>"]
+  "OneShotGPURenderPackageTests-arm64-apple-macosx-debug.module": ["<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.module>"]
+  "OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test": ["<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test>"]
+  "OneShotGPURenderTests-arm64-apple-macosx-debug.module": ["<OneShotGPURenderTests-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<OneShotGPURender-arm64-apple-macosx-debug.module>","<oneshot-gpu-render-arm64-apple-macosx-debug.exe>"]
+  "oneshot-gpu-render-arm64-apple-macosx-debug.exe": ["<oneshot-gpu-render-arm64-apple-macosx-debug.exe>"]
+  "test": ["<OneShotGPURender-arm64-apple-macosx-debug.module>","<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test>","<OneShotGPURenderTests-arm64-apple-macosx-debug.module>","<oneshot-gpu-render-arm64-apple-macosx-debug.exe>"]
+default: "main"
+nodes:
+  "/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/admin/oneshot/native/gpu-renderer/Tests/OneShotGPURenderTests/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render":
+    is-mutated: true
+commands:
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Arguments.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/CubeLUT.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Renderer.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/main.swift"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/sources"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/sources"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.derived/runner.swift"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/sources"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/sources"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.derived/runner.swift":
+    tool: test-entry-point-tool
+    inputs: []
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.derived/runner.swift"]
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/runner.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/CubeLUTTests.swift.o"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.product/Objects.LinkFileList"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/admin/oneshot/native/gpu-renderer/Tests/OneShotGPURenderTests/CubeLUTTests.swift"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/sources"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/sources"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render-entitlement.plist"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render-entitlement.plist"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render.product/Objects.LinkFileList"
+
+  "/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<OneShotGPURender-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURender.swiftmodule"]
+    outputs: ["<OneShotGPURender-arm64-apple-macosx-debug.module>"]
+
+  "<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/runner.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderPackageTests.swiftmodule"]
+    outputs: ["<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.module>"]
+
+  "<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test>":
+    tool: phony
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.xctest/Contents/MacOS/OneShotGPURenderPackageTests"]
+    outputs: ["<OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test>"]
+
+  "<OneShotGPURenderTests-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/CubeLUTTests.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderTests.swiftmodule"]
+    outputs: ["<OneShotGPURenderTests-arm64-apple-macosx-debug.module>"]
+
+  "<oneshot-gpu-render-arm64-apple-macosx-debug.exe>":
+    tool: phony
+    inputs: ["<oneshot-gpu-render-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    outputs: ["<oneshot-gpu-render-arm64-apple-macosx-debug.exe>"]
+
+  "C.OneShotGPURender-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Arguments.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/CubeLUT.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/Renderer.swift","/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/main.swift","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/sources"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURender.swiftmodule"]
+    description: "Compiling Swift Module 'OneShotGPURender' (4 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","OneShotGPURender","-emit-dependencies","-emit-module","-emit-module-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURender.swiftmodule","-output-file-map","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/output-file-map.json","-incremental","-c","@/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/sources","-I","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","OneShotGPURender_main","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","gpu_renderer"]
+
+  "C.OneShotGPURenderPackageTests-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.derived/runner.swift","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderTests.swiftmodule","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/sources"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/runner.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderPackageTests.swiftmodule"]
+    description: "Compiling Swift Module 'OneShotGPURenderPackageTests' (1 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","OneShotGPURenderPackageTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderPackageTests.swiftmodule","-output-file-map","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/sources","-I","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/include/OneShotGPURenderPackageTests-Swift.h","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","gpu_renderer"]
+
+  "C.OneShotGPURenderPackageTests-arm64-apple-macosx-debug.test":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.build/runner.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/CubeLUTTests.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.product/Objects.LinkFileList"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.xctest/Contents/MacOS/OneShotGPURenderPackageTests"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.xctest/Contents/MacOS/OneShotGPURenderPackageTests"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug","-o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.xctest/Contents/MacOS/OneShotGPURenderPackageTests","-module-name","OneShotGPURenderPackageTests","-Xlinker","-no_warn_duplicate_libraries","-Xlinker","-bundle","-Xlinker","-rpath","-Xlinker","@loader_path/../../../","@/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderPackageTests.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURender.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderPackageTests.swiftmodule","-Xlinker","-add_ast_path","-Xlinker","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderTests.swiftmodule","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.OneShotGPURenderTests-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/Tests/OneShotGPURenderTests/CubeLUTTests.swift","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/sources"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/CubeLUTTests.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderTests.swiftmodule"]
+    description: "Compiling Swift Module 'OneShotGPURenderTests' (1 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","OneShotGPURenderTests","-emit-dependencies","-emit-module","-emit-module-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURenderTests.swiftmodule","-output-file-map","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURenderTests.build/sources","-I","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-Xfrontend","-enable-cross-import-overlays","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","gpu_renderer"]
+
+  "C.oneshot-gpu-render-arm64-apple-macosx-debug.exe":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Arguments.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/CubeLUT.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/Renderer.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/OneShotGPURender.build/main.swift.o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render.product/Objects.LinkFileList"]
+    outputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/oneshot-gpu-render"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug","-o","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render","-module-name","oneshot_gpu_render","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_OneShotGPURender_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/Modules/OneShotGPURender.swiftmodule","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.oneshot-gpu-render-arm64-apple-macosx-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render-entitlement.plist"]
+    outputs: ["<oneshot-gpu-render-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/oneshot-gpu-render"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render-entitlement.plist","/Users/admin/oneshot/native/gpu-renderer/.build/arm64-apple-macosx/debug/oneshot-gpu-render"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/admin/oneshot/native/gpu-renderer/Sources/OneShotGPURender/","/Users/admin/oneshot/native/gpu-renderer/Tests/OneShotGPURenderTests/","/Users/admin/oneshot/native/gpu-renderer/Package.swift","/Users/admin/oneshot/native/gpu-renderer/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

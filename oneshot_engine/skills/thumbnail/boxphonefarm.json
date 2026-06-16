@@ -1,0 +1,14 @@
+{
+  "name": "boxphonefarm",
+  "label": "BoxPhoneFarm (xanh/vàng)",
+  "description": "Font DT Phudu Black, text nửa trên xanh #20ff28, nửa dưới vàng #fff12b, viền đen. Style gốc Hedra Studio.",
+  "font": "DTPhudu-Black.otf",
+  "color_top": "#20ff28",
+  "color_bottom": "#fff12b",
+  "color_stroke": "#050505",
+  "overlay_alpha": 36,
+  "safe_top": 330,
+  "safe_bottom": 1240,
+  "safe_margin": 54,
+  "font_sizes": {"1": 166, "2": 150, "3": 134, "4": 116, "5": 100}
+}

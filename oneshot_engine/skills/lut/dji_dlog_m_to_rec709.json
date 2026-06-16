@@ -1,0 +1,9 @@
+{
+  "name": "dji_dlog_m_to_rec709",
+  "label": "DJI D-Log M → Rec.709",
+  "description": "Chuyển màu D-Log M (Osmo Nano/Pocket 3) sang Rec.709 chuẩn. Dùng cho video quay bằng DJI.",
+  "path": "~/Downloads/DJI OSMO Osmo Nano D-Log M to Rec.709 V1.cube",
+  "fallback_paths": [
+    "~/hedra-studio/luts/DJI OSMO Osmo Nano D-Log M to Rec.709 V1.cube"
+  ]
+}

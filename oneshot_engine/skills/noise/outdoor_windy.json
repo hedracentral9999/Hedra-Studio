@@ -1,0 +1,6 @@
+{
+  "name": "outdoor_windy",
+  "label": "Ngoài trời / gió (CapCut)",
+  "description": "AI RNN noise reduction mạnh + de-ess + normalize. Clone chất lượng CapCut cho video ngoài trời.",
+  "filter": "highpass=f=80,arnndn,anlmdn=s=0.0003:p=0.05:r=0.02,equalizer=f=2500:t=q:w=0.8:g=2.5,equalizer=f=8000:t=q:w=1.5:g=0.8,acompressor=threshold=-24dB:ratio=2:attack=10:release=100,speechnorm=e=12.5:r=0.0002,volume=3dB"
+}

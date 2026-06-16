@@ -342,6 +342,11 @@ def _show_unhandled_error(title: str, message: str):
 def _install_exception_hook():
     def _hook(exc_type, exc_value, exc_tb):
         message = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        try:
+            with open(ERROR_LOG, "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Unhandled exception\n{message}\n")
+        except Exception:
+            pass
         _show_unhandled_error("Lỗi Hedra Studio", message)
 
     sys.excepthook = _hook
@@ -351,8 +356,8 @@ def _install_exception_hook():
 def _default_settings() -> dict:
     return {
         "el_api_keys":              [],
-        "genmax_api_key":           "",
         "ds_api_key":               "",
+        "deepseek_script_model":     "deepseek-v4-flash",
         "gemini_api_key":           "",
         "gemini_text_model":        "auto",
         "gemini_stt_model":         "auto",
@@ -386,7 +391,8 @@ def _default_settings() -> dict:
         "one_shot_industry":        "tech",
         "one_shot_lut_path":        "",
         "one_shot_noise_reduce":    True,
-        "one_shot_cut_video":       True,
+        "one_shot_noise_mode":      "auto_gentle",
+        "one_shot_cut_video":       False,
         "one_shot_apply_lut":       True,
         "one_shot_render_profile":  "multi_1080",
         "one_shot_whisper_model":   "small",
@@ -396,7 +402,9 @@ def _default_settings() -> dict:
         "one_shot_thumbnail_lines": "auto",
         "one_shot_thumbnail_position": "center",
         "one_shot_thumbnail_title_mode": "expert",
-        "one_shot_ai_review_thumbnail": True,
+        "one_shot_pipeline_mode":       "simple",
+        "one_shot_enterprise_pipeline": False,
+        "one_shot_ai_review_thumbnail": False,
         "one_shot_last_video_dir":  "",
         "one_shot_last_batch_dir":  "",
         "one_shot_last_lut_dir":    "",

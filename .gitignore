@@ -69,6 +69,8 @@ postiz-batch-agent/.google-drive-token.json
 postiz-batch-agent/.tmp-drive-downloads/
 license_server/data/
 luts/
+!luts/
+!luts/DJI OSMO Osmo Nano D-Log M to Rec.709 V1.cube
 box-publisher/
 escbase_template_main/
 postiz-batch-agent/

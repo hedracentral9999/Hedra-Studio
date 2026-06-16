@@ -33,6 +33,34 @@ if [ ! -d "dist/Hedra Studio.app" ]; then
     exit 1
 fi
 
+echo "🔎 Verify one-shot runtime assets..."
+APP_CONTENTS="dist/Hedra Studio.app/Contents"
+for tool in ffmpeg ffprobe; do
+    if ! find "$APP_CONTENTS" -type f -name "$tool" -perm -111 | grep -q .; then
+        echo "❌ Build thiếu $tool trong app bundle"
+        exit 1
+    fi
+done
+for required in \
+    "faster_whisper/assets/silero_vad_v6.onnx" \
+    "luts/DJI OSMO Osmo Nano D-Log M to Rec.709 V1.cube" \
+    "assets/fonts/DTPhudu-Black.otf"; do
+    if ! find "$APP_CONTENTS" -path "*/$required" -type f | grep -q .; then
+        echo "❌ Build thiếu asset one-shot: $required"
+        exit 1
+    fi
+done
+
+# Stable local app alias for quick testing/opening.
+LASTED_APP_NAME="Hedra Studio Lasted.app"
+echo "🔁 Cập nhật local lasted app..."
+rm -rf "$LASTED_APP_NAME"
+ditto "dist/Hedra Studio.app" "$LASTED_APP_NAME"
+
+echo "🔁 Cập nhật /Applications/Hedra Studio.app..."
+rm -rf "/Applications/Hedra Studio.app"
+ditto "dist/Hedra Studio.app" "/Applications/Hedra Studio.app"
+
 echo "🛡️  Security audit app bundle..."
 "$PYTHON" scripts/security_audit_release.py \
     --artifact "dist/Hedra Studio.app" \
@@ -46,6 +74,7 @@ fi
 
 # Tạo DMG
 DMG_NAME="Hedra-Studio-${VERSION}-mac.dmg"
+LASTED_DMG_NAME="Hedra-Studio-lasted-mac.dmg"
 echo "💿 Tạo $DMG_NAME..."
 
 # Xóa file cũ nếu có
@@ -66,6 +95,11 @@ echo "🔎 Verify DMG..."
 hdiutil verify "$DMG_NAME"
 shasum -a 256 "$DMG_NAME" > SHA256SUMS-macOS.txt
 
+# Stable aliases for the newest local build.
+rm -f "$LASTED_DMG_NAME"
+cp "$DMG_NAME" "$LASTED_DMG_NAME"
+shasum -a 256 "$LASTED_DMG_NAME" > SHA256SUMS-macOS-lasted.txt
+
 echo "🛡️  Security audit DMG..."
 "$PYTHON" scripts/security_audit_release.py \
     --artifact "$DMG_NAME" \
@@ -73,4 +107,5 @@ echo "🛡️  Security audit DMG..."
 
 echo ""
 echo "✅ Xong! File: $DMG_NAME"
+echo "✅ Lasted: $LASTED_DMG_NAME"
 echo "✅ Checksum: SHA256SUMS-macOS.txt"

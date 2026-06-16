@@ -20,6 +20,7 @@ from app_utils import (
     get_auto_video_assets_dir, get_auto_video_env_local, load_settings, save_settings,
     is_auto_video_unlocked,
 )
+from prompt_files import delete_style_prompt_file, read_style_prompt_file, write_style_prompt_file
 # ── .env.local helpers (Auto-Create-Video pipeline config) ───────────────────
 _ENV_LOCAL = get_auto_video_env_local()
 _ENGINE_ASSETS = get_auto_video_assets_dir()
@@ -173,13 +174,14 @@ def _write_env_local(updates: dict) -> None:
             continue
         key = stripped.partition("=")[0].strip()
         if key in updates:
-            new_lines.append(f"{key}={str(updates[key])}\n")
             written.add(key)
+            if updates[key] is not None:
+                new_lines.append(f"{key}={str(updates[key])}\n")
         else:
             new_lines.append(line)
     # Append các key mới chưa có trong file
     for k, v in updates.items():
-        if k not in written:
+        if k not in written and v is not None:
             new_lines.append(f"{k}={str(v)}\n")
     env_local.write_text("".join(new_lines), encoding="utf-8")
 
@@ -414,7 +416,7 @@ class ApiHealthCheckWorker(QThread):
         super().__init__(parent)
         self.values = dict(values or {})
         self.services = services or [
-            "genmax", "elevenlabs", "claude", "gemini", "deepseek", "telegram"
+            "elevenlabs", "claude", "gemini", "deepseek", "telegram"
         ]
         self._cancelled = False
 
@@ -1358,11 +1360,9 @@ class SettingsDialog(QDialog):
 
     def _api_current_values(self) -> dict[str, str]:
         return {
-            "genmax": _widget_text(getattr(self, "genmax_key", _NullEdit())),
             "elevenlabs": _first_key_from_widget(getattr(self, "el_keys", _NullEdit())),
             "ELEVENLABS_API_KEYS": _widget_text(getattr(self, "el_keys", _NullEdit())),
             "el_api_keys": _split_api_keys(_widget_text(getattr(self, "el_keys", _NullEdit()))),
-            "lucylab": _widget_text(getattr(self, "_pv_ll_key", _NullEdit())),
             "claude": _widget_text(getattr(self, "claude_key", _NullEdit())),
             "claude_model": (
                 getattr(self, "_pv_claude_model", _NullEdit()).currentText().strip()
@@ -1395,7 +1395,7 @@ class SettingsDialog(QDialog):
         elif service == "__all__":
             service = None
         services = [service] if service else [
-            "genmax", "elevenlabs", "claude", "gemini", "deepseek"
+            "elevenlabs", "claude", "gemini", "deepseek"
         ]
         values = self._api_current_values()
         for item in services:
@@ -1496,8 +1496,9 @@ class SettingsDialog(QDialog):
             except (TypeError, ValueError):
                 temp = default_temp
             temp = max(0.0, min(1.0, temp))
+            fallback_prompt = ov.get("prompt") or default_prompt
             data[name] = {
-                "prompt": ov.get("prompt") or default_prompt,
+                "prompt": read_style_prompt_file(name, fallback_prompt),
                 "temperature": temp,
                 "creative": ov.get("creative", temp >= 0.5),
                 "builtin": True,
@@ -1507,6 +1508,7 @@ class SettingsDialog(QDialog):
             cs_prompt = cs.get("prompt", "")
             if not cs_name or not cs_prompt:
                 continue
+            cs_prompt = read_style_prompt_file(cs_name, cs_prompt)
             temp = cs.get("temperature", 0.7 if cs.get("creative", False) else 0.3)
             try:
                 temp = float(temp)
@@ -1538,6 +1540,7 @@ class SettingsDialog(QDialog):
         self.settings["enhance_style_name"] = name
         self.settings["enhance_style_temperature"] = temp
         self.settings["enhance_style_creative"] = creative
+        write_style_prompt_file(name, prompt)
         if hasattr(self, "_ep_prompts_map"):
             self._ep_prompts_map[name] = prompt
 
@@ -2063,9 +2066,7 @@ class SettingsDialog(QDialog):
             or (el_saved[0] if el_saved else "")
         )
         api_values = {
-            "genmax": env.get("GENMAX_API_KEY", "") or self.settings.get("genmax_api_key", ""),
             "elevenlabs": el_primary,
-            "lucylab": env.get("VIETNAMESE_API_KEY", ""),
             "gemini": env.get("GEMINI_API_KEY", "") or self.settings.get("gemini_api_key", ""),
             "deepseek": env.get("DEEPSEEK_API_KEY", "") or self.settings.get("ds_api_key", ""),
             "claude": env.get("CLAUDE_API_KEY", "") or self.settings.get("claude_api_key", ""),
@@ -2336,14 +2337,6 @@ class SettingsDialog(QDialog):
         ))
 
         v.addWidget(grp_tts)
-
-        # Dịch vụ legacy — ẩn mặc định
-        _coll_tts, _coll_tts_inner = self._add_collapsible(v, "TTS legacy")
-        grp_extra_tts, glay_extra_tts = self._group()
-        self._pv_ll_key = _line_key(api_values["lucylab"], "sk_live_...")
-        self._row(glay_extra_tts, "LucyLab", _field_row(self._pv_ll_key, None),
-                  "Provider tiếng Việt legacy.", last=True)
-        _coll_tts_inner.addWidget(grp_extra_tts)
 
         # ── NHÓM 2: AI — Kịch bản & Enhance ───────────────────────
         v.addWidget(self._section_label_with_icon("spark", "AI"))
@@ -2726,6 +2719,7 @@ class SettingsDialog(QDialog):
                 overrides.pop(name, None)
             if name in self._ep_prompts_map:
                 self._ep_prompts_map[name] = default_prompt
+            write_style_prompt_file(name, default_prompt)
             save_settings(self.settings)
             hint_ep.setText("Đã đưa prompt về mặc định.")
             QTimer.singleShot(1800, lambda: hint_ep.setText("Sửa trực tiếp trong ô prompt, rồi bấm Lưu."))
@@ -2959,6 +2953,7 @@ class SettingsDialog(QDialog):
         dlg = AddStyleDialog(self, ds_api_key=self.settings.get("ds_api_key", ""), gemini_api_key=self.settings.get("gemini_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
+            write_style_prompt_file(result.get("name", ""), result.get("prompt", ""))
             styles = self.settings.setdefault("custom_styles", [])
             styles.append(result)
             self.settings["enhance_prompt"] = result["prompt"]
@@ -2980,6 +2975,9 @@ class SettingsDialog(QDialog):
                              gemini_api_key=self.settings.get("gemini_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
+            if result.get("name", "") != styles[idx].get("name", ""):
+                delete_style_prompt_file(styles[idx].get("name", ""))
+            write_style_prompt_file(result.get("name", ""), result.get("prompt", ""))
             styles[idx] = result
             current_matches = (
                 self.settings.get("enhance_prompt", "").strip() == old_prompt.strip()
@@ -3009,6 +3007,7 @@ class SettingsDialog(QDialog):
             if reply != QMessageBox.StandardButton.Yes:
                 return
             removed = styles.pop(idx)
+            delete_style_prompt_file(removed.get("name", ""))
             current_matches = (
                 self.settings.get("enhance_prompt", "").strip() == removed.get("prompt", "").strip()
                 or self.prompt.toPlainText().strip() == removed.get("prompt", "").strip()
@@ -4272,17 +4271,13 @@ class SettingsDialog(QDialog):
         grp_tts, glay_tts = self._group()
 
         # Provider dropdown
-        _providers = ["genmax", "elevenlabs", "lucylab"]
-        _cur_provider = env.get("TTS_PROVIDER", "genmax")
-        if _cur_provider not in _providers:
-            _cur_provider = "genmax"
+        _providers = ["elevenlabs"]
+        _cur_provider = "elevenlabs"
         self._pv_provider = _combo(_providers, _cur_provider)
 
         # Voice ID fields (1 per provider, chỉ show cái đang chọn)
         self._pv_voices: dict[str, QLineEdit] = {
-            "genmax":     _lineedit(env.get("GENMAX_VOICE_ID", ""),     "Voice ID…"),
             "elevenlabs": _lineedit(env.get("ELEVENLABS_VOICE_ID", ""), "Voice ID…"),
-            "lucylab":    _lineedit(env.get("VIETNAMESE_VOICEID", ""),  "Voice ID…"),
         }
         # Stacked widget để swap voice field khi đổi provider
         self._pv_voice_stack = QStackedWidget()
@@ -4294,7 +4289,7 @@ class SettingsDialog(QDialog):
         )
 
         self._row(glay_tts, "Provider", self._pv_provider,
-                  "Chọn dịch vụ TTS. API key nhập ở tab API.")
+                  "TTS hiện dùng ElevenLabs. API key nhập ở tab API.")
         voice_id_w = QWidget()
         voice_id_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         voice_id_h = QHBoxLayout(voice_id_w)
@@ -4343,9 +4338,9 @@ class SettingsDialog(QDialog):
         preset_h.addWidget(self._pv_voice_delete_btn)
 
         self._row(glay_tts, "Preset nhanh", preset_w,
-                  "Danh sách giọng bạn tự lưu trong Hedra Studio; không phải thư viện GenMax.", last=True)
+                  "Danh sách giọng bạn tự lưu trong Hedra Studio.", last=True)
 
-        # Tạo sẵn (gắn vào self để _save() đọc được) — sẽ add vào GenMax setup page bên dưới
+        # Tạo sẵn (gắn vào self để _save() đọc được)
         self._pv_eleven_v3_style_enabled = QCheckBox("Bật nhấn nhá Eleven v3")
         self._pv_eleven_v3_style_enabled.setChecked(_env_bool("ELEVEN_V3_STYLE_ENABLED", True))
         self._pv_eleven_v3_style_enabled.setStyleSheet(
@@ -4364,90 +4359,18 @@ class SettingsDialog(QDialog):
         self._pv_setup_stack = QStackedWidget()
         self._pv_setup_stack.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
 
-        # GenMax page
-        page_gm = _provider_page()
-        page_gm_lay = page_gm.layout()
-        grp_gm, glay_gm = self._group()
-        page_gm_lay.addWidget(grp_gm)
-
-        gm_provider = env.get("GENMAX_PROVIDER", "elevenlabs").strip().lower()
-        if gm_provider not in ("elevenlabs", "minimax"):
-            gm_provider = "elevenlabs"
-        default_gm_model = "speech-2.8-turbo" if gm_provider == "minimax" else "eleven_v3"
-        default_gm_lang = (env.get("GENMAX_LANGUAGE_CODE", "") or "").strip() or ("Vietnamese" if gm_provider == "minimax" else "vi")
-
-        self._pv_gm_provider = _combo(["elevenlabs", "minimax"], gm_provider)
-        self._pv_gm_model = _editable_combo([default_gm_model], env.get("GENMAX_MODEL_ID", default_gm_model))
-        self._pv_gm_language = _editable_combo(["Vietnamese (vi)", "English (en)"], "")
-        self._pv_set_genmax_language_choices([], default_gm_lang)
-
-        voice_picker = QWidget()
-        voice_picker.setStyleSheet("QWidget{background:transparent;border:none;}")
-        voice_picker_h = QHBoxLayout(voice_picker)
-        voice_picker_h.setContentsMargins(0, 0, 0, 0)
-        voice_picker_h.setSpacing(8)
-
-        self._pv_gm_voice_combo = QComboBox()
-        self._pv_gm_voice_combo.setMinimumWidth(220)
-        self._pv_gm_voice_combo.setStyleSheet(
-            f"QComboBox{{background:{CONTROL_BG};border:none;"
-            f"border-radius:9px;padding:3px 26px 3px 10px;font-size:13px;color:{TEXT};}}"
-            f"QComboBox:hover{{background:{CONTROL_HV};}}"
-            f"QComboBox:focus{{background:{CONTROL_HV};}}"
-            "QComboBox::drop-down{border:none;}"
-            + self._combo_item_view_style(24)
-        )
-        self._pv_gm_voice_combo.addItem("Chọn voice đã lưu…", "")
-        self._pv_gm_voice_combo.currentIndexChanged.connect(self._pv_apply_genmax_voice)
-        voice_picker_h.addWidget(self._pv_gm_voice_combo, 1)
-
-        self._pv_gm_load_btn = QPushButton("Kiểm tra")
-        self._pv_gm_load_btn.setFixedHeight(28)
-        self._pv_gm_load_btn.setStyleSheet(self._soft_button_style(radius=6, font_size=12))
-        self._pv_gm_load_btn.clicked.connect(self._pv_load_genmax_catalog)
-        voice_picker_h.addWidget(self._pv_gm_load_btn)
-
-        def _on_gm_provider_change(idx: int):
-            provider_name = "minimax" if idx == 1 else "elevenlabs"
-            cur_model = self._pv_genmax_model()
-            if not cur_model or cur_model in ("eleven_v3", "speech-2.8-turbo"):
-                self._pv_gm_model.setCurrentText("speech-2.8-turbo" if provider_name == "minimax" else "eleven_v3")
-            cur_lang = self._pv_genmax_language()
-            if not cur_lang or cur_lang in ("vi", "en", "Vietnamese"):
-                self._pv_set_genmax_language_choices([], "Vietnamese" if provider_name == "minimax" else "vi")
-            self._pv_genmax_api_language_values = []
-            QTimer.singleShot(100, self._pv_load_genmax_languages)
-
-        self._pv_gm_provider.currentIndexChanged.connect(_on_gm_provider_change)
-
-        self._row(glay_gm, "Loại voice", self._pv_gm_provider,
-                  "Tự nhận diện sau khi bấm Kiểm tra.")
-        self._row(glay_gm, "Voice đã lưu", voice_picker,
-                  "Bấm Kiểm tra để load lại model + loại voice.")
-        self._row(glay_gm, "Model TTS", self._pv_gm_model)
-        self._row(glay_gm, "Ngôn ngữ", self._pv_gm_language)
-        self._row(glay_gm, "Nhấn nhá v3", self._pv_eleven_v3_style_enabled,
-                  "Tự thêm tag cảm xúc nhẹ cho eleven_v3.", last=True)
-
         # ElevenLabs page
         page_el = _provider_page()
         page_el_lay = page_el.layout()
         grp_el, glay_el = self._group()
         page_el_lay.addWidget(grp_el)
         self._pv_el_model = _lineedit(env.get("ELEVENLABS_MODEL_ID", "eleven_v3"), "eleven_v3")
+        self._row(glay_el, "Nhấn nhá v3", self._pv_eleven_v3_style_enabled,
+                  "Tự thêm tag cảm xúc nhẹ cho eleven_v3.")
         self._row(glay_el, "Model TTS", self._pv_el_model,
                   "Mặc định eleven_v3.", last=True)
 
-        # LucyLab page
-        page_ll = _provider_page()
-        page_ll_lay = page_ll.layout()
-        grp_ll, glay_ll = self._group()
-        page_ll_lay.addWidget(grp_ll)
-        self._pv_ll_endpoint = _lineedit(env.get("LUCYLAB_ENDPOINT", "https://api.lucylab.io/json-rpc"), "https://api.lucylab.io/json-rpc")
-        self._row(glay_ll, "Endpoint", self._pv_ll_endpoint,
-                  "Giữ mặc định nếu không có endpoint riêng.", last=True)
-
-        for page_item in (page_gm, page_el, page_ll):
+        for page_item in (page_el,):
             self._pv_setup_stack.addWidget(page_item)
         self._pv_setup_stack.setCurrentIndex(self._pv_provider.currentIndex())
         adv_v.addWidget(self._pv_setup_stack)
@@ -4456,13 +4379,8 @@ class SettingsDialog(QDialog):
             self._pv_voice_stack.setCurrentIndex(idx)
             self._pv_setup_stack.setCurrentIndex(idx)
             self._pv_refresh_voice_presets()
-            if self._pv_current_provider() == "genmax":
-                self._pv_refresh_genmax_saved_voices()
 
         self._pv_provider.currentIndexChanged.connect(_on_provider_change)
-
-        self._pv_refresh_genmax_saved_voices()
-        QTimer.singleShot(150, self._pv_load_genmax_languages)
 
         # Khởi tạo các control nâng cao (sẽ add vào collapsible bên dưới)
         _pace_modes = ["dynamic", "standard"]
@@ -4517,7 +4435,21 @@ class SettingsDialog(QDialog):
         self._pv_script_setup_stack = QStackedWidget()
         self._pv_script_setup_stack.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
 
-        page_ds = _provider_page()  # DeepSeek không cần config riêng — ẩn stack
+        page_ds = _provider_page()
+        page_ds_lay = page_ds.layout()
+        grp_ds_script, glay_ds_script = self._group()
+        page_ds_lay.addWidget(grp_ds_script)
+        _deepseek_models = ["deepseek-v4-flash", "deepseek-v4-pro"]
+        _cur_ds_model = (
+            env.get("DEEPSEEK_SCRIPT_MODEL", "")
+            or self.settings.get("deepseek_script_model", "")
+            or "deepseek-v4-flash"
+        )
+        if _cur_ds_model in {"deepseek-chat", "deepseek-reasoner"}:
+            _cur_ds_model = "deepseek-v4-flash"
+        self._pv_deepseek_script_model = _combo(_deepseek_models, _cur_ds_model)
+        self._row(glay_ds_script, "DeepSeek model", self._pv_deepseek_script_model,
+                  "Flash là mặc định nhanh/rẻ. Pro dùng khi cần kịch bản khó hơn.", last=True)
 
         page_gem_script = _provider_page()
         page_gem_lay = page_gem_script.layout()
@@ -4758,11 +4690,7 @@ class SettingsDialog(QDialog):
         dlg.exec()
 
     def _pv_current_provider(self) -> str:
-        providers = ["genmax", "elevenlabs", "lucylab"]
-        if not hasattr(self, "_pv_provider"):
-            return "genmax"
-        idx = self._pv_provider.currentIndex()
-        return providers[idx] if 0 <= idx < len(providers) else "genmax"
+        return "elevenlabs"
 
     def _pv_current_voice_edit(self) -> QLineEdit:
         return getattr(self, "_pv_voices", {}).get(self._pv_current_provider(), _NullEdit())
@@ -5897,7 +5825,6 @@ class SettingsDialog(QDialog):
             initial = getattr(self, "_api_initial_keys", {}).get(name, "")
             return api_value if api_value != initial else (pipeline_value or api_value)
 
-        pipeline_gm_key = _merged_key("genmax", getattr(self, "genmax_key", _NullEdit()), getattr(self, "_pv_gm_key", _NullEdit()))
         pipeline_ds_key = _merged_key("deepseek", getattr(self, "ds_key", _NullEdit()), getattr(self, "_pv_deepseek_key", _NullEdit()))
         pipeline_gemini_key = _merged_key("gemini", getattr(self, "gemini_key", _NullEdit()), getattr(self, "_pv_script_gemini_key", _NullEdit()))
         pipeline_claude_key = _merged_key("claude", getattr(self, "claude_key", _NullEdit()), getattr(self, "_pv_claude_key", _NullEdit()))
@@ -5910,8 +5837,12 @@ class SettingsDialog(QDialog):
             else ""
             )
         )
-        self.settings["genmax_api_key"]     = pipeline_gm_key
         self.settings["ds_api_key"]         = pipeline_ds_key or self.ds_key.text().strip()
+        self.settings["deepseek_script_model"] = (
+            getattr(self, "_pv_deepseek_script_model", _NullEdit()).currentText().strip()
+            if hasattr(getattr(self, "_pv_deepseek_script_model", None), "currentText")
+            else "deepseek-v4-flash"
+        ) or "deepseek-v4-flash"
         self.settings["gemini_api_key"]     = pipeline_gemini_key or self.gemini_key.text().strip()
         self.settings["gemini_text_model"]  = getattr(self, "_pv_gemini_text_model", _NullEdit()).text().strip() or "auto"
         self.settings["gemini_stt_model"]   = self.settings.get("gemini_stt_model", "auto") or "auto"
@@ -5955,17 +5886,9 @@ class SettingsDialog(QDialog):
         self.settings["av_fav_voice_id"]   = _av_voice
         self.settings["av_fav_voice_name"] = _av_voice_name
         if _av_voice and hasattr(self, "_pv_voices"):
-            provider_map = {
-                "genmax": "genmax",
-                "elevenlabs": "elevenlabs",
-                "lucylab": "lucylab",
-            }
-            target_provider = self._pv_current_provider() if hasattr(self, "_pv_current_provider") else "genmax"
-            target_key = provider_map.get(target_provider, "genmax")
+            target_key = "elevenlabs"
             if target_key in self._pv_voices and not self._pv_voices[target_key].text().strip():
                 self._pv_voices[target_key].setText(_av_voice)
-            if "genmax" in self._pv_voices and not self._pv_voices["genmax"].text().strip():
-                self._pv_voices["genmax"].setText(_av_voice)
         self.settings["eleven_v3_style_enabled"] = (
             getattr(self, "_pv_eleven_v3_style_enabled", None) is None
             or self._pv_eleven_v3_style_enabled.isChecked()
@@ -5974,30 +5897,27 @@ class SettingsDialog(QDialog):
 
         # ── Auto Video pipeline — ghi thẳng vào .env.local ─────────
         if hasattr(self, "_pv_provider"):
-            _providers = ["genmax", "elevenlabs", "lucylab"]
-            prov = _providers[self._pv_provider.currentIndex()]
             el_keys_joined = ",".join(self.settings.get("el_api_keys", [])[:3])
             _write_env_local({
-                "TTS_PROVIDER":        prov,
-                "GENMAX_VOICE_ID":     getattr(self, "_pv_voices", {}).get("genmax",     _NullEdit()).text().strip(),
+                "TTS_PROVIDER":        "elevenlabs",
+                "GENMAX_VOICE_ID":     None,
                 "ELEVENLABS_VOICE_ID": getattr(self, "_pv_voices", {}).get("elevenlabs", _NullEdit()).text().strip(),
-                "VIETNAMESE_VOICEID":  getattr(self, "_pv_voices", {}).get("lucylab",    _NullEdit()).text().strip(),
-                "GENMAX_PROVIDER":     getattr(self, "_pv_gm_provider", _NullEdit()).currentText().strip()
-                                       if hasattr(getattr(self, "_pv_gm_provider", None), "currentText") else "elevenlabs",
-                "GENMAX_MODEL_ID":     self._pv_genmax_model(),
-                "GENMAX_LANGUAGE_CODE": self._pv_genmax_language(),
+                "VIETNAMESE_VOICEID":  None,
+                "GENMAX_PROVIDER":     None,
+                "GENMAX_MODEL_ID":     None,
+                "GENMAX_LANGUAGE_CODE": None,
                 "ELEVEN_V3_STYLE_ENABLED": "true" if getattr(self, "_pv_eleven_v3_style_enabled", None) is None
                                            or self._pv_eleven_v3_style_enabled.isChecked() else "false",
-                "GENMAX_API_KEY":      pipeline_gm_key,
-                "GENMAX_POLL_TIMEOUT_MS": "300000",
-                "GENMAX_MAX_RETRIES": "7",
+                "GENMAX_API_KEY":      None,
+                "GENMAX_POLL_TIMEOUT_MS": None,
+                "GENMAX_MAX_RETRIES":  None,
                 "ELEVENLABS_API_KEY":  _first_key_from_widget(getattr(self, "_pv_el_key", _NullEdit())),
                 "ELEVENLABS_API_KEYS": el_keys_joined,
                 "ELEVENLABS_API_KEY_2": self.settings.get("el_api_keys", ["", ""])[1] if len(self.settings.get("el_api_keys", [])) > 1 else "",
                 "ELEVENLABS_API_KEY_3": self.settings.get("el_api_keys", ["", "", ""])[2] if len(self.settings.get("el_api_keys", [])) > 2 else "",
                 "ELEVENLABS_MODEL_ID":  getattr(self, "_pv_el_model", _NullEdit()).text().strip(),
-                "VIETNAMESE_API_KEY":  getattr(self, "_pv_ll_key",  _NullEdit()).text().strip(),
-                "LUCYLAB_ENDPOINT":     getattr(self, "_pv_ll_endpoint", _NullEdit()).text().strip(),
+                "VIETNAMESE_API_KEY":  None,
+                "LUCYLAB_ENDPOINT":     None,
                 "TIKTOK_DISPLAY_NAME": getattr(self, "_pv_tt_name",      _NullEdit()).text().strip(),
                 "TIKTOK_BADGE_LABEL":  getattr(self, "_pv_tt_badge",     _NullEdit()).text().strip(),
                 "TIKTOK_TAGLINE":      getattr(self, "_pv_tt_tagline",   _NullEdit()).text().strip(),
@@ -6017,6 +5937,7 @@ class SettingsDialog(QDialog):
                 "AUTO_VIDEO_CAPTION_STYLE": getattr(self, "_pv_auto_caption_style", _NullEdit()).currentText().strip()
                                        if hasattr(getattr(self, "_pv_auto_caption_style", None), "currentText") else "capcut_pop",
                 "DEEPSEEK_API_KEY":    pipeline_ds_key,
+                "DEEPSEEK_SCRIPT_MODEL": self.settings.get("deepseek_script_model", "deepseek-v4-flash"),
                 "GEMINI_API_KEY":      pipeline_gemini_key,
                 "GEMINI_TEXT_MODEL":   getattr(self, "_pv_gemini_text_model", _NullEdit()).text().strip() or "auto",
                 "CLAUDE_API_KEY":      pipeline_claude_key,

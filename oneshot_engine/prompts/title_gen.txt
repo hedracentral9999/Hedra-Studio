@@ -1,0 +1,35 @@
+Đọc transcript video one-shot và tạo 3 tiêu đề thumbnail tối ưu cho chuyển đổi.
+
+Tiêu chí:
+- Làm đơn giản từ gốc: sản phẩm chính + lợi ích/hook có bằng chứng.
+- Nếu có một hành động/giải pháp rõ trong transcript, ưu tiên title dạng hành động hơn title chỉ nêu vấn đề.
+- Ưu tiên pain/use-case trong 5-18 giây đầu.
+- Nếu video là lỗi/tutorial, title phải bám pain hoặc hành động chính.
+- Nếu video là sản phẩm/phụ kiện, title phải bám sản phẩm chính + lợi ích chính.
+- Không kéo sản phẩm phụ ở cuối video lên thumbnail nếu nó không giải quyết hook chính.
+- 4-9 từ là tốt nhất, tối đa 12 từ.
+- Tự sửa lỗi ASR rõ ràng: "set play/sét play" = "CH Play", "Samsung Deck" = "Samsung Dex", "xóp" = "xốp".
+- Từ chuyên ngành đúng: "Pocket Bar" thường là "Pocket 3"; "Osmo một/Ốt Muôn Ano/Otmolano" thường là "Osmo Nano" nếu ngữ cảnh DJI; "tu vit/tô vít" = "tua vít"; BayFast, kính cường lực, miếng dán, dán kính, xốp đóng gói, ốp điện thoại.
+- Tránh title sai/ngượng: "Đăng nhập game CH Play trên Samsung Dex", tên file DJI/IMG/MP4, hoặc title chung chung.
+- Hashtags: CHỈ 3 cái, ưu tiên hashtag sản phẩm chính + ngành hàng + use-case. Không hashtag chung chung (#fyp, #xuhuong).
+- Trả JSON đúng format:
+{{"titles":[...],"upload_title":"...","caption_short":"...","caption_full":"...","hashtags":["#...","#...","#..."],"detected_product":"...","main_hook":"..."}}
+
+Ví dụ đúng:
+THOÁT DEX ĐỂ ĐĂNG NHẬP GAME
+ĐĂNG NHẬP GAME BỊ CHẶN TRÊN SAMSUNG DEX
+LÊN ĐƠN BOX SAMSUNG DEX S20
+
+Ví dụ sai:
+ĐĂNG NHẬP GAME CH PLAY TRÊN SAMSUNG DEX (sai ngữ cảnh game bị chặn ở CH Play)
+DJI 20260523090544 0001 D (tên file camera)
+HUB 120K CHƠI DEX FULL MÀN (sai nếu hook chính không phải hub)
+HẤP SAMSUNG DEX 4K 120HZ (sai chính tả, phải là HUB)
+{dup_block}
+Tên file: {source_stem}
+
+Transcript đầu:
+{early_transcript}
+
+Transcript đầy đủ:
+{full_transcript}

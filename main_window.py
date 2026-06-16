@@ -10,13 +10,13 @@ import time
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout,
     QTextEdit, QLabel, QLineEdit, QSlider, QPushButton, QFrame,
     QTabWidget, QScrollArea, QStackedWidget, QFileDialog,
     QMessageBox, QSizePolicy, QSpacerItem, QListWidget,
     QListWidgetItem, QMenu, QGridLayout, QComboBox, QDialog, QCheckBox, QToolButton,
     QAbstractButton,
-    QStyledItemDelegate,
+    QStyledItemDelegate, QSplitter,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QSize, QRectF
 from PyQt6.QtGui import QIcon, QFont, QAction, QPixmap, QColor, QPainter, QDesktopServices
@@ -41,14 +41,17 @@ from app_workers import (
 )
 from app_dialogs import AddStyleDialog, FeedbackDialog, DropZone
 from app_icons import icon_size, ui_icon
+from prompt_files import read_style_prompt_file, write_style_prompt_file
 from settings_dialog import SettingsDialog, _read_env_local, _write_env_local
 from auto_video_workers import (
     AutoScriptWorker, AutoVideoEngineWorker, OneShotAnalyzeWorker, OneShotRenderWorker,
     OneShotBatchWorker, OneShotTitleWorker, OneShotThumbnailPreviewWorker,
     _clean_thumbnail_title,
     _upload_video_output_path, _build_upload_metadata, _one_shot_exports_dir,
-    EscbaseSlideWorker, escbase_dependency_status, whisper_runtime_status,
+    whisper_runtime_status,
 )
+from oneshot_engine.simple_pipeline import build_simple_options, is_simple_pipeline
+from oneshot_simple_worker import OneShotSimpleBatchWorker, OneShotSimpleRunWorker
 # ── ElevenLabs multilingual v2 — full language list ───────────────
 _ELEVENLABS_LANGS = [
     ("Tự động",          ""),
@@ -182,6 +185,11 @@ class MainWindow(QWidget):
         self._av_log_timer.timeout.connect(self._av_flush_log_buffer)
         self._last_status_update: dict[str, float] = {}
         self._last_progress_value: dict[str, int] = {}
+        self._tts_scroll_syncing = False
+        self._tts_splitter_save_timer = QTimer(self)
+        self._tts_splitter_save_timer.setSingleShot(True)
+        self._tts_splitter_save_timer.setInterval(300)
+        self._tts_splitter_save_timer.timeout.connect(self._persist_tts_splitter_ratio)
         self.image_paths   = []
         self._parent_ref   = self          # self-ref cho _open_voices_settings
         self._output_audio = QAudioOutput()
@@ -189,6 +197,8 @@ class MainWindow(QWidget):
         self._output_player = QMediaPlayer()
         self._output_player.setAudioOutput(self._output_audio)
         self._output_player.playbackStateChanged.connect(self._on_output_playback_state)
+        self._output_player.positionChanged.connect(self._on_output_position_changed)
+        self._output_player.durationChanged.connect(self._on_output_duration_changed)
         self.setWindowTitle(f"Hedra Studio  v{VERSION}")
         self.setMinimumSize(1160, 700)
         self.resize(1480, 820)
@@ -431,6 +441,86 @@ class MainWindow(QWidget):
         font.setPointSize(point_size)
         font.setWeight(weight)
         return font
+
+    def _preview_status_style(self, tone: str = "idle") -> str:
+        dark = str(getattr(self, "_theme_mode", "")).lower() == "dark"
+        if dark:
+            palette = {
+                "idle": ("#2c2c2e", BORDER_SOFT, TEXT_MUTE),
+                "processing": ("#3a2a10", "#7a4b00", "#ffd60a"),
+                "success": ("#12351f", "#1f7a3a", "#7ee787"),
+                "warning": ("#3a2a10", "#7a4b00", "#ffd60a"),
+                "error": ("#3a1618", "#8f242b", "#ff8a80"),
+            }
+        else:
+            palette = {
+                "idle": ("#f5f5f7", BORDER_SOFT, TEXT_MUTE),
+                "processing": ("#fff3cd", "#ffcc66", "#8a5a00"),
+                "success": ("#e9f8ef", "#9be3ad", "#1f7a3a"),
+                "warning": ("#fff3cd", "#ffcc66", "#8a5a00"),
+                "error": ("#fff0f0", "#ffb3b3", "#c62828"),
+            }
+        bg, border, color = palette.get(tone, palette["idle"])
+        return (
+            "QLabel{"
+            f"background:{bg};color:{color};border:1px solid {border};"
+            "border-radius:9px;padding:8px 10px;"
+            "font-size:13px;font-weight:700;"
+            "}"
+        )
+
+    def _set_preview_status(self, msg: str, tone: str = "idle") -> None:
+        if not hasattr(self, "_preview_status"):
+            return
+        labels = {
+            "idle": "",
+            "processing": "Đang xử lý…",
+            "success": "✓ Sẵn sàng",
+            "warning": "Cần cập nhật",
+            "error": "Có lỗi",
+        }
+        colors = {
+            "idle": TEXT_MUTE,
+            "processing": WARNING,
+            "success": SUCCESS,
+            "warning": WARNING,
+            "error": DESTRUCTIVE,
+        }
+        self._preview_status.setText(labels.get(tone, str(msg or "")))
+        self._preview_status.setToolTip(str(msg or ""))
+        self._preview_status.setStyleSheet(
+            f"font-size:11px;font-weight:600;color:{colors.get(tone, TEXT_MUTE)};"
+            "background:transparent;border:none;"
+        )
+        self._preview_status.setVisible(bool(str(msg or "").strip()))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._adjust_tts_layout()
+
+    def _adjust_tts_layout(self) -> None:
+        if not hasattr(self, "_tts_splitter"):
+            return
+        body_width = max(self._tts_splitter.width(), self.width() - 220)
+        narrow = body_width < 760
+        compact_audio = body_width < 1100
+        layout_unchanged = getattr(self, "_tts_layout_narrow", None) == narrow
+        audio_unchanged = getattr(self, "_tts_audio_compact", None) == compact_audio
+        if layout_unchanged and audio_unchanged:
+            return
+        self._tts_layout_narrow = narrow
+        self._tts_audio_compact = compact_audio
+        if not layout_unchanged:
+            self._tts_splitter.setOrientation(Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal)
+        if hasattr(self, "_audio_file_info"):
+            self._audio_file_info.setMinimumWidth(180 if compact_audio else 285)
+            self._audio_file_info.setMaximumWidth(220 if compact_audio else 330)
+            self._audio_progress.setMinimumWidth(100 if compact_audio else 220)
+            self.slider.setFixedWidth(80 if compact_audio else 115)
+        if not layout_unchanged and self._preview_box.isVisible():
+            total = max(2, self._tts_splitter.height() if narrow else self._tts_splitter.width())
+            self._tts_splitter.setSizes([total // 2, total - total // 2])
+        self._set_tts_review_mode(bool(getattr(self, "_preview_box", None) and self._preview_box.isVisible()))
 
     def _build(self, default_tab: int = 1):
         root = self.layout()
@@ -805,140 +895,240 @@ class MainWindow(QWidget):
         self._sync_tts_audio_button()
         layout.addWidget(strip)
 
-        body = QWidget()
-        body.setStyleSheet("background:transparent;border:none;")
-        body_h = QHBoxLayout(body)
-        body_h.setContentsMargins(0, 0, 0, 0)
-        body_h.setSpacing(14)
+        workspace = QWidget()
+        workspace.setObjectName("ttsWorkspace")
+        workspace.setStyleSheet(
+            f"#ttsWorkspace{{background:{SURFACE};border:1px solid {BORDER_SOFT};border-radius:8px;}}"
+        )
+        workspace_l = QVBoxLayout(workspace)
+        workspace_l.setContentsMargins(0, 0, 0, 0)
+        workspace_l.setSpacing(0)
 
-        left, left_l = self._card()
+        self._tts_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._tts_splitter.setChildrenCollapsible(False)
+        self._tts_splitter.setHandleWidth(5)
+        self._tts_splitter.setStyleSheet(
+            f"QSplitter{{background:transparent;border:none;}}"
+            f"QSplitter::handle{{background:{BORDER_SOFT};margin:14px 2px;border-radius:1px;}}"
+            f"QSplitter::handle:hover{{background:{ACCENT};}}"
+        )
+        self._tts_layout_narrow = False
+
+        left = QWidget()
+        left.setStyleSheet("background:transparent;border:none;")
+        left_l = QVBoxLayout(left)
         left_l.setContentsMargins(16, 14, 16, 14)
         left_l.setSpacing(8)
-        left_l.addWidget(self._pane_heading("Kịch bản", "Paste hoặc chỉnh nội dung trước khi tạo giọng."))
+        script_head = QWidget()
+        script_head.setStyleSheet("background:transparent;border:none;")
+        script_head_l = QHBoxLayout(script_head)
+        script_head_l.setContentsMargins(0, 0, 0, 0)
+        script_head_l.setSpacing(8)
+        script_head_l.addWidget(self._pane_heading("Kịch bản", "Paste hoặc chỉnh nội dung trước khi tạo giọng."), 1)
+        self._sync_scroll_btn = QToolButton()
+        self._sync_scroll_btn.setText("↔")
+        self._sync_scroll_btn.setCheckable(True)
+        self._sync_scroll_btn.setFixedSize(34, 28)
+        self._sync_scroll_btn.setToolTip("Cuộn Kịch bản và Bản đọc cùng nhau")
+        self._sync_scroll_btn.setStyleSheet(
+            f"QToolButton{{background:{SURFACE};color:{TEXT};border:1px solid {BORDER_SOFT};"
+            "border-radius:7px;font-size:15px;font-weight:700;}"
+            f"QToolButton:hover{{background:{CONTROL_HV};}}"
+            f"QToolButton:checked{{background:{CONTROL_HV};color:{ACCENT};}}"
+        )
+        script_head_l.addWidget(self._sync_scroll_btn, 0, Qt.AlignmentFlag.AlignTop)
+        left_l.addWidget(script_head)
         self.text_input = QTextEdit()
+        self.text_input.setAcceptRichText(False)
         self.text_input.setPlaceholderText("Paste kịch bản vào đây...")
         self.text_input.setMinimumHeight(180)
         self.text_input.setStyleSheet(self._editor_style())
         self.text_input.textChanged.connect(self._on_script_changed)
         left_l.addWidget(self.text_input, 1)
+        self._tts_splitter.addWidget(left)
+        self._tts_left_card = left
 
         self._preview_box = QWidget()
         self._preview_box.setVisible(False)
         self._preview_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._preview_box.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
+        self._preview_box.setStyleSheet("background:transparent;border:none;")
         pv_lay = QVBoxLayout(self._preview_box)
-        pv_lay.setContentsMargins(12, 10, 12, 12)
+        pv_lay.setContentsMargins(16, 14, 16, 14)
         pv_lay.setSpacing(6)
-        pv_lay.addWidget(self._pane_heading("Bản đọc", "Sửa ở đây. Tạo audio sẽ dùng đúng nội dung này."))
-        self.preview_text = QTextEdit()
-        self.preview_text.setPlaceholderText("Bản đọc sau khi AI xử lý sẽ hiện ở đây...")
-        self.preview_text.setMinimumHeight(360)
-        self.preview_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.preview_text.setStyleSheet(self._editor_style(True))
-        pv_lay.addWidget(self.preview_text, 1)
-        self._preview_status = QLabel("")
-        self._preview_status.setStyleSheet(f"font-size:11px;color:{TEXT_MUTE};background:transparent;border:none;")
-        pv_lay.addWidget(self._preview_status)
-        left_l.addWidget(self._preview_box, 4)
-        self._enhanced_cache = ""
-        body_h.addWidget(left, 7)
 
-        right, right_l = self._card()
-        right_l.setContentsMargins(16, 14, 16, 14)
-        right_l.setSpacing(12)
-        right_l.addWidget(self._pane_heading("Audio", "Tạo file đọc và nghe lại ngay trong app."))
+        preview_head = QWidget()
+        preview_head.setStyleSheet("background:transparent;border:none;")
+        preview_head_l = QHBoxLayout(preview_head)
+        preview_head_l.setContentsMargins(0, 0, 0, 0)
+        preview_head_l.setSpacing(7)
+        preview_titles = QWidget()
+        preview_titles.setStyleSheet("background:transparent;border:none;")
+        preview_titles_l = QVBoxLayout(preview_titles)
+        preview_titles_l.setContentsMargins(0, 0, 0, 6)
+        preview_titles_l.setSpacing(3)
+        preview_title_row = QHBoxLayout()
+        preview_title_row.setSpacing(7)
+        preview_title = QLabel("Bản đọc")
+        preview_title.setStyleSheet(f"font-size:13px;font-weight:700;color:{TEXT};background:transparent;border:none;")
+        preview_title_row.addWidget(preview_title)
+        self._preview_status = QLabel("")
+        self._preview_status.setStyleSheet(f"font-size:11px;font-weight:600;color:{TEXT_MUTE};background:transparent;border:none;")
+        self._preview_status.setVisible(False)
+        preview_title_row.addWidget(self._preview_status)
+        preview_title_row.addStretch()
+        preview_titles_l.addLayout(preview_title_row)
+        preview_subtitle = QLabel("Sửa ở đây. Audio sẽ dùng đúng nội dung này.")
+        preview_subtitle.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        preview_titles_l.addWidget(preview_subtitle)
+        preview_head_l.addWidget(preview_titles, 1)
+        pv_lay.addWidget(preview_head)
+
+        self.preview_text = QTextEdit()
+        self.preview_text.setAcceptRichText(False)
+        self.preview_text.setPlaceholderText("Bản đọc sau khi AI xử lý sẽ hiện ở đây...")
+        self.preview_text.setMinimumHeight(180)
+        self.preview_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.preview_text.setStyleSheet(self._editor_style())
+        pv_lay.addWidget(self.preview_text, 1)
+        self.text_input.verticalScrollBar().valueChanged.connect(
+            lambda value: self._sync_tts_scroll(self.text_input, self.preview_text, value)
+        )
+        self.preview_text.verticalScrollBar().valueChanged.connect(
+            lambda value: self._sync_tts_scroll(self.preview_text, self.text_input, value)
+        )
+        self._tts_splitter.addWidget(self._preview_box)
+        self._tts_splitter.setStretchFactor(0, 1)
+        self._tts_splitter.setStretchFactor(1, 1)
+        self._tts_splitter.setSizes([1, 1])
+        self._tts_splitter.splitterMoved.connect(self._save_tts_splitter_ratio)
+        self._enhanced_cache = ""
+        workspace_l.addWidget(self._tts_splitter, 1)
 
         self.tts_status_lbl = QLabel("Chưa có audio")
+        self.tts_status_lbl.setMinimumWidth(0)
         self.tts_status_lbl.setStyleSheet(f"color:{TEXT_MUTE};font-size:12px;background:transparent;border:none;")
 
-        audio_panel = QWidget()
-        audio_panel.setObjectName("audioPanel")
-        audio_panel.setStyleSheet(f"#audioPanel{{background:transparent;border:1px solid {BORDER_SOFT};border-radius:12px;}}")
-        audio_panel_l = QVBoxLayout(audio_panel)
-        audio_panel_l.setContentsMargins(16, 16, 16, 14)
-        audio_panel_l.setSpacing(10)
-        audio_panel_l.addStretch()
+        audio_bar = QWidget()
+        audio_bar.setObjectName("ttsAudioBar")
+        audio_bar.setFixedHeight(78)
+        audio_bar.setStyleSheet(f"#ttsAudioBar{{background:{CONTROL_BG};border-top:1px solid {BORDER_SOFT};}}")
+        audio_l = QHBoxLayout(audio_bar)
+        audio_l.setContentsMargins(10, 8, 10, 8)
+        audio_l.setSpacing(12)
 
-        self._audio_icon_lbl = QLabel()
-        self._audio_icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
-        self._audio_icon_lbl.setStyleSheet("background:transparent;border:none;")
-        audio_panel_l.addWidget(self._audio_icon_lbl)
+        audio_icon = QLabel()
+        audio_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        audio_icon.setFixedSize(46, 46)
+        audio_icon.setPixmap(ui_icon("audio", 23, "#ffffff").pixmap(icon_size(23)))
+        audio_icon.setStyleSheet(f"background:{ACCENT};border:none;border-radius:23px;")
+        audio_l.addWidget(audio_icon)
 
-        self._audio_title_lbl = QLabel("Chưa có audio")
-        self._audio_title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._audio_title_lbl.setStyleSheet(f"font-size:22px;font-weight:700;color:{TEXT_FAINT};background:transparent;border:none;")
-        audio_panel_l.addWidget(self._audio_title_lbl)
+        file_info = QWidget()
+        file_info.setStyleSheet("background:transparent;border:none;")
+        file_info_l = QVBoxLayout(file_info)
+        file_info_l.setContentsMargins(0, 0, 0, 0)
+        file_info_l.setSpacing(1)
+        file_info.setMinimumWidth(285)
+        file_info.setMaximumWidth(330)
+        self._audio_file_info = file_info
+        filename_row = QWidget()
+        filename_row.setStyleSheet("background:transparent;border:none;")
+        filename_row_l = QHBoxLayout(filename_row)
+        filename_row_l.setContentsMargins(0, 0, 0, 0)
+        filename_row_l.setSpacing(4)
+        self.filename_input = QLineEdit()
+        self.filename_input.setPlaceholderText("Tên file tự tạo theo bản đọc")
+        self.filename_input.setMaximumWidth(300)
+        self.filename_input.setStyleSheet(
+            f"QLineEdit{{background:transparent;border:none;color:{TEXT};font-size:13px;font-weight:700;padding:0;}}"
+            f"QLineEdit:focus{{background:{SURFACE};border:1px solid {ACCENT};border-radius:6px;padding:2px 6px;}}"
+        )
+        filename_row_l.addWidget(self.filename_input, 1)
+        filename_edit = QLabel("✎")
+        filename_edit.setToolTip("Bấm vào tên để sửa")
+        filename_edit.setStyleSheet(f"font-size:14px;color:{TEXT};background:transparent;border:none;")
+        filename_row_l.addWidget(filename_edit)
+        file_info_l.addWidget(filename_row)
+        file_info_l.addWidget(self.tts_status_lbl)
+        audio_l.addWidget(file_info, 0)
 
-        self._audio_detail_lbl = QLabel("Bấm Xem bản đọc trước, rồi tạo audio.")
-        self._audio_detail_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._audio_detail_lbl.setWordWrap(True)
-        self._audio_detail_lbl.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
-        audio_panel_l.addWidget(self._audio_detail_lbl)
-        audio_panel_l.addStretch()
-
-        player_bar = QWidget()
-        player_bar.setObjectName("audioPlayerBar")
-        player_bar.setStyleSheet(f"#audioPlayerBar{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
-        player_l = QHBoxLayout(player_bar)
-        player_l.setContentsMargins(10, 8, 10, 8)
-        player_l.setSpacing(8)
-        player_l.addWidget(self.tts_status_lbl, 1)
-
-        self._btn_play_audio = QPushButton("Nghe lại")
-        self._btn_play_audio.setFixedHeight(32)
+        self._btn_play_audio = QPushButton("▶")
+        self._btn_play_audio.setFixedSize(46, 46)
         self._btn_play_audio.setEnabled(False)
-        self._btn_play_audio.setStyleSheet(self._compact_secondary_style())
+        self._btn_play_audio.setToolTip("Phát hoặc dừng audio")
+        self._btn_play_audio.setStyleSheet(
+            f"QPushButton{{background:{ACCENT};color:white;border:none;border-radius:23px;font-size:17px;padding:0;}}"
+            f"QPushButton:hover{{background:{ACCENT_HV};}}"
+            f"QPushButton:disabled{{background:{CONTROL_DN};color:{TEXT_FAINT};}}"
+        )
         self._btn_play_audio.clicked.connect(self._toggle_last_audio)
-        player_l.addWidget(self._btn_play_audio)
+        audio_l.addWidget(self._btn_play_audio)
 
-        self._btn_open_folder = QPushButton("Mở trong Finder")
-        self._btn_open_folder.setFixedHeight(32)
-        self._btn_open_folder.setEnabled(False)
-        self._btn_open_folder.setStyleSheet(self._compact_secondary_style())
-        player_l.addWidget(self._btn_open_folder)
+        self._audio_time_lbl = QLabel("00:00 / 00:00")
+        self._audio_time_lbl.setMinimumWidth(82)
+        self._audio_time_lbl.setStyleSheet(f"font-size:12px;color:{TEXT};background:transparent;border:none;")
+        audio_l.addWidget(self._audio_time_lbl)
 
-        self._btn_export_srt = QPushButton("Xuất SRT")
-        self._btn_export_srt.setFixedHeight(32)
-        self._btn_export_srt.setEnabled(False)
-        self._btn_export_srt.setToolTip("Lưu file phụ đề .srt đi kèm audio")
-        self._btn_export_srt.setStyleSheet(self._compact_secondary_style())
-        self._btn_export_srt.clicked.connect(self._export_tts_srt)
-        player_l.addWidget(self._btn_export_srt)
-        audio_panel_l.addWidget(player_bar)
+        self._audio_progress = QSlider(Qt.Orientation.Horizontal)
+        self._audio_progress.setRange(0, 1000)
+        self._audio_progress.setValue(0)
+        self._audio_progress.setEnabled(False)
+        self._audio_progress.setMinimumWidth(220)
+        self._audio_progress.sliderMoved.connect(self._seek_output_audio)
+        audio_l.addWidget(self._audio_progress, 1)
 
-        right_l.addWidget(audio_panel, 1)
-
-        settings_box = QWidget()
-        settings_box.setStyleSheet(f"QWidget{{background:{CONTROL_BG};border:none;border-radius:10px;}}")
-        sb = QVBoxLayout(settings_box)
-        sb.setContentsMargins(12, 10, 12, 12)
-        sb.setSpacing(8)
-
-        speed_row = QHBoxLayout()
-        speed_row.setSpacing(8)
-        speed_row.addWidget(QLabel("Tốc độ"))
+        speed_label = QLabel("◴")
+        speed_label.setToolTip("Tốc độ đọc")
+        speed_label.setStyleSheet(f"font-size:22px;color:{TEXT};background:transparent;border:none;")
+        audio_l.addWidget(speed_label)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(7)
         self.slider.setMaximum(12)
         self.slider.setValue(int(self.settings.get("default_speed", 1.0) * 10))
-        speed_row.addWidget(self.slider, 1)
+        self.slider.setFixedWidth(115)
+        audio_l.addWidget(self.slider)
         self.speed_val = QLabel(f"{self.slider.value()/10:.1f}×")
         self.speed_val.setFixedWidth(36)
         self.speed_val.setStyleSheet(f"color:{ACCENT};font-weight:700;background:transparent;border:none;")
         self.slider.valueChanged.connect(lambda v: self.speed_val.setText(f"{v/10:.1f}×"))
-        speed_row.addWidget(self.speed_val)
-        sb.addLayout(speed_row)
+        audio_l.addWidget(self.speed_val)
 
-        self.filename_input = QLineEdit()
-        self.filename_input.setPlaceholderText("Tự đặt theo bản đọc nếu để trống")
-        sb.addWidget(self.filename_input)
-        right_l.addWidget(settings_box)
+        self._btn_open_folder = QToolButton()
+        self._btn_open_folder.setIcon(ui_icon("output", 18, TEXT))
+        self._btn_open_folder.setIconSize(icon_size(18))
+        self._btn_open_folder.setFixedSize(42, 38)
+        self._btn_open_folder.setEnabled(False)
+        self._btn_open_folder.setToolTip("Mở audio trong Finder")
+        self._btn_open_folder.setStyleSheet(
+            f"QToolButton{{background:{SURFACE};border:1px solid {BORDER_SOFT};border-radius:8px;padding:0;}}"
+            f"QToolButton:hover{{background:{CONTROL_HV};}}"
+        )
+        audio_l.addWidget(self._btn_open_folder)
+
+        self._audio_more_btn = QToolButton()
+        self._audio_more_btn.setText("•••")
+        self._audio_more_btn.setFixedSize(42, 38)
+        self._audio_more_btn.setToolTip("Tác vụ khác")
+        self._audio_more_btn.setStyleSheet(
+            f"QToolButton{{background:{SURFACE};color:{TEXT};border:1px solid {BORDER_SOFT};border-radius:8px;font-size:13px;}}"
+            f"QToolButton:hover{{background:{CONTROL_HV};}}"
+        )
+        self._audio_menu = QMenu(self._audio_more_btn)
+        action_copy_audio = self._audio_menu.addAction("Sao chép đường dẫn audio")
+        action_copy_audio.triggered.connect(lambda: self._copy_output_path("audio"))
+        action_copy_srt = self._audio_menu.addAction("Sao chép đường dẫn SRT")
+        action_copy_srt.triggered.connect(lambda: self._copy_output_path("srt"))
+        self._audio_more_btn.clicked.connect(
+            lambda: self._audio_menu.exec(self._audio_more_btn.mapToGlobal(self._audio_more_btn.rect().bottomRight()))
+        )
+        audio_l.addWidget(self._audio_more_btn)
+
+        workspace_l.addWidget(audio_bar)
         self._last_audio_path = ""
         self._last_srt_path = ""
 
-        body_h.addWidget(right, 5)
-        layout.addWidget(body, 1)
+        layout.addWidget(workspace, 1)
+        QTimer.singleShot(0, self._adjust_tts_layout)
         return page
 
     # ── Tab 3: Speech-to-Text ────────────────────────────────────
@@ -1020,19 +1210,18 @@ class MainWindow(QWidget):
         if not self._stt_path:
             QMessageBox.warning(self, "Chưa có file", "Kéo thả file audio vào trước nhé!")
             return
-        gm_key = self.settings.get("genmax_api_key", "").strip()
         gemini_key = self.settings.get("gemini_api_key", "").strip()
-        if not gm_key and not gemini_key:
+        if not gemini_key:
             QMessageBox.warning(
                 self,
                 "Thiếu STT API Key",
-                "Cần GenMax hoặc Gemini API Key để dùng Speech-to-Text.\n"
+                "Cần Gemini API Key để dùng Speech-to-Text.\n"
                 "Vào Cài đặt → API để thêm.",
             )
             return
         self._stt_btn.setEnabled(False)
         self._stt_status.setText("Đang nhận diện...")
-        self._stt_worker = SpeechToTextWorker(self._stt_path, gm_key, gemini_key, self.settings)
+        self._stt_worker = SpeechToTextWorker(self._stt_path, gemini_key, self.settings)
         self._stt_worker.status.connect(self._stt_status.setText)
         self._stt_worker.done.connect(self._on_stt_done)
         self._stt_worker.error.connect(self._on_stt_error)
@@ -1163,6 +1352,7 @@ class MainWindow(QWidget):
         header.addWidget(btn_use_tts)
         right_l.addLayout(header)
         self.script_output = QTextEdit()
+        self.script_output.setAcceptRichText(False)
         self.script_output.setPlaceholderText("Chưa có kịch bản")
         self.script_output.setStyleSheet(self._editor_style())
         right_l.addWidget(self.script_output, 1)
@@ -1375,9 +1565,9 @@ class MainWindow(QWidget):
         if not current_preview and hasattr(self, "preview_text"):
             current_preview = self.preview_text.toPlainText().strip()
         if current_preview:
-            self._preview_status.setText("Nhấn nhá v3 đã đổi. Bản đọc hiện tại vẫn giữ nguyên; nhấn Xem bản đọc để tạo lại.")
-            self._preview_status.setStyleSheet(
-                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
+            self._set_preview_status(
+                "⚠️  Nhấn nhá v3 đã đổi. Bản đọc hiện tại vẫn giữ nguyên; nhấn Xem bản đọc để tạo lại.",
+                "warning",
             )
         self._sync_tts_audio_button()
 
@@ -1402,9 +1592,10 @@ class MainWindow(QWidget):
             except (TypeError, ValueError):
                 temp = default_temp
             temp = max(0.0, min(1.0, temp))
+            fallback_prompt = ov.get("prompt") or default_prompt
             return {
                 "name": name,
-                "prompt": ov.get("prompt") or default_prompt,
+                "prompt": read_style_prompt_file(name, fallback_prompt),
                 "creative": ov.get("creative", temp >= 0.5),
                 "temperature": temp,
                 "builtin": True,
@@ -1421,6 +1612,7 @@ class MainWindow(QWidget):
             if not name or not prompt:
                 continue  # bỏ qua entry hỏng
             display_name = re.sub(r"^[^\wÀ-ỹ]+", "", name).strip() or name
+            prompt = read_style_prompt_file(name, prompt)
             custom.append({
                 "name": display_name,
                 "prompt": prompt,
@@ -1569,6 +1761,7 @@ class MainWindow(QWidget):
         dlg = AddStyleDialog(self, ds_api_key=self.settings.get("ds_api_key", ""), gemini_api_key=self.settings.get("gemini_api_key", ""))
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.get_result()
+            write_style_prompt_file(result.get("name", ""), result.get("prompt", ""))
             self.settings.setdefault("custom_styles", []).append(result)
             style_name = result.get("name", "")
             self.settings["enhance_prompt"] = result["prompt"]
@@ -1648,13 +1841,11 @@ class MainWindow(QWidget):
         if not env_path.exists() and not explicit_engine:
             return False
         env = _read_env_local()
-        provider = (env.get("TTS_PROVIDER", "genmax") or "genmax").strip().lower()
+        provider = "elevenlabs"
         key_map = {
-            "genmax": "GENMAX_VOICE_ID",
             "elevenlabs": "ELEVENLABS_VOICE_ID",
-            "lucylab": "VIETNAMESE_VOICEID",
         }
-        key = key_map.get(provider, "GENMAX_VOICE_ID")
+        key = key_map.get(provider, "ELEVENLABS_VOICE_ID")
         updates = {key: voice_id}
         try:
             _write_env_local(updates)
@@ -2058,7 +2249,7 @@ rm -f "$DMG" 2>/dev/null
             return
         self._credits_refresh_pending = False
         self.credits_lbl.setText("Credits: đang tải...")
-        worker = _CreditsChecker(el_keys, "")
+        worker = _CreditsChecker(el_keys)
 
         def _on_done(text: str):
             if not self._closing and hasattr(self, "credits_lbl"):
@@ -2092,19 +2283,93 @@ rm -f "$DMG" 2>/dev/null
         self._sync_tts_audio_button()
 
     def _set_tts_review_mode(self, enabled: bool):
-        if not hasattr(self, "text_input") or not hasattr(self, "_preview_box"):
+        if not hasattr(self, "_tts_splitter") or not hasattr(self, "_preview_box"):
             return
+        self._preview_box.setVisible(enabled)
         if enabled:
-            self.text_input.setMaximumHeight(260)
-            self.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-            self._preview_box.setMinimumHeight(420)
-            self._preview_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            total = max(
+                2,
+                self._tts_splitter.height()
+                if self._tts_splitter.orientation() == Qt.Orientation.Vertical
+                else self._tts_splitter.width(),
+            )
+            ratio = float(self.settings.get("tts_splitter_ratio", 0.5) or 0.5)
+            ratio = max(0.25, min(0.75, ratio))
+            first = int(total * ratio)
+            self._tts_splitter.setSizes([first, total - first])
         else:
-            self.text_input.setMaximumHeight(16777215)
-            self.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            self._preview_box.setMinimumHeight(0)
+            self._tts_splitter.setSizes([1, 0])
+
+    def _save_tts_splitter_ratio(self, *_):
+        if hasattr(self, "_tts_splitter_save_timer"):
+            self._tts_splitter_save_timer.start()
+
+    def _persist_tts_splitter_ratio(self):
+        if not hasattr(self, "_tts_splitter") or not self._preview_box.isVisible():
+            return
+        sizes = self._tts_splitter.sizes()
+        total = sum(sizes)
+        if total <= 0:
+            return
+        self.settings["tts_splitter_ratio"] = round(sizes[0] / total, 3)
+        save_settings(self.settings)
+
+    def _sync_tts_scroll(self, source: QTextEdit, target: QTextEdit, value: int):
+        if (
+            self._tts_scroll_syncing
+            or not hasattr(self, "_sync_scroll_btn")
+            or not self._sync_scroll_btn.isChecked()
+        ):
+            return
+        source_bar = source.verticalScrollBar()
+        target_bar = target.verticalScrollBar()
+        if source_bar.maximum() <= 0 or target_bar.maximum() <= 0:
+            return
+        self._tts_scroll_syncing = True
+        try:
+            ratio = value / source_bar.maximum()
+            target_bar.setValue(round(ratio * target_bar.maximum()))
+        finally:
+            self._tts_scroll_syncing = False
+
+    @staticmethod
+    def _format_audio_time(milliseconds: int) -> str:
+        seconds = max(0, int(milliseconds // 1000))
+        return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+    def _on_output_position_changed(self, position: int):
+        if not hasattr(self, "_audio_progress"):
+            return
+        duration = max(0, self._output_player.duration())
+        if not self._audio_progress.isSliderDown():
+            self._audio_progress.setValue(int(position * 1000 / duration) if duration else 0)
+        self._audio_time_lbl.setText(
+            f"{self._format_audio_time(position)} / {self._format_audio_time(duration)}"
+        )
+
+    def _on_output_duration_changed(self, duration: int):
+        if not hasattr(self, "_audio_progress"):
+            return
+        self._audio_progress.setEnabled(duration > 0)
+        self._audio_time_lbl.setText(f"00:00 / {self._format_audio_time(duration)}")
+
+    def _seek_output_audio(self, value: int):
+        duration = max(0, self._output_player.duration())
+        if duration:
+            self._output_player.setPosition(int(duration * value / 1000))
+
+    def _copy_output_path(self, kind: str):
+        path = self._last_srt_path if kind == "srt" else self._last_audio_path
+        if not path or not os.path.exists(path):
+            self.tts_status_lbl.setText("Chưa có file để sao chép đường dẫn")
+            return
+        QApplication.clipboard().setText(path)
+        self.tts_status_lbl.setText("Đã sao chép đường dẫn SRT" if kind == "srt" else "Đã sao chép đường dẫn audio")
 
     def _generate(self):
+        if self._is_thread_running(getattr(self, "worker", None)):
+            self.tts_status_lbl.setText("Audio đang được tạo, vui lòng chờ hoàn tất.")
+            return
         text = self.text_input.toPlainText().strip()
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
@@ -2165,19 +2430,13 @@ rm -f "$DMG" 2>/dev/null
         self.btn_gen.setEnabled(False)
         if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._output_player.stop()
-        if hasattr(self, "_audio_icon_lbl"):
-            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
-            self._audio_title_lbl.setText("Đang tạo audio")
-            self._audio_title_lbl.setStyleSheet(
-                f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
-            )
-            self._audio_detail_lbl.setText("Tool đang tạo audio từ bản đọc đã duyệt.")
         self.tts_status_lbl.setText("Đang khởi động")
         self.tts_status_lbl.setStyleSheet(f"color:{WARNING};font-size:12px;background:transparent;border:none;")
         self._btn_play_audio.setEnabled(False)
         self._btn_open_folder.setEnabled(False)
-        if hasattr(self, "_btn_export_srt"):
-            self._btn_export_srt.setEnabled(False)
+        self._audio_progress.setEnabled(False)
+        self._audio_progress.setValue(0)
+        self._audio_time_lbl.setText("00:00 / 00:00")
 
         self.worker = _TTSOnlyWorker(preview_text, speed, safe_filename, self.settings)
 
@@ -2188,24 +2447,20 @@ rm -f "$DMG" 2>/dev/null
 
     # ── Preview handlers ──────────────────────────────────────────────
     def _do_preview(self):
+        if self._is_thread_running(getattr(self, "_preview_worker", None)):
+            self._set_preview_status("AI đang xử lý kịch bản, vui lòng chờ.", "processing")
+            return
         text = self.text_input.toPlainText().strip()
         if not text:
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
-        has_ai = bool(
-            self.settings.get("claude_api_key")
-            or self.settings.get("gemini_api_key")
-            or self.settings.get("ds_api_key")
-        )
-        if not has_ai:
-            QMessageBox.warning(self, "Thiếu AI Key",
-                                "Cần API key AI để xử lý kịch bản:\n\n"
-                                "Claude API Key (khuyến nghị)\n"
-                                "   hoặc\n"
-                                "Gemini API Key (miễn phí — fallback)\n"
-                                "   hoặc\n"
-                                "DeepSeek API Key\n\n"
-                                "Vào Cài đặt → API để thêm.")
+        if not str(self.settings.get("ds_api_key") or "").strip():
+            QMessageBox.warning(
+                self,
+                "Thiếu DeepSeek API Key",
+                "Pipeline TTS 2 bước dùng DeepSeek V4 Pro để xử lý kịch bản.\n\n"
+                "Vào Cài đặt → API và thêm DeepSeek API Key.",
+            )
             return
         self._btn_preview.setEnabled(False)
         self._btn_preview.setText("Đang xử lý...")
@@ -2214,12 +2469,9 @@ rm -f "$DMG" 2>/dev/null
         self._preview_box.setVisible(True)
         self._set_tts_review_mode(True)
         self.preview_text.setPlainText("")
-        self._preview_status.setText("AI đang xử lý kịch bản...")
-        self._preview_status.setStyleSheet(
-            f"font-size:11px;color:{WARNING};background:transparent;border:none;"
-        )
+        self._set_preview_status("⏳  AI đang xử lý kịch bản... vui lòng chờ", "processing")
         self._preview_worker = PreviewWorker(text, self.settings)
-        self._preview_worker.status.connect(lambda m: self._preview_status.setText(m))
+        self._preview_worker.status.connect(lambda m: self._set_preview_status(m, "processing"))
         self._preview_worker.done.connect(self._on_preview_done)
         self._preview_worker.error.connect(self._on_preview_error_msg)
         self._track_thread("_preview_worker", self._preview_worker)
@@ -2229,10 +2481,7 @@ rm -f "$DMG" 2>/dev/null
         self.preview_text.setPlainText(enhanced)
         if hasattr(self, "filename_input") and not self.filename_input.text().strip():
             self.filename_input.setText(suggest_tts_filename(enhanced))
-        self._preview_status.setText("Đây là bản sẽ dùng để tạo audio. Chỉnh trong ô này nếu cần.")
-        self._preview_status.setStyleSheet(
-            f"font-size:11px;color:{SUCCESS};background:transparent;border:none;"
-        )
+        self._set_preview_status("✅  Bản đọc đã sẵn sàng. Chỉnh ở ô này nếu cần rồi bấm Tạo audio.", "success")
         self._btn_preview.setEnabled(True)
         self._btn_preview.setText("Xem bản đọc")
         # Khi user chỉnh sửa preview → cập nhật cache
@@ -2248,9 +2497,10 @@ rm -f "$DMG" 2>/dev/null
         self._enhanced_cache = ""
         self._set_tts_review_mode(False)
         self._sync_tts_audio_button()
-        self._preview_status.setText(msg)
-        self._preview_status.setStyleSheet(
-            f"font-size:11px;color:{DESTRUCTIVE};background:transparent;border:none;"
+        self._set_preview_status(f"❌  {msg}", "error")
+        self.tts_status_lbl.setText(f"Không tạo được Bản đọc: {msg}")
+        self.tts_status_lbl.setStyleSheet(
+            f"color:{DESTRUCTIVE};font-size:11px;background:transparent;border:none;"
         )
         self._btn_preview.setEnabled(True)
         self._btn_preview.setText("Xem bản đọc")
@@ -2260,28 +2510,18 @@ rm -f "$DMG" 2>/dev/null
         self._enhanced_cache = ""
         if hasattr(self, "preview_text"):
             self.preview_text.setPlainText("")
+        if hasattr(self, "_preview_box"):
+            self._preview_box.setVisible(False)
         self._set_tts_review_mode(False)
         self._sync_tts_audio_button()
         if hasattr(self, "_preview_status"):
-            self._preview_status.setText("Kịch bản đã thay đổi. Nhấn lại Xem bản đọc để cập nhật.")
-            self._preview_status.setStyleSheet(
-                f"font-size:11px;color:{WARNING};background:transparent;border:none;"
-            )
+            self._set_preview_status("", "idle")
 
     def _on_tts_status(self, msg: str):
         self.tts_status_lbl.setText(msg)
         self.tts_status_lbl.setStyleSheet(
             f"color:{WARNING}; font-size:11px; background:transparent;"
         )
-        if hasattr(self, "_audio_title_lbl") and not getattr(self, "_last_audio_path", ""):
-            title = "Đang tạo audio"
-            if "render bằng ElevenLabs" in msg:
-                title = "Đang render ElevenLabs"
-            self._audio_title_lbl.setText(title)
-            self._audio_title_lbl.setStyleSheet(
-                f"font-size:22px;font-weight:700;color:{TEXT};background:transparent;border:none;"
-            )
-            self._audio_detail_lbl.setText(msg)
 
     def _on_done(self, path: str):
         self._sync_tts_audio_button()
@@ -2291,23 +2531,14 @@ rm -f "$DMG" 2>/dev/null
         )
         self._last_audio_path = path
         self._last_srt_path = os.path.splitext(path)[0] + ".srt"
-        filename = os.path.basename(path)
-        folder = os.path.dirname(path)
-        if hasattr(self, "_audio_icon_lbl"):
-            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, ACCENT).pixmap(icon_size(34)))
-            self._audio_title_lbl.setText(filename or "Audio đã tạo")
-            self._audio_title_lbl.setStyleSheet(
-                f"font-size:18px;font-weight:700;color:{TEXT};background:transparent;border:none;"
-            )
-            self._audio_detail_lbl.setText(folder)
-            self._audio_detail_lbl.setStyleSheet(
-                f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;"
-            )
         self._btn_play_audio.setEnabled(True)
         self._btn_open_folder.setEnabled(True)
-        if hasattr(self, "_btn_export_srt"):
-            self._btn_export_srt.setEnabled(os.path.exists(self._last_srt_path))
-        self._btn_play_audio.setText("Nghe lại")
+        self._btn_play_audio.setText("▶")
+        self.tts_status_lbl.setText(
+            "Sẵn sàng nghe lại · MP3 và SRT đã lưu tự động"
+            if os.path.exists(self._last_srt_path)
+            else "Sẵn sàng nghe lại · MP3 đã lưu"
+        )
         # Disconnect cũ an toàn — tránh TypeError nếu chưa có connection nào
         try:
             self._btn_open_folder.clicked.disconnect()
@@ -2348,7 +2579,7 @@ rm -f "$DMG" 2>/dev/null
             return
         self._output_player.setSource(QUrl.fromLocalFile(self._last_audio_path))
         self._output_player.play()
-        self._btn_play_audio.setText("Dừng")
+        self._btn_play_audio.setText("■")
         self.tts_status_lbl.setText("Đang phát")
         self.tts_status_lbl.setStyleSheet(
             f"color:{SUCCESS}; font-size:12px; font-weight:600; background:transparent;"
@@ -2356,9 +2587,9 @@ rm -f "$DMG" 2>/dev/null
 
     def _on_output_playback_state(self, state):
         if state == QMediaPlayer.PlaybackState.StoppedState and hasattr(self, "_btn_play_audio"):
-            self._btn_play_audio.setText("Nghe lại")
+            self._btn_play_audio.setText("▶")
             if getattr(self, "_last_audio_path", ""):
-                self.tts_status_lbl.setText("Sẵn sàng nghe lại")
+                self.tts_status_lbl.setText("Sẵn sàng nghe lại · MP3 và SRT đã lưu tự động")
                 self.tts_status_lbl.setStyleSheet(
                     f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
                 )
@@ -2366,7 +2597,10 @@ rm -f "$DMG" 2>/dev/null
     def _reset_tts_status(self):
         if self._output_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             return
-        self.tts_status_lbl.setText("Sẵn sàng nghe lại" if getattr(self, "_last_audio_path", "") else "Chưa có audio")
+        self.tts_status_lbl.setText(
+            "Sẵn sàng nghe lại · MP3 và SRT đã lưu tự động"
+            if getattr(self, "_last_audio_path", "") else "Chưa có audio"
+        )
         self.tts_status_lbl.setStyleSheet(
             f"color:{TEXT_MUTE}; font-size:12px; background:transparent;"
         )
@@ -2382,20 +2616,9 @@ rm -f "$DMG" 2>/dev/null
         short_msg = f"{friendly['detail']} {friendly['action']}".strip()
         if len(short_msg) > 320:
             short_msg = short_msg[:317].rstrip() + "..."
-        if hasattr(self, "_audio_icon_lbl"):
-            self._audio_icon_lbl.setPixmap(ui_icon("audio", 34, TEXT_FAINT).pixmap(icon_size(34)))
-            self._audio_title_lbl.setText(friendly["title"])
-            self._audio_title_lbl.setStyleSheet(
-                f"font-size:22px;font-weight:700;color:{DESTRUCTIVE};background:transparent;border:none;"
-            )
-            self._audio_detail_lbl.setText(short_msg or "Kiểm tra API key, provider hoặc thử tạo lại.")
         has_old_audio = bool(getattr(self, "_last_audio_path", "") and os.path.exists(self._last_audio_path))
         self._btn_play_audio.setEnabled(has_old_audio)
         self._btn_open_folder.setEnabled(has_old_audio)
-        if hasattr(self, "_btn_export_srt"):
-            old_srt = os.path.splitext(getattr(self, "_last_audio_path", ""))[0] + ".srt"
-            self._last_srt_path = old_srt if os.path.exists(old_srt) else ""
-            self._btn_export_srt.setEnabled(bool(self._last_srt_path))
         QMessageBox.critical(
             self,
             friendly["title"],
@@ -2463,9 +2686,13 @@ rm -f "$DMG" 2>/dev/null
 
         self._av_article_toolbar_widgets = []
 
+        saved_mode = self.settings.get("auto_video_mode", "article")
+        if saved_mode not in {"article", "oneshot"}:
+            saved_mode = "article"
+            self.settings["auto_video_mode"] = saved_mode
         self._av_mode = self._av_quick_choice(
-            [("Tạo bài", "article"), ("Edit one-shot", "oneshot"), ("Slide Template", "slide_template")],
-            self.settings.get("auto_video_mode", "article"),
+            [("Tạo bài", "article"), ("Edit one-shot", "oneshot")],
+            saved_mode,
         )
         self._av_mode.currentIndexChanged.connect(self._av_switch_mode)
         row_all.addWidget(_lbl_combo("Mode", self._av_mode))
@@ -2486,6 +2713,20 @@ rm -f "$DMG" 2>/dev/null
 
         row_all.addSpacing(8)
 
+        self._os_pipeline_combo = self._av_quick_combo(
+            [
+                ("Đơn giản", "simple"),
+                ("Enterprise", "enterprise"),
+            ],
+            self.settings.get("one_shot_pipeline_mode", "simple"),
+        )
+        self._os_pipeline_combo.currentIndexChanged.connect(self._os_on_pipeline_mode_changed)
+        pipeline_wrap = _lbl_combo("Quy trình", self._os_pipeline_combo)
+        self._av_one_shot_toolbar_widgets.append(pipeline_wrap)
+        row_all.addWidget(pipeline_wrap)
+
+        row_all.addSpacing(8)
+
         self._os_render_profile = self._av_quick_combo(
             [
                 ("1080 đa nền tảng", "multi_1080"),
@@ -2501,7 +2742,7 @@ rm -f "$DMG" 2>/dev/null
 
         row_all.addSpacing(8)
 
-        cut_current = "on" if bool(self.settings.get("one_shot_cut_video", True)) else "off"
+        cut_current = "on" if bool(self.settings.get("one_shot_cut_video", False)) else "off"
         self._os_cut_toggle = self._av_quick_choice([("Bật", "on"), ("Tắt", "off")], cut_current)
         self._os_cut_toggle.currentIndexChanged.connect(self._os_save_toolbar_settings)
         cut_wrap = _lbl_combo("Cut", self._os_cut_toggle)
@@ -2510,8 +2751,15 @@ rm -f "$DMG" 2>/dev/null
 
         row_all.addSpacing(8)
 
-        noise_current = "on" if bool(self.settings.get("one_shot_noise_reduce", True)) else "off"
-        self._os_noise_toggle = self._av_quick_choice([("Bật", "on"), ("Tắt", "off")], noise_current)
+        noise_current = str(self.settings.get("one_shot_noise_mode") or "").strip().lower()
+        if not noise_current:
+            noise_current = "auto_gentle" if bool(self.settings.get("one_shot_noise_reduce", True)) else "off"
+        if noise_current not in {"auto_gentle", "off", "strong"}:
+            noise_current = "auto_gentle"
+        self._os_noise_toggle = self._av_quick_choice(
+            [("Auto", "auto_gentle"), ("Tắt", "off"), ("Mạnh", "strong")],
+            noise_current,
+        )
         self._os_noise_toggle.currentIndexChanged.connect(self._os_save_toolbar_settings)
         noise_wrap = _lbl_combo("Noise", self._os_noise_toggle)
         self._av_one_shot_toolbar_widgets.append(noise_wrap)
@@ -2997,13 +3245,10 @@ rm -f "$DMG" 2>/dev/null
         layout.addWidget(body_w, 1)
         self._av_one_shot_body = self._build_one_shot_edit_body()
         layout.addWidget(self._av_one_shot_body, 1)
-        self._av_slide_template_body = self._build_slide_template_body()
-        layout.addWidget(self._av_slide_template_body, 1)
         self._av_lock_panel = self._build_auto_video_unlock_panel()
         layout.addWidget(self._av_lock_panel)
         self._av_script_worker = None
         self._av_engine_worker = None
-        self._av_slide_worker = None
         self._os_analyze_worker = None
         self._os_render_worker = None
         self._os_batch_worker = None
@@ -3147,6 +3392,13 @@ rm -f "$DMG" 2>/dev/null
         self._os_analyze_btn.setEnabled(False)
         self._os_analyze_btn.clicked.connect(self._os_analyze_video)
         action_lay.addWidget(self._os_analyze_btn)
+        self._os_simple_run_btn = QPushButton("Chạy 1 lần")
+        self._os_simple_run_btn.setFixedHeight(34)
+        self._os_simple_run_btn.setMinimumWidth(132)
+        self._os_simple_run_btn.setStyleSheet(self._compact_primary_style())
+        self._os_simple_run_btn.setEnabled(False)
+        self._os_simple_run_btn.clicked.connect(self._os_run_simple)
+        action_lay.addWidget(self._os_simple_run_btn)
         self._os_batch_btn = QPushButton("Chạy tất cả")
         self._os_batch_btn.setFixedHeight(34)
         self._os_batch_btn.setMinimumWidth(132)
@@ -3478,103 +3730,6 @@ rm -f "$DMG" 2>/dev/null
         body_w.setVisible(False)
         return body_w
 
-    def _build_slide_template_body(self) -> QWidget:
-        body_w = QWidget()
-        body_w.setStyleSheet("QWidget{background:transparent;border:none;}")
-        body_lay = QHBoxLayout(body_w)
-        body_lay.setContentsMargins(0, 0, 0, 0)
-        body_lay.setSpacing(14)
-
-        left_card, left_vbox = self._card()
-        hdr = QLabel("Slide Template")
-        hdr.setStyleSheet(f"font-size:13px;font-weight:700;color:{TEXT};padding:12px 16px 4px;background:transparent;border:none;")
-        left_vbox.addWidget(hdr)
-        sub = QLabel("Paste script hoặc nội dung. Hedra sẽ tạo project ESCBase 9:16 từ starter template.")
-        sub.setWordWrap(True)
-        sub.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};padding:0 16px 6px;background:transparent;border:none;")
-        left_vbox.addWidget(sub)
-        self._st_input = QTextEdit()
-        self._st_input.setPlaceholderText("Mỗi dòng là một ý chính, hoặc paste cả đoạn nội dung để Hedra tự chia thành 6 slide.")
-        self._st_input.setMinimumHeight(260)
-        self._st_input.setStyleSheet(
-            f"QTextEdit{{background:{CONTROL_BG};border:1px solid {BORDER_SOFT};border-radius:10px;"
-            f"color:{TEXT};font-size:13px;padding:12px;}}"
-        )
-        left_vbox.addWidget(self._st_input, 1)
-        opt_row = QWidget()
-        opt_row.setStyleSheet("QWidget{background:transparent;border:none;}")
-        opt_lay = QHBoxLayout(opt_row)
-        opt_lay.setContentsMargins(16, 0, 16, 12)
-        opt_lay.setSpacing(8)
-        self._st_template_combo = self._av_quick_combo([("ESCBase Starter", "escbase-slide-starter")], "escbase-slide-starter")
-        opt_lay.addWidget(QLabel("Template"))
-        opt_lay.addWidget(self._st_template_combo)
-        opt_lay.addStretch()
-        self._st_run_btn = QPushButton("Tạo video slide")
-        self._st_run_btn.setFixedHeight(34)
-        self._st_run_btn.setStyleSheet(self._compact_primary_style())
-        self._st_run_btn.clicked.connect(self._st_run_slide_template)
-        opt_lay.addWidget(self._st_run_btn)
-        left_vbox.addWidget(opt_row)
-        body_lay.addWidget(left_card, 6)
-
-        right_card, right_vbox = self._card()
-        rh = QLabel("Trạng thái")
-        rh.setStyleSheet(f"font-size:13px;font-weight:700;color:{TEXT};padding:12px 16px 4px;background:transparent;border:none;")
-        right_vbox.addWidget(rh)
-        self._st_dependency = QLabel("")
-        self._st_dependency.setWordWrap(True)
-        self._st_dependency.setStyleSheet(
-            f"font-size:12px;color:{TEXT_MUTE};background:{CONTROL_BG};"
-            f"border:1px solid {BORDER_SOFT};border-radius:10px;padding:10px;margin:0 16px;"
-        )
-        right_vbox.addWidget(self._st_dependency)
-        self._st_status = QLabel("Sẵn sàng.")
-        self._st_status.setWordWrap(True)
-        self._st_status.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};padding:8px 16px 0;background:transparent;border:none;")
-        right_vbox.addWidget(self._st_status)
-        self._st_log = QTextEdit()
-        self._st_log.setReadOnly(True)
-        self._st_log.setVisible(False)
-        self._st_log.setFixedHeight(120)
-        self._st_log.setStyleSheet(
-            f"QTextEdit{{background:{CONTROL_BG};border:none;border-radius:8px;"
-            f"color:{TEXT_MUTE};font-size:11px;font-family:Menlo,Monaco;padding:10px;margin:0 16px;}}"
-        )
-        right_vbox.addWidget(self._st_log)
-        self._st_detail_btn = QPushButton("Chi tiết")
-        self._st_detail_btn.setFixedHeight(30)
-        self._st_detail_btn.setStyleSheet(self._compact_secondary_style())
-        self._st_detail_btn.clicked.connect(lambda: self._st_log.setVisible(not self._st_log.isVisible()))
-        right_vbox.addWidget(self._st_detail_btn)
-        self._st_result = QLabel("")
-        self._st_result.setWordWrap(True)
-        self._st_result.setStyleSheet(f"font-size:12px;color:{TEXT};padding:8px 16px;background:transparent;border:none;")
-        right_vbox.addWidget(self._st_result)
-        actions = QWidget()
-        actions.setStyleSheet("QWidget{background:transparent;border:none;}")
-        act_lay = QHBoxLayout(actions)
-        act_lay.setContentsMargins(16, 0, 16, 12)
-        act_lay.setSpacing(8)
-        self._st_open_btn = QPushButton("Mở project")
-        self._st_open_btn.setFixedHeight(30)
-        self._st_open_btn.setEnabled(False)
-        self._st_open_btn.setStyleSheet(self._compact_secondary_style())
-        self._st_open_btn.clicked.connect(self._st_open_project)
-        self._st_copy_btn = QPushButton("Copy metadata")
-        self._st_copy_btn.setFixedHeight(30)
-        self._st_copy_btn.setEnabled(False)
-        self._st_copy_btn.setStyleSheet(self._compact_secondary_style())
-        self._st_copy_btn.clicked.connect(self._st_copy_metadata)
-        act_lay.addWidget(self._st_open_btn)
-        act_lay.addWidget(self._st_copy_btn)
-        act_lay.addStretch()
-        right_vbox.addWidget(actions)
-        right_vbox.addStretch()
-        body_lay.addWidget(right_card, 5)
-        body_w.setVisible(False)
-        return body_w
-
     def _av_switch_mode(self):
         mode = "article"
         if hasattr(self, "_av_mode"):
@@ -3588,8 +3743,6 @@ rm -f "$DMG" 2>/dev/null
             self._av_article_body.setVisible(mode == "article")
         if hasattr(self, "_av_one_shot_body"):
             self._av_one_shot_body.setVisible(mode == "oneshot")
-        if hasattr(self, "_av_slide_template_body"):
-            self._av_slide_template_body.setVisible(mode == "slide_template")
         if hasattr(self, "_av_gen_btn"):
             self._av_gen_btn.setVisible(mode == "article")
         for widget in getattr(self, "_av_article_toolbar_widgets", []):
@@ -3603,10 +3756,13 @@ rm -f "$DMG" 2>/dev/null
             except RuntimeError:
                 pass
         if hasattr(self, "_av_config_lbl") and mode == "oneshot":
-            self._os_set_status("Edit one-shot: chọn video để giảm noise, áp LUT, review cut và tạo thumbnail.")
-        if mode == "slide_template":
-            self._st_refresh_dependency()
-
+            if is_simple_pipeline(self.settings):
+                self._os_set_status("Edit one-shot (Simple): chọn video → Chạy 1 lần hoặc Chạy tất cả.")
+            else:
+                self._os_set_status("Edit one-shot: chọn video để giảm noise, áp LUT, review cut và tạo thumbnail.")
+        if mode == "oneshot":
+            self._os_update_pipeline_controls()
+            self._os_sync_source_actions()
     def _os_lut_display_text(self) -> str:
         path = self.settings.get("one_shot_lut_path") or ""
         if not path:
@@ -3636,19 +3792,30 @@ rm -f "$DMG" 2>/dev/null
             self._os_batch_summary.clear()
             self._os_batch_summary.setVisible(False)
 
+    def _os_on_pipeline_mode_changed(self):
+        self._os_save_toolbar_settings()
+        self._os_update_pipeline_controls()
+        self._os_sync_source_actions()
+
     def _os_sync_source_actions(self, force: bool = False):
         analyze_running = self._is_thread_running(getattr(self, "_os_analyze_worker", None)) and not force
         render_running = self._is_thread_running(getattr(self, "_os_render_worker", None)) and not force
+        simple_running = self._is_thread_running(getattr(self, "_os_simple_worker", None)) and not force
         batch_running = self._is_thread_running(getattr(self, "_os_batch_worker", None)) and not force
-        if hasattr(self, "_os_analyze_btn") and not batch_running and not analyze_running:
+        if hasattr(self, "_os_analyze_btn") and not batch_running and not analyze_running and not simple_running:
             self._os_analyze_btn.setText("Phân tích")
             self._os_analyze_btn.setEnabled(bool(getattr(self, "_os_video_path", "")))
+        if hasattr(self, "_os_simple_run_btn") and not batch_running:
+            running = self._is_thread_running(getattr(self, "_os_simple_worker", None)) and not force
+            self._os_simple_run_btn.setText("Dừng" if running else "Chạy 1 lần")
+            self._os_simple_run_btn.setEnabled(bool(getattr(self, "_os_video_path", "")) or running)
         if hasattr(self, "_os_render_btn") and not render_running:
             self._os_render_btn.setText("Render")
-            self._os_render_btn.setEnabled(bool(getattr(self, "_os_plan_path", "")) and not batch_running and not analyze_running)
+            self._os_render_btn.setEnabled(bool(getattr(self, "_os_plan_path", "")) and not batch_running and not analyze_running and not simple_running)
         if hasattr(self, "_os_batch_btn") and not batch_running:
             self._os_batch_btn.setText("Chạy tất cả")
             self._os_batch_btn.setEnabled(bool(getattr(self, "_os_batch_paths", []) or []))
+        self._os_update_pipeline_controls()
 
     def _os_cancel_worker(self, attr_name: str, button, label: str) -> bool:
         worker = getattr(self, attr_name, None)
@@ -3812,7 +3979,9 @@ rm -f "$DMG" 2>/dev/null
 
     def _os_save_toolbar_settings(self):
         if hasattr(self, "_os_noise_toggle"):
-            self.settings["one_shot_noise_reduce"] = (self._os_noise_toggle.currentData() or "on") == "on"
+            noise_mode = self._os_noise_toggle.currentData() or "auto_gentle"
+            self.settings["one_shot_noise_mode"] = noise_mode
+            self.settings["one_shot_noise_reduce"] = noise_mode != "off"
         if hasattr(self, "_os_cut_toggle"):
             self.settings["one_shot_cut_video"] = (self._os_cut_toggle.currentData() or "on") == "on"
         if hasattr(self, "_os_lut_toggle"):
@@ -3821,6 +3990,12 @@ rm -f "$DMG" 2>/dev/null
             self.settings["one_shot_render_profile"] = self._os_render_profile.currentData() or "multi_1080"
         if hasattr(self, "_os_industry_combo"):
             self.settings["one_shot_industry"] = self._os_industry_combo.currentData() or "tech"
+        if hasattr(self, "_os_pipeline_combo"):
+            mode = self._os_pipeline_combo.currentData() or "simple"
+            self.settings["one_shot_pipeline_mode"] = mode
+            simple = mode == "simple"
+            self.settings["one_shot_enterprise_pipeline"] = not simple
+            self.settings["one_shot_ai_review_thumbnail"] = not simple
         if hasattr(self, "_os_font_combo"):
             self.settings["one_shot_thumbnail_font"] = self._os_font_combo.currentData() or "dt_phudu_black"
         if hasattr(self, "_os_thumb_size"):
@@ -3841,8 +4016,15 @@ rm -f "$DMG" 2>/dev/null
     def _os_options(self) -> dict:
         self._os_save_toolbar_settings()
         save_settings(self.settings)
+        simple = is_simple_pipeline(self.settings)
+        if simple:
+            return build_simple_options(self.settings, {
+                "batch_concurrency": 1,
+                "batch_clean_export": True,
+            })
         return {
             "noise_reduce": self.settings["one_shot_noise_reduce"],
+            "noise_mode": self.settings.get("one_shot_noise_mode", "auto_gentle"),
             "cut_video": self.settings["one_shot_cut_video"],
             "apply_lut": self.settings["one_shot_apply_lut"],
             "lut_path": self.settings.get("one_shot_lut_path", ""),
@@ -3853,13 +4035,27 @@ rm -f "$DMG" 2>/dev/null
             "thumbnail_lines": self.settings.get("one_shot_thumbnail_lines", "auto"),
             "thumbnail_position": self.settings.get("one_shot_thumbnail_position", "center"),
             "thumbnail_title_mode": self.settings.get("one_shot_thumbnail_title_mode", "expert"),
+            "enterprise_pipeline": bool(self.settings.get("one_shot_enterprise_pipeline", True)),
             "ai_review_thumbnail": bool(self.settings.get("one_shot_ai_review_thumbnail", True)),
             "prepend_thumbnail_cover": True,
             "batch_concurrency": "auto",
             "batch_review_before_render": True,
             "batch_clean_export": True,
+            "batch_deepseek_repair_title": True,
             "settings": self.settings,
         }
+
+    def _os_update_pipeline_controls(self) -> None:
+        simple = is_simple_pipeline(self.settings)
+        if hasattr(self, "_os_simple_run_btn"):
+            self._os_simple_run_btn.setVisible(simple)
+            self._os_simple_run_btn.setEnabled(bool(getattr(self, "_os_video_path", "")) and not self._is_thread_running(getattr(self, "_os_simple_worker", None)))
+        if hasattr(self, "_os_analyze_btn"):
+            self._os_analyze_btn.setVisible(not simple)
+        if hasattr(self, "_os_render_row"):
+            self._os_render_row.setVisible(not simple and bool(getattr(self, "_os_plan_path", "")))
+        if hasattr(self, "_os_batch_btn"):
+            self._os_batch_btn.setText("Chạy tất cả" if simple else "Chạy tất cả")
 
     def _os_analyze_video(self):
         if self._os_cancel_worker("_os_analyze_worker", getattr(self, "_os_analyze_btn", None), "phân tích"):
@@ -3877,6 +4073,10 @@ rm -f "$DMG" 2>/dev/null
         self._os_set_source_controls_enabled(False)
         self._os_analyze_btn.setText("Dừng")
         self._os_analyze_btn.setEnabled(True)
+        # Cancel sub-workers from previous video to prevent data mixing
+        self._os_cancel_worker("_os_preview_worker", None, "preview")
+        self._os_cancel_worker("_os_title_worker", None, "title")
+        self._os_cancel_worker("_os_render_worker", None, "render")
         self._os_render_btn.setEnabled(False)
         if hasattr(self, "_os_render_row"):
             self._os_render_row.setVisible(False)
@@ -3911,7 +4111,64 @@ rm -f "$DMG" 2>/dev/null
         self._os_analyze_worker.progress.connect(lambda p: self._os_set_status(f"Đang phân tích video… {p}%"))
         self._os_analyze_worker.finished.connect(self._os_on_analyze_done)
         self._os_analyze_worker.error.connect(self._os_on_error)
-        self._track_thread("_os_analyze_worker", self._os_analyze_worker)
+        self._track_thread("_os_analyze_worker", self._os_analyze_worker, replace=True)
+
+    def _os_run_simple(self):
+        if self._os_cancel_worker("_os_simple_worker", getattr(self, "_os_simple_run_btn", None), "simple run"):
+            return
+        if not is_auto_video_unlocked(self.settings):
+            self._av_apply_lock_state()
+            self._os_set_status("Auto Video là tính năng Pro.", error=True)
+            return
+        path = getattr(self, "_os_video_path", "")
+        if not path:
+            self._os_set_status("Chọn video trước.", error=True)
+            return
+        self._os_show_workspace(True)
+        self._os_reset_batch_summary()
+        self._os_set_source_controls_enabled(False)
+        self._os_simple_run_btn.setText("Dừng")
+        self._os_simple_run_btn.setEnabled(True)
+        self._os_log.clear()
+        self._os_log_buffer.clear()
+        self._os_details_visible = True
+        self._os_log.setVisible(True)
+        self._os_set_status("Simple pipeline: đang chạy…")
+        self._os_simple_worker = OneShotSimpleRunWorker(path, self.settings, self._os_options())
+        self._os_simple_worker.log_line.connect(self._os_append_log)
+        self._os_simple_worker.progress.connect(lambda p: self._os_set_status(f"Simple pipeline… {p}%"))
+        self._os_simple_worker.finished.connect(self._os_on_simple_done)
+        self._os_simple_worker.error.connect(self._os_on_simple_error)
+        self._track_thread("_os_simple_worker", self._os_simple_worker, replace=True)
+
+    def _os_on_simple_done(self, item: dict):
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_simple_worker", None):
+            return
+        self._os_flush_log_buffer(force=True)
+        self._os_set_source_controls_enabled(True)
+        self._os_sync_source_actions(force=True)
+        export_video = str(item.get("export_video") or item.get("video") or "")
+        export_thumb = str(item.get("export_thumbnail") or item.get("thumbnail") or "")
+        title = str(item.get("thumbnail_title") or "")
+        warnings = item.get("warnings") or []
+        warn_text = f" · {len(warnings)} cảnh báo" if warnings else ""
+        self._os_set_status(f"Xong: {Path(export_video).name if export_video else 'video'}{warn_text}")
+        if export_video:
+            self._os_result_paths = [p for p in [export_video, export_thumb] if p]
+            self._os_result_folder = str(Path(export_video).parent)
+            self._os_result.setText(f"✓ {title or Path(export_video).name}")
+            if hasattr(self, "_os_result_actions"):
+                self._os_result_actions.setVisible(True)
+
+    def _os_on_simple_error(self, message: str):
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_simple_worker", None):
+            return
+        self._os_flush_log_buffer(force=True)
+        self._os_set_source_controls_enabled(True)
+        self._os_sync_source_actions(force=True)
+        self._os_set_status(message, error=True)
 
     def _os_run_batch(self):
         if not is_auto_video_unlocked(self.settings):
@@ -3952,6 +4209,11 @@ rm -f "$DMG" 2>/dev/null
         self._os_update_batch_summary(self._os_batch_total, True)
         self._os_batch_btn.setEnabled(False)
         self._os_batch_btn.setText("Dừng")
+        # Cancel single-video workers to prevent data mixing
+        self._os_cancel_worker("_os_analyze_worker", None, "phân tích")
+        self._os_cancel_worker("_os_preview_worker", None, "preview")
+        self._os_cancel_worker("_os_title_worker", None, "title")
+        self._os_cancel_worker("_os_render_worker", None, "render")
         self._os_analyze_btn.setEnabled(False)
         self._os_render_btn.setEnabled(False)
         if hasattr(self, "_os_render_row"):
@@ -3981,16 +4243,24 @@ rm -f "$DMG" 2>/dev/null
         else:
             self._os_set_status(f"Đang chạy kho video… 0/{len(paths)} · Không có transcript local, vẫn render bằng fallback cắt khoảng lặng")
         perf_log("one_shot_batch_start", total=len(paths))
-        self._os_batch_worker = OneShotBatchWorker(paths, self.settings, self._os_options())
+        if is_simple_pipeline(self.settings):
+            self._os_set_status(f"Simple batch: 0/{len(paths)}")
+            self._os_batch_worker = OneShotSimpleBatchWorker(paths, self.settings, self._os_options())
+        else:
+            self._os_batch_worker = OneShotBatchWorker(paths, self.settings, self._os_options())
         self._os_batch_worker.log_line.connect(self._os_append_log)
         self._os_batch_worker.progress.connect(lambda p: self._os_set_status(f"Đang chạy kho video… {p}%"))
         self._os_batch_worker.item_done.connect(self._os_on_batch_item_done)
         self._os_batch_worker.finished.connect(self._os_on_batch_done)
         self._os_batch_worker.error.connect(self._os_on_batch_error)
-        self._track_thread("_os_batch_worker", self._os_batch_worker)
+        self._track_thread("_os_batch_worker", self._os_batch_worker, replace=True)
         self._os_batch_btn.setEnabled(True)
 
     def _os_on_batch_item_done(self, item: dict):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_batch_worker", None):
+            return
         name = str(item.get("source_name") or Path(str(item.get("source") or "")).name or "video")
         if item.get("ok"):
             self._os_batch_ok = getattr(self, "_os_batch_ok", 0) + 1
@@ -4032,6 +4302,10 @@ rm -f "$DMG" 2>/dev/null
         self._os_cut_list.addItem(QListWidgetItem(label))
 
     def _os_on_batch_done(self, summary_path: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_batch_worker", None):
+            return
         self._os_flush_log_buffer(force=True)
         self._os_plan_path = ""
         perf_log("one_shot_batch_done", summary=Path(summary_path).name)
@@ -4093,6 +4367,10 @@ rm -f "$DMG" 2>/dev/null
         self._os_sync_source_actions(force=True)
 
     def _os_on_batch_error(self, msg: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_batch_worker", None):
+            return
         self._os_flush_log_buffer(force=True)
         perf_log("one_shot_batch_error", message=str(msg)[:180])
         self._os_render_btn.setEnabled(bool(getattr(self, "_os_plan_path", "")))
@@ -4101,6 +4379,10 @@ rm -f "$DMG" 2>/dev/null
         self._os_sync_source_actions(force=True)
 
     def _os_on_analyze_done(self, plan_path: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_analyze_worker", None):
+            return
         self._os_flush_log_buffer(force=True)
         perf_log("one_shot_analyze_done", plan=Path(plan_path).name)
         self._os_show_workspace(True)
@@ -4205,9 +4487,13 @@ rm -f "$DMG" 2>/dev/null
         self._os_title_worker = OneShotTitleWorker(self._os_plan_path, self.settings, mode)
         self._os_title_worker.finished.connect(self._os_on_title_regenerated)
         self._os_title_worker.error.connect(self._os_on_title_error)
-        self._track_thread("_os_title_worker", self._os_title_worker)
+        self._track_thread("_os_title_worker", self._os_title_worker, replace=True)
 
     def _os_on_title_regenerated(self, title: str, source: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_title_worker", None):
+            return
         self._os_thumb_regen_btn.setEnabled(True)
         self._os_thumb_regen_btn.setText("Tạo lại tiêu đề")
         self._os_thumb_title.setText(title)
@@ -4234,6 +4520,10 @@ rm -f "$DMG" 2>/dev/null
         self._os_preview_thumbnail()
 
     def _os_on_title_error(self, msg: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_title_worker", None):
+            return
         self._os_thumb_regen_btn.setEnabled(True)
         self._os_thumb_regen_btn.setText("Tạo lại tiêu đề")
         self._os_set_thumb_quality_badge("needs_review")
@@ -4322,11 +4612,15 @@ rm -f "$DMG" 2>/dev/null
             self._os_preview_worker = OneShotThumbnailPreviewWorker(self._os_plan_path, dict(self.settings), title)
             self._os_preview_worker.finished.connect(self._os_on_preview_done)
             self._os_preview_worker.error.connect(self._os_on_preview_error)
-            self._track_thread("_os_preview_worker", self._os_preview_worker)
+            self._track_thread("_os_preview_worker", self._os_preview_worker, replace=True)
         except Exception as e:
             self._os_set_status(f"Không preview được thumbnail: {e}", error=True)
 
     def _os_on_preview_done(self, preview_path: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_preview_worker", None):
+            return
         preview = Path(preview_path)
         out_dir = preview.parent
         self._os_thumb_preview_btn.setEnabled(True)
@@ -4342,6 +4636,10 @@ rm -f "$DMG" 2>/dev/null
         perf_log("one_shot_preview_done", preview=preview.name)
 
     def _os_on_preview_error(self, msg: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_preview_worker", None):
+            return
         self._os_thumb_preview_btn.setEnabled(True)
         perf_log("one_shot_preview_error", message=str(msg)[:180])
         self._os_set_status(f"Không preview được thumbnail: {msg}", error=True)
@@ -4419,9 +4717,13 @@ rm -f "$DMG" 2>/dev/null
         self._os_render_worker.progress.connect(lambda p: self._os_set_status(f"Đang render video… {p}%"))
         self._os_render_worker.finished.connect(self._os_on_render_done)
         self._os_render_worker.error.connect(self._os_on_error)
-        self._track_thread("_os_render_worker", self._os_render_worker)
+        self._track_thread("_os_render_worker", self._os_render_worker, replace=True)
 
     def _os_on_render_done(self, report_path: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        if sender is not None and sender is not getattr(self, "_os_render_worker", None):
+            return
         self._os_flush_log_buffer(force=True)
         perf_log("one_shot_render_done", report=Path(report_path).name)
         self._os_show_workspace(True)
@@ -4553,15 +4855,25 @@ rm -f "$DMG" 2>/dev/null
             reveal_file(folder)
 
     def _os_on_error(self, msg: str):
+        # Guard: ignore stale callback from cancelled worker
+        sender = self.sender()
+        is_analyze = sender is getattr(self, "_os_analyze_worker", None)
+        is_render = sender is getattr(self, "_os_render_worker", None)
+        if sender is not None and not is_analyze and not is_render:
+            return
         self._os_flush_log_buffer(force=True)
         self._os_show_workspace(True)
         cancelled = "Đã dừng" in str(msg) or "Đã huỷ" in str(msg)
         perf_log("one_shot_error", cancelled=cancelled, message=str(msg)[:180])
-        if hasattr(self, "_os_analyze_btn"):
-            self._os_analyze_btn.setText("Phân tích")
+        if is_analyze:
+            if hasattr(self, "_os_analyze_btn"):
+                self._os_analyze_btn.setText("Phân tích")
         if hasattr(self, "_os_render_btn"):
             self._os_render_btn.setText("Render")
-        self._os_render_btn.setEnabled(bool(getattr(self, "_os_plan_path", "")))
+        if not is_render:
+            self._os_render_btn.setEnabled(bool(getattr(self, "_os_plan_path", "")))
+        else:
+            self._os_render_btn.setEnabled(True)
         if hasattr(self, "_os_render_row"):
             self._os_render_row.setVisible(bool(getattr(self, "_os_plan_path", "")))
         self._os_set_source_controls_enabled(True)
@@ -4623,109 +4935,6 @@ rm -f "$DMG" 2>/dev/null
             self._os_debug_folder_btn.setVisible(bool(self._os_details_visible and getattr(self, "_os_result_folder", "")))
         if hasattr(self, "_os_details_btn"):
             self._os_details_btn.setText("Ẩn" if self._os_details_visible else "Chi tiết")
-
-    def _st_refresh_dependency(self):
-        if not hasattr(self, "_st_dependency"):
-            return
-        try:
-            status = escbase_dependency_status()
-        except Exception as e:
-            status = {"status": "template_error", "message": str(e)}
-        labels = {
-            "ready": "Sẵn sàng render",
-            "missing_template": "Thiếu template",
-            "invalid_template": "Template lỗi",
-            "missing_ffmpeg": "Thiếu ffmpeg",
-            "missing_playwright": "Thiếu Playwright",
-            "missing_chromium": "Thiếu Chromium",
-            "ok": "Template sẵn sàng",
-        }
-        key = str(status.get("status") or "")
-        self._st_dependency.setText(f"{labels.get(key, key or 'Chưa kiểm tra')}: {status.get('message', '')}")
-
-    def _st_run_slide_template(self):
-        if self._is_thread_running(getattr(self, "_av_slide_worker", None)):
-            try:
-                self._av_slide_worker.cancel()
-                self._av_slide_worker.requestInterruption()
-            except Exception:
-                pass
-            self._st_run_btn.setEnabled(False)
-            self._st_run_btn.setText("Đang dừng…")
-            self._st_status.setText("Đang dừng Slide Template…")
-            return
-        if not is_auto_video_unlocked(self.settings):
-            self._av_apply_lock_state()
-            self._st_status.setText("Auto Video là tính năng Pro. Nhập key hoặc liên hệ mua key để dùng Slide Template.")
-            return
-        text = self._st_input.toPlainText().strip() if hasattr(self, "_st_input") else ""
-        if not text:
-            self._st_status.setText("Paste script hoặc nội dung trước khi tạo video slide.")
-            return
-        self._st_log.clear()
-        self._st_result.clear()
-        self._st_open_btn.setEnabled(False)
-        self._st_copy_btn.setEnabled(False)
-        self._st_run_btn.setText("Dừng")
-        self._st_run_btn.setEnabled(True)
-        self._st_status.setText("Đang tạo project ESCBase…")
-        opts = {"template_id": self._st_template_combo.currentData() or "escbase-slide-starter"}
-        self._av_slide_worker = EscbaseSlideWorker(text, self.settings, opts)
-        self._av_slide_worker.log_line.connect(self._st_append_log)
-        self._av_slide_worker.progress.connect(lambda p: self._st_status.setText(f"Đang tạo video slide… {p}%"))
-        self._av_slide_worker.finished.connect(self._st_on_done)
-        self._av_slide_worker.error.connect(self._st_on_error)
-        self._track_thread("_av_slide_worker", self._av_slide_worker)
-
-    def _st_append_log(self, line: str):
-        if hasattr(self, "_st_log"):
-            self._st_log.append(line)
-
-    def _st_on_done(self, report_path: str):
-        self._st_run_btn.setText("Tạo video slide")
-        self._st_run_btn.setEnabled(True)
-        self._st_report_path = report_path
-        try:
-            report = json.loads(Path(report_path).read_text(encoding="utf-8"))
-            project_dir = Path(report.get("project_dir") or Path(report_path).parent)
-            final_video = str(report.get("final_video") or "")
-            render_status = str(report.get("render_status") or "skipped")
-            self._st_project_dir = str(project_dir)
-            self._st_metadata_path = str(report.get("metadata_path") or project_dir / "upload-metadata.json")
-            self._st_open_btn.setEnabled(True)
-            self._st_copy_btn.setEnabled(Path(self._st_metadata_path).exists())
-            self._st_result.setText(
-                f"Project: {project_dir.name}\n"
-                f"Render: {render_status}\n"
-                f"Video: {Path(final_video).name if final_video else 'Chưa render'}"
-            )
-            self._st_status.setText("Slide Template xong.")
-        except Exception:
-            self._st_result.setText(report_path)
-            self._st_status.setText("Slide Template xong.")
-        self._st_refresh_dependency()
-
-    def _st_on_error(self, msg: str):
-        self._st_run_btn.setText("Tạo video slide")
-        self._st_run_btn.setEnabled(True)
-        cancelled = "Đã dừng" in str(msg)
-        self._st_status.setText("Đã dừng." if cancelled else msg)
-
-    def _st_open_project(self):
-        folder = getattr(self, "_st_project_dir", "") or ""
-        if not folder:
-            self._st_status.setText("Chưa có project để mở.")
-            return
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(folder)):
-            reveal_file(folder)
-
-    def _st_copy_metadata(self):
-        path = Path(getattr(self, "_st_metadata_path", "") or "")
-        if not path.exists():
-            self._st_status.setText("Chưa có metadata để copy.")
-            return
-        QApplication.clipboard().setText(path.read_text(encoding="utf-8"))
-        self._st_status.setText("Đã copy metadata.")
 
     def _build_auto_video_unlock_panel(self) -> QWidget:
         panel = QFrame()
@@ -4915,11 +5124,6 @@ rm -f "$DMG" 2>/dev/null
             return False
         lang = self._av_lang_combo.currentData() or ""
         self.settings["av_language_code"] = lang
-        try:
-            _write_env_local({"GENMAX_LANGUAGE_CODE": lang or "vi"})
-        except Exception as e:
-            self._av_set_status(f"Không lưu được ngôn ngữ Auto Video: {e}", error=True)
-            return False
         save_settings(self.settings)
         if hasattr(self, "_av_config_lbl"):
             self._av_refresh_config_summary()
@@ -5151,20 +5355,18 @@ rm -f "$DMG" 2>/dev/null
 
     def _av_refresh_config_summary(self):
         env = _read_env_local()
-        provider = env.get("TTS_PROVIDER", "genmax").strip().lower() or "genmax"
+        provider = "elevenlabs"
         voice_key = {
-            "genmax": "GENMAX_VOICE_ID",
             "elevenlabs": "ELEVENLABS_VOICE_ID",
-            "lucylab": "VIETNAMESE_VOICEID",
-        }.get(provider, "GENMAX_VOICE_ID")
+        }.get(provider, "ELEVENLABS_VOICE_ID")
         voice_id = env.get(voice_key, "")
         voice_hint = voice_id[:8] + "..." if len(voice_id) > 8 else (voice_id or "missing")
-        tts_hint = provider if provider in {"genmax", "elevenlabs", "lucylab"} else "genmax"
+        tts_hint = "elevenlabs"
         script_provider = env.get("SCRIPT_AI_PROVIDER", "claude").strip().lower() or "claude"
         script_model = {
             "claude": env.get("CLAUDE_MODEL", "claude-sonnet-4-6"),
             "gemini": env.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash"),
-            "deepseek": "deepseek-chat",
+            "deepseek": env.get("DEEPSEEK_SCRIPT_MODEL", "deepseek-v4-flash"),
         }.get(script_provider, "")
         script_hint = script_provider if not script_model else f"{script_provider} {script_model}"
         script_fallback_on = (

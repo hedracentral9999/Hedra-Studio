@@ -140,6 +140,34 @@ class LicenseServerTests(unittest.TestCase):
             self.assertTrue(verified["valid"])
             self.assertEqual(verified["features"], ["auto_video"])
 
+    def test_admin_app_store_uses_http_admin_api(self) -> None:
+        try:
+            from license_server.admin_app import HttpLicenseStore
+        except ModuleNotFoundError as exc:
+            if exc.name == "PyQt6":
+                self.skipTest("PyQt6 is not installed in this Python environment")
+            raise
+        with tempfile.TemporaryDirectory(dir="/private/tmp") as tmp:
+            db = Path(tmp) / "licenses.sqlite3"
+            httpd = build_server(db, "127.0.0.1", 0, admin_token="admin-secret")
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                host, port = httpd.server_address
+                store = HttpLicenseStore(f"http://{host}:{port}", "admin-secret")
+                self.assertEqual(store.health(), "OK")
+                key = store.create_license(customer="Desktop Admin", features=["all"], days=30)
+                rows = store.list_licenses()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+
+            self.assertTrue(key.startswith("HEDRA-PRO-"))
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].customer, "Desktop Admin")
+            self.assertEqual(rows[0].features, ["all"])
+
 
 if __name__ == "__main__":
     unittest.main()
