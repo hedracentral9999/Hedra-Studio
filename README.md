@@ -25,7 +25,7 @@
 |-----------|-------|
 | **TTS** | Tạo audio, nghe lại trong app, mở file và xuất SRT |
 | **STT** | Chuyển audio thành text/SRT |
-| **TTS Enhance** | Tối ưu văn bản trước khi TTS: sửa chính tả, mở rộng viết tắt, thêm tags |
+| **TTS Enhance** | Tối ưu văn bản trước khi TTS; chọn DeepSeek V4 Flash hoặc Pro trong Settings |
 | **Kịch bản** | Tính năng Pro: chụp ảnh chat Zalo -> Gemini phân tích -> xuất kịch bản TTS |
 | **Auto Video** | Tính năng Pro: link/text -> script -> TTS -> render video |
 | **2 phong cách built-in** | `Nghiêm túc` (temp 0.3) và `Hài hước` (temp 0.7) |

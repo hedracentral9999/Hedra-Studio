@@ -357,6 +357,7 @@ def _default_settings() -> dict:
     return {
         "el_api_keys":              [],
         "ds_api_key":               "",
+        "deepseek_tts_model":        "deepseek-v4-flash",
         "deepseek_script_model":     "deepseek-v4-flash",
         "gemini_api_key":           "",
         "gemini_text_model":        "auto",

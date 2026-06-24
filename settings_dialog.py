@@ -4307,6 +4307,24 @@ class SettingsDialog(QDialog):
         self._row(glay_tts, "Voice ID đang dùng", voice_id_w,
                   "Chọn giọng cho provider TTS đang dùng.")
 
+        _deepseek_tts_models = ["deepseek-v4-flash", "deepseek-v4-pro"]
+        _cur_deepseek_tts_model = (
+            self.settings.get("deepseek_tts_model", "")
+            or "deepseek-v4-flash"
+        )
+        if _cur_deepseek_tts_model not in _deepseek_tts_models:
+            _cur_deepseek_tts_model = "deepseek-v4-flash"
+        self._pv_deepseek_tts_model = _combo(
+            _deepseek_tts_models,
+            _cur_deepseek_tts_model,
+        )
+        self._row(
+            glay_tts,
+            "Model xử lý TTS",
+            self._pv_deepseek_tts_model,
+            "Flash nhanh/rẻ; Pro phù hợp prompt phức tạp.",
+        )
+
         preset_w = QWidget()
         preset_w.setStyleSheet("QWidget{background:transparent;border:none;}")
         preset_h = QHBoxLayout(preset_w)
@@ -5838,6 +5856,11 @@ class SettingsDialog(QDialog):
             )
         )
         self.settings["ds_api_key"]         = pipeline_ds_key or self.ds_key.text().strip()
+        self.settings["deepseek_tts_model"] = (
+            getattr(self, "_pv_deepseek_tts_model", _NullEdit()).currentText().strip()
+            if hasattr(getattr(self, "_pv_deepseek_tts_model", None), "currentText")
+            else "deepseek-v4-flash"
+        ) or "deepseek-v4-flash"
         self.settings["deepseek_script_model"] = (
             getattr(self, "_pv_deepseek_script_model", _NullEdit()).currentText().strip()
             if hasattr(getattr(self, "_pv_deepseek_script_model", None), "currentText")
