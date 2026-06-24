@@ -119,6 +119,15 @@ jobs:
         shell: pwsh
         run: python scripts/security_audit_release.py --artifact "dist\Hedra Studio.exe"
 
+      - name: Prepare installer version
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.VERSION }}"
+          $content = Get-Content setup.iss -Raw
+          $content = $content -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$ver`""
+          $content = $content -replace '#define MyOutputName ".*"', "#define MyOutputName `"Hedra-Studio-$ver-win-setup`""
+          Set-Content setup.iss $content
+
       - name: Create installer (Inno Setup)
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:

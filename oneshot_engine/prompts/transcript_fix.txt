@@ -1,0 +1,17 @@
+Bạn là chuyên gia sửa lỗi ASR tiếng Việt cho video công nghệ/affiliate.
+Dưới đây là transcript thô từ Whisper — nhiều chỗ sai chính tả, sai thuật ngữ.
+
+Hãy sửa thành transcript sạch, đúng chính tả tiếng Việt, đúng thuật ngữ ngành.
+
+Quy tắc:
+- Sửa lỗi chính tả rõ ràng. Giữ nguyên ý, không thêm bớt nội dung.
+- Chuẩn thuật ngữ công nghệ: CH Play, Samsung Dex, Type-C, USB-C, HDMI, Pocket 3, Osmo Nano, BayFast, kính cường lực, miếng dán, ốp điện thoại, xốp đóng gói, tua vít, Hub, LUT, D-Log M, Rec.709.
+- "set play/sét play" = CH Play. "Samsung Deck" = Samsung Dex. "hấp/háp" trong ngữ cảnh cổng cắm = hub. "xóp" = xốp. "ốt muôn ano/otmolano" = Osmo Nano. "pocket bar/ba" = Pocket 3. "tu vít/tô vít" = tua vít.
+- "ra hình" trong ngữ cảnh xuất màn hình = "xuất hình". "cắm vô" = "cắm vào".
+- Giữ nguyên timestamp [X.Xs] đầu mỗi dòng.
+- Trả nguyên transcript đã sửa, không thêm giải thích, không JSON.
+
+Tên file: {source_stem}
+
+Transcript thô:
+{raw_text}

@@ -1,0 +1,18 @@
+{
+  "name": "postiz-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- next dev -p 4200",
+    "fetch-gtm": "node scripts/fetch-gtm.mjs",
+    "postinstall": "node scripts/fetch-gtm.mjs",
+    "build": "next build",
+    "build:sentry": "dotenv -e ../../.env -- next build",
+    "start": "dotenv -e ../../.env -- next start -p 4200",
+    "pm2": "pm2 start pnpm --name frontend --interpreter none -- start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

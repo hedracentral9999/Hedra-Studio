@@ -5,6 +5,7 @@ import subprocess
 import traceback
 import re
 import uuid
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,23 +15,53 @@ import requests
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from app_constants import DEFAULT_PROMPT, DEFAULT_PROMPT_FUNNY, VOICE_ID
+from app_constants import DEFAULT_PROMPT_FUNNY, VOICE_ID
 from version import LICENSE_VERIFY_URL, VERSION
 
 # ── Telegram feedback config ──────────────────────────────────────────
 # Packaged releases must never bundle local developer credentials.
-# In a frozen app, only environment variables are honored. Source/dev runs can
-# still use an ignored telegram_config.py file for local testing.
+# Frozen apps read an external per-machine support config, so feedback works
+# without exposing the bot token in Settings, the app bundle, or release DMGs.
+def _read_external_support_config() -> tuple[str, str]:
+    paths: list[Path] = []
+    if sys.platform == "darwin":
+        paths.append(Path.home() / "Library" / "Application Support" / "Hedra Studio" / "support_config.json")
+    elif sys.platform == "win32":
+        paths.append(Path(os.environ.get("APPDATA", str(Path.home()))) / "Hedra Studio" / "support_config.json")
+    else:
+        paths.append(Path.home() / ".hedra_studio" / "support_config.json")
+
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        token = str(data.get("telegram_bot_token") or data.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        chat = str(data.get("telegram_chat_id") or data.get("TELEGRAM_CHAT_ID") or "").strip()
+        if token and chat:
+            return token, chat
+    return "", ""
+
+
 def _load_telegram_config() -> tuple[str, str]:
-    env_token = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "")
-    env_chat = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "")
+    env_token = os.environ.get("ELEVENLABS_TELEGRAM_BOT_TOKEN", "").strip()
+    env_chat = os.environ.get("ELEVENLABS_TELEGRAM_CHAT_ID", "").strip()
+    if env_token and env_chat:
+        return env_token, env_chat
+
+    ext_token, ext_chat = _read_external_support_config()
+    if ext_token and ext_chat:
+        return ext_token, ext_chat
+
     if getattr(sys, "frozen", False):
         return env_token, env_chat
+
+    # Source/dev runs can still use ignored telegram_config.py for local tests.
     try:
         cfg = importlib.import_module("telegram_config")
         return (
-            str(getattr(cfg, "TELEGRAM_BOT_TOKEN", env_token) or ""),
-            str(getattr(cfg, "TELEGRAM_CHAT_ID", env_chat) or ""),
+            str(getattr(cfg, "TELEGRAM_BOT_TOKEN", env_token) or "").strip(),
+            str(getattr(cfg, "TELEGRAM_CHAT_ID", env_chat) or "").strip(),
         )
     except Exception:
         return env_token, env_chat
@@ -73,11 +104,40 @@ def get_legacy_data_dir() -> Path:
 
 DATA_DIR      = get_data_dir()
 SETTINGS_FILE = str(DATA_DIR / "settings.json")
-DEFAULT_OUT   = str(DATA_DIR / "output")
+LEGACY_DEFAULT_OUT = str(DATA_DIR / "output")
+
+
+def _default_output_dir() -> str:
+    env_value = os.environ.get("HEDRA_STUDIO_OUTPUT_DIR", "").strip()
+    if env_value:
+        return str(Path(os.path.expanduser(env_value)).resolve())
+    if sys.platform == "darwin":
+        return str(Path.home() / "hedra-studio" / "output")
+    return LEGACY_DEFAULT_OUT
+
+
+DEFAULT_OUT   = _default_output_dir()
 ERROR_LOG     = DATA_DIR / "error.log"
+PERF_LOG      = DATA_DIR / "performance.log"
 LICENSE_CACHE_FILE = DATA_DIR / "license.json"
 DEVICE_ID_FILE = DATA_DIR / "device_id"
 LICENSE_GRACE_DAYS = 7
+
+
+def perf_log(event: str, **fields) -> None:
+    """Lightweight diagnostics log for macOS lag investigations."""
+    try:
+        safe_event = re.sub(r"\s+", "_", str(event or "event")).strip("_") or "event"
+        parts = [f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]", f"event={safe_event}", f"pid={os.getpid()}"]
+        for key, value in fields.items():
+            if value is None:
+                continue
+            text = str(value).replace("\n", " ")[:240]
+            parts.append(f"{key}={text}")
+        with open(PERF_LOG, "a", encoding="utf-8") as f:
+            f.write(" ".join(parts) + "\n")
+    except Exception:
+        pass
 
 
 def _runtime_root() -> Path:
@@ -215,7 +275,7 @@ def validate_pro_license_key(
 ) -> tuple[bool, str, dict]:
     normalized = re.sub(r"\s+", "", key or "")
     if not normalized:
-        return False, "Chưa nhập license key.", {}
+        return False, "Chưa nhập Pro key.", {}
     endpoint = os.environ.get("HEDRA_LICENSE_VERIFY_URL", LICENSE_VERIFY_URL).strip()
     if not endpoint:
         return False, "Chưa cấu hình license server.", {}
@@ -237,7 +297,7 @@ def validate_pro_license_key(
             return False, f"License server trả về HTTP {res.status_code}.", {}
         data = res.json()
     except requests.RequestException as e:
-        return False, f"Không kết nối được license server: {e}", {}
+        return False, f"Không kiểm tra được key: {e}", {}
     except Exception as e:
         return False, f"Không đọc được phản hồi license server: {e}", {}
 
@@ -282,6 +342,11 @@ def _show_unhandled_error(title: str, message: str):
 def _install_exception_hook():
     def _hook(exc_type, exc_value, exc_tb):
         message = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        try:
+            with open(ERROR_LOG, "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Unhandled exception\n{message}\n")
+        except Exception:
+            pass
         _show_unhandled_error("Lỗi Hedra Studio", message)
 
     sys.excepthook = _hook
@@ -291,8 +356,8 @@ def _install_exception_hook():
 def _default_settings() -> dict:
     return {
         "el_api_keys":              [],
-        "genmax_api_key":           "",
         "ds_api_key":               "",
+        "deepseek_script_model":     "deepseek-v4-flash",
         "gemini_api_key":           "",
         "gemini_text_model":        "auto",
         "gemini_stt_model":         "auto",
@@ -301,7 +366,7 @@ def _default_settings() -> dict:
         "telegram_bot_token":       "",
         "telegram_chat_id":         "",
         "output_dir":               DEFAULT_OUT,
-        "enhance_prompt":           DEFAULT_PROMPT,
+        "enhance_prompt":           DEFAULT_PROMPT_FUNNY,
         "default_speed":            1.0,
         "selected_voice_id":        VOICE_ID,
         "selected_voice_name":      "Adam - Dominant, Firm",
@@ -309,11 +374,12 @@ def _default_settings() -> dict:
         "av_voice_presets":         {},
         "custom_styles":            [],
         "prompt_preset_overrides":  {},
-        "enhance_style_name":       "Nghiêm túc",
-        "enhance_style_temperature": 0.3,
-        "enhance_style_creative":   False,
+        "enhance_style_name":       "Viral",
+        "enhance_style_temperature": 0.7,
+        "enhance_style_creative":   True,
         "language_code":            "vi",
         "tts_language_code":        "vi",
+        "eleven_v3_style_enabled":  True,
         "favorite_voice_ids":       [VOICE_ID],
         "favorite_voices":          [dict(DEFAULT_ADAM_VOICE)],
         "tts_voice_id":             VOICE_ID,
@@ -321,6 +387,27 @@ def _default_settings() -> dict:
         "av_voice_id":              "",
         "av_voice_name":            "",
         "av_language_code":         "vi",
+        "auto_video_mode":          "article",
+        "one_shot_industry":        "tech",
+        "one_shot_lut_path":        "",
+        "one_shot_noise_reduce":    True,
+        "one_shot_noise_mode":      "auto_gentle",
+        "one_shot_cut_video":       False,
+        "one_shot_apply_lut":       True,
+        "one_shot_render_profile":  "multi_1080",
+        "one_shot_whisper_model":   "small",
+        "one_shot_thumbnail_template": "boxphonefarm",
+        "one_shot_thumbnail_font":  "dt_phudu_black",
+        "one_shot_thumbnail_size":  "large",
+        "one_shot_thumbnail_lines": "auto",
+        "one_shot_thumbnail_position": "center",
+        "one_shot_thumbnail_title_mode": "expert",
+        "one_shot_pipeline_mode":       "simple",
+        "one_shot_enterprise_pipeline": False,
+        "one_shot_ai_review_thumbnail": False,
+        "one_shot_last_video_dir":  "",
+        "one_shot_last_batch_dir":  "",
+        "one_shot_last_lut_dir":    "",
         "app_theme":                "system",
         "auto_video_engine_dir":     "",
         "auto_video_license_key":     "",
@@ -376,6 +463,47 @@ def _sanitize_legacy_value(key: str, value):
     return None
 
 
+def _normalize_output_dir(value) -> str:
+    text = str(value or DEFAULT_OUT).strip() or DEFAULT_OUT
+    try:
+        path = Path(os.path.expanduser(text))
+        if path.name == "ouput":
+            path = path.with_name("output")
+        try:
+            if path.resolve() == Path(LEGACY_DEFAULT_OUT).resolve():
+                return DEFAULT_OUT
+        except Exception:
+            if str(path) == LEGACY_DEFAULT_OUT:
+                return DEFAULT_OUT
+        return str(path)
+    except Exception:
+        pass
+    return text
+
+
+def get_tool_output_dir(settings: dict | None, tool: str, day: datetime | None = None) -> str:
+    """Return the dated output folder for a tool, e.g. output/tts/2026-06-01."""
+    root = DEFAULT_OUT
+    if isinstance(settings, dict):
+        root = _normalize_output_dir(settings.get("output_dir"))
+    safe_tool = re.sub(r"[^A-Za-z0-9_-]+", "-", str(tool or "tool").strip().lower()).strip("-") or "tool"
+    stamp = (day or datetime.now()).strftime("%Y-%m-%d")
+    return str(Path(root) / safe_tool / stamp)
+
+
+def suggest_tts_filename(text: str, now: datetime | None = None) -> str:
+    """Create a readable, collision-resistant default filename from TTS text."""
+    plain = re.sub(r"\[[^\]]+\]", " ", str(text or ""))
+    plain = re.sub(r"[*_`~]+", " ", plain)
+    plain = plain.replace("đ", "d").replace("Đ", "D")
+    plain = unicodedata.normalize("NFKD", plain).encode("ascii", "ignore").decode("ascii")
+    plain = plain.lower()
+    words = re.findall(r"[a-z0-9]+", plain)
+    stem = "_".join(words[:6]).strip("_") or "ban_doc"
+    stamp = (now or datetime.now()).strftime("%H%M%S")
+    return f"{stem}_{stamp}"
+
+
 def _backfill_settings(s: dict) -> dict:
     defaults = _default_settings()
     if "el_api_key" in s and "el_api_keys" not in s:
@@ -383,6 +511,21 @@ def _backfill_settings(s: dict) -> dict:
     for key, default in defaults.items():
         if key not in s:
             s[key] = default
+    style_name = str(s.get("enhance_style_name") or "").strip()
+    prompt_text = str(s.get("enhance_prompt") or "")
+    legacy_builtin_prompt = (
+        not style_name
+        and (
+            "AUDIO TAGS" in prompt_text
+            or "EMOTIONAL TAGS" in prompt_text
+            or "Bạn là chuyên gia tối ưu kịch bản cho ElevenLabs v3 TTS" in prompt_text
+        )
+    )
+    if style_name in {"Nghiêm túc", "Hài hước", "Vivid"} or legacy_builtin_prompt:
+        s["enhance_prompt"] = DEFAULT_PROMPT_FUNNY
+        s["enhance_style_name"] = "Viral"
+        s["enhance_style_temperature"] = 0.7
+        s["enhance_style_creative"] = True
     if not str(s.get("selected_voice_id", "")).strip():
         s["selected_voice_id"] = VOICE_ID
     if not str(s.get("selected_voice_name", "")).strip() or str(s.get("selected_voice_name", "")).strip() == "Adam":
@@ -391,6 +534,7 @@ def _backfill_settings(s: dict) -> dict:
         s["tts_voice_id"] = s["selected_voice_id"]
     if not str(s.get("tts_voice_name", "")).strip():
         s["tts_voice_name"] = s["selected_voice_name"]
+    s["output_dir"] = _normalize_output_dir(s.get("output_dir"))
     favs = s.get("favorite_voices")
     if not isinstance(favs, list):
         favs = []

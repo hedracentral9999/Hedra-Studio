@@ -15,6 +15,7 @@ build/TTS/
 rw.*.dmg
 *.exe
 *.msi
+*.app/
 
 # Data / secrets
 settings.json
@@ -27,7 +28,10 @@ AUDIT_REPORT.md
 apple.md
 tools/telegram_print_bot.env
 tools/
-tests/
+tests/*
+!tests/adam_script_bot_tests.py
+!tests/one_shot_tests.py
+!tests/license_server_tests.py
 tools/adam_script_bot.env
 tools/adam_script_bot.sqlite3
 tools/adam_script_bot.sqlite3-*
@@ -55,6 +59,37 @@ CONTEXT.md
 tts.py
 test_adam.py
 test_*.py
+node_modules/
+.next/
+coverage/
+box-publisher/.data/
+box-publisher/.env.local
+postiz-batch-agent/.env.local
+postiz-batch-agent/.google-drive-token.json
+postiz-batch-agent/.tmp-drive-downloads/
+license_server/data/
+luts/
+!luts/
+!luts/DJI OSMO Osmo Nano D-Log M to Rec.709 V1.cube
+box-publisher/
+escbase_template_main/
+postiz-batch-agent/
+print_templates/
+upload-gateway/
 
-# Docs (local reference only)
-docs/
+# Docs (local reference only, keep tts/ for build)
+docs/*
+!docs/tts/
+!docs/tts/*
+
+# Local / build artifacts (not for release)
+oneshot_engine/DEEPSEEK.md
+oneshot_engine/native/gpu-renderer/.build/
+tmp/
+releases/
+data/
+local/
+icon.icns
+.env
+_verify.py
+assets/cb.rnnn

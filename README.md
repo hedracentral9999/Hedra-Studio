@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.8.8-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/Hedra_Studio-v1.8.8-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.9.14-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/Hedra_Studio-v1.9.14-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
@@ -91,10 +91,10 @@ Bạn cần ít nhất 2 API keys:
 
 ### 3. Kịch bản và Auto Video Pro
 
-Hai tab này có trong app nhưng cần license key.
+Hai tab này có trong app nhưng cần Pro key.
 
 1. Mở tab **Kịch bản** hoặc **Auto Video**
-2. Nhập license key đã mua
+2. Nhập Pro key đã mua
 3. App xác thực online với license server
 4. Key hợp lệ sẽ mở đúng tính năng được cấp phép
 
@@ -124,6 +124,10 @@ Settings được lưu tại:
 
 - **macOS:** `~/Library/Application Support/Hedra Studio/settings.json`
 - **Windows:** `%APPDATA%/Hedra Studio/settings.json`
+
+Output mặc định của Auto Video one-shot trên máy dev:
+
+- **macOS local:** `/Users/admin/hedra-studio/output`
 
 ### Telegram Feedback (cho dev)
 
@@ -190,12 +194,18 @@ Output chính:
 
 ### Pro license
 
-Kịch bản và Auto Video là tính năng Pro. App chỉ chứa client xác thực license online; source public không chứa secret ký key hoặc tool tạo key.
+Kịch bản và Auto Video là tính năng Pro. App desktop chỉ chứa client xác thực license online; server tạo/verify key nằm riêng trong `license_server/` và không cần nhúng secret vào app.
 
 License server endpoint mặc định nằm trong `version.py` và có thể override bằng biến môi trường:
 
 ```bash
 HEDRA_LICENSE_VERIFY_URL=https://your-domain.com/v1/licenses/verify
+```
+
+Bản thương mại hiện trỏ mặc định về Cloudflare license domain:
+
+```bash
+https://license.boxphonefarm.com.vn/v1/licenses/verify
 ```
 
 Endpoint nhận `POST` JSON gồm `key`, `feature`, `app`, `version`, `device_id`, `platform` và trả về:
@@ -207,6 +217,32 @@ Endpoint nhận `POST` JSON gồm `key`, `feature`, `app`, `version`, `device_id
   "expires_at": "2026-12-31T23:59:59Z",
   "message": "License hợp lệ"
 }
+```
+
+License Server MVP để bán thử nằm trong `license_server/`:
+
+```bash
+python3 -m license_server.cli init
+python3 -m license_server.cli create --customer "Khach A" --features chat_script,auto_video --days 365
+python3 -m license_server.server --host 127.0.0.1 --port 8088
+```
+
+Trên máy dev có thể mở app quản lý key trực tiếp:
+
+```bash
+open "Hedra License Admin Latest.app"
+```
+
+Hoặc quản lý key qua web admin:
+
+```bash
+https://license.boxphonefarm.com.vn/admin
+```
+
+Trỏ app vào server local:
+
+```bash
+HEDRA_LICENSE_VERIFY_URL=http://127.0.0.1:8088/v1/licenses/verify python3 tts_app.py
 ```
 
 ### GitHub Actions (tự động)

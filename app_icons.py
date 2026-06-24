@@ -21,6 +21,7 @@ _TILE_COLORS = {
     "voices": ("#30d158", "#248a3d"),
     "stt": ("#64d2ff", "#0a84ff"),
     "video": ("#ff9f0a", "#ff6b00"),
+    "trading": ("#30d158", "#1f8f3a"),
     "api": ("#8e8e93", "#636366"),
     "prompts": ("#bf5af2", "#8e44ad"),
     "output": ("#32d74b", "#28a745"),
@@ -117,6 +118,12 @@ def _pixmap(name: str, size: int, color: str) -> QPixmap:
         path.closeSubpath()
         p.setBrush(QBrush(QColor(color)))
         p.drawPath(path)
+    elif name == "trading":
+        line(0.18, 0.76, 0.34, 0.54)
+        line(0.34, 0.54, 0.48, 0.62)
+        line(0.48, 0.62, 0.70, 0.30)
+        line(0.58, 0.30, 0.70, 0.30)
+        line(0.70, 0.30, 0.70, 0.43)
     elif name == "api":
         circle(0.34, 0.43, 0.14)
         line(0.44, 0.53, 0.76, 0.85)

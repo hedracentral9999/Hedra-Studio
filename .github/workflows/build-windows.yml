@@ -36,6 +36,14 @@ jobs:
         run: |
           pyinstaller TTS.spec --clean --noconfirm
 
+      - name: Prepare installer version
+        run: |
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          $content = Get-Content setup.iss -Raw
+          $content = $content -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$ver`""
+          $content = $content -replace '#define MyOutputName ".*"', "#define MyOutputName `"Hedra-Studio-$ver-win-setup`""
+          Set-Content setup.iss $content
+
       - name: Build installer with Inno Setup
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" setup.iss

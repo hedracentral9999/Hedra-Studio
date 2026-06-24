@@ -11,12 +11,12 @@ from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app_constants import (
-    DEFAULT_PROMPT, get_creativity_guide, CREATIVITY_CONTENT_LOCK,
-    DIALOGUE_ROLE_LOCK,
+    DEFAULT_PROMPT_FUNNY,
     VERSION, GITHUB_REPO, VOICE_ID, MODEL, EL_OUTPUT_FORMAT,
     GEMINI_CHAT_PROMPT,
 )
-from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local, is_auto_video_unlocked, load_settings
+from app_utils import DEFAULT_OUT, DATA_DIR, SETTINGS_FILE, get_auto_video_env_local, get_tool_output_dir, is_auto_video_unlocked, load_settings
+from prompt_files import read_style_prompt_file
 
 _ENGINE_ENV_LOCAL = get_auto_video_env_local()
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
@@ -175,12 +175,436 @@ def _estimated_words_from_text(text: str) -> list[dict]:
 
 _EL_V3_TAG_RE = re.compile(r"\[[a-z][a-z -]{1,40}\]", re.I)
 _EL_V3_STYLE_RULES = (
-    ("[warmly]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn)", re.I)),
+    ("[happy]", re.compile(r"(follow|đăng ký|xem tiếp|đừng bỏ lỡ|hẹn gặp|cảm ơn|ok|ổn|được)", re.I)),
     ("[curious]", re.compile(r"(\?|bạn có biết|vì sao|tại sao|liệu|điều gì xảy ra)", re.I)),
     ("[impressed]", re.compile(r"(đột phá|kỷ lục|ấn tượng|mới nhất|ra mắt|tăng mạnh|vượt trội|thành công)", re.I)),
     ("[thoughtful]", re.compile(r"(nhưng|tuy nhiên|vấn đề|rủi ro|cảnh báo|sự thật|đáng chú ý|bất ngờ)", re.I)),
-    ("[professional]", re.compile(r"(\d|%|usd|đô|triệu|tỷ|nghìn|benchmark|api|ai|model|mô hình)", re.I)),
+    ("[reassuring]", re.compile(r"(yên tâm|không lo|đỡ|ổn rồi|an toàn|dễ|gọn)", re.I)),
+    ("[speaking fast]", re.compile(r"(nhanh|gấp|liền|ngay|chạy luôn|xong là)", re.I)),
 )
+
+def _tts_supports_v3_tags(provider: str, model: str) -> bool:
+    provider = str(provider or "").strip().lower()
+    model = str(model or "").strip().lower()
+    return "eleven_v3" in model or (provider == "elevenlabs" and model in {"", "eleven_v3"})
+
+
+def _tts_v3_prompt() -> str:
+    return """# ElevenLabs V3 — Official Reference
+
+> Nguồn: [ElevenLabs Text-to-Speech Best Practices](https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices)
+> Model: Eleven v3
+> Dùng cho: nhấn nhá, audio tags, punctuation control, multi-speaker
+
+---
+
+## 1. Model Selection
+
+| Feature | Flash v2 | English v1 | **Eleven v3** |
+|---------|----------|------------|---------------|
+| SSML `<break />` | ✅ | ✅ | ❌ |
+| `<phoneme>` tags | ✅ | ✅ | ❌ |
+| Audio tags `[...]` | ❌ | ❌ | ✅ |
+| Accent switching | ❌ | ❌ | ✅ |
+| Multi-speaker | ❌ | ❌ | ✅ |
+| Enhance button | ❌ | ❌ | ✅ |
+
+**Khi nào dùng V3:**
+- Creative content, podcast, audiobook
+- Nhân vật với cảm xúc đa dạng
+- Multi-speaker dialogue
+- Cần expressive, natural delivery
+- Accent switching
+
+---
+
+## 2. Voice Selection & Stability
+
+### Voice Types
+
+| Use case | Voice type | Stability |
+|----------|-----------|-----------|
+| Audiobook nhân vật | Emotionally diverse IVC | Creative |
+| Podcast neutral | Neutral IVC | Natural |
+| Customer service | Neutral IVC | Robust |
+| TTS real-time app | Neutral IVC | Robust |
+| Gaming character | Emotionally diverse IVC | Creative |
+| Sports commentary | Targeted niche IVC | Natural |
+| Multi-language | Neutral IVC | Natural |
+
+### Stability Modes
+
+```
+Creative  → Biểu cảm mạnh, audio tags responsive NHẤT
+Natural   → Cân bằng, gần reference audio nhất (DEFAULT KHUYẾN NGHỊ)
+Robust    → Rất ổn định, audio tags ÍT hiệu quả hơn
+```
+
+> ⚠️ Professional Voice Clones (PVCs) chưa tối ưu cho V3 — dùng IVC khi có thể.
+
+---
+
+## 3. Audio Tags — Full Reference
+
+### Cú pháp
+
+```
+SYNTAX: [tag] — viết thường, đặt trước/sau/giữa câu
+
+VỊ TRÍ:
+  Trước câu : [whispers] I never knew it could be this way.
+  Sau câu   : This is hard. [sighs]
+  Kết hợp   : [excited] [laughs] That's amazing!
+  Giữa câu  : \"I can't believe [sighs] … this is happening.\"
+```
+
+### Emotion — Positive
+
+```
+[happy]       [excited]     [delighted]    [impressed]
+[warmly]      [mischievously]
+```
+
+### Emotion — Negative
+
+```
+[sad]         [crying]      [angry]        [annoyed]
+[appalled]    [frustrated]  [desperately]
+```
+
+### Emotion — Neutral / Complex
+
+```
+[curious]     [thoughtful]  [surprised]    [nervous]
+[sheepishly]  [deadpan]     [sarcastic]    [dismissive]
+```
+
+### Professional / Consultative
+
+```
+[professional] [sympathetic] [reassuring]  [questioning]
+```
+
+### Non-Verbal — Laughing
+
+```
+[laughs]      [chuckles]    [giggles]
+[laughs harder] [starts laughing] [laughing hysterically]
+```
+
+### Non-Verbal — Breathing
+
+```
+[sighs]       [exhales]     [exhales sharply]
+[inhales deeply] [wheezing]
+```
+
+### Non-Verbal — Other
+
+```
+[whispers]    [clears throat] [short pause] [long pause]
+[happy gasp]  [muttering]    [snorts]       [swallows] [gulps]
+```
+
+### Sound Effects
+
+```
+[gunshot]     [explosion]
+[applause]    [clapping]
+```
+
+### Experimental (Test kỹ trước production)
+
+```
+[strong French accent] \"Zat's life, my friend.\"
+[strong Russian accent] \"Dee Goldeneye eez fully operational.\"
+[sings]    → voice chuyển sang hát
+[woo]      → exclamation sound
+[fart]     → sound effect
+```
+
+### Tag Combinations
+
+```
+VUI VẺ + NGẠC NHIÊN:
+  [laughs harder] [giggles] \"I can't believe this!\"
+
+LO LẮNG + BÍ MẬT:
+  [nervous] [whispers] \"I don't think they know we're here.\"
+
+MỈA MAI + KHÓ CHỊU:
+  [sarcastic] [annoyed] \"Sure, that's DEFINITELY going to work.\"
+
+PHẤN KHÍCH NHIỀU LAYERS:
+  [excited] I mean OH MY GOD... [laughing hysterically] it's so good!
+
+BẤT NGỜ → TIẾC:
+  [surprised] \"Oh wow, that's... [sighs] actually kind of sad.\"
+
+TỰ TIN → NHỎ GIỌNG:
+  [professional] \"We've analyzed the data.\" [whispers] \"And it's not good.\"
+
+ACCENT + CẢM XÚC:
+  [excited] Check this out!
+  [strong French accent] \"Zat's life, my friend.\"
+  [giggles] isn't that insane?
+```
+
+### Tags KHÔNG được dùng
+
+```
+❌ [standing]  — không phải auditory
+❌ [grinning]  — không phải auditory
+❌ [pacing]    — không phải auditory
+❌ [music]     — sound effect toàn bộ, không phải voice
+❌ Bất kỳ tag nào mô tả hành động vật lý thay vì âm thanh
+```
+
+> ⚠️ Effectiveness phụ thuộc voice và training data — test kỹ trước production.
+> ⚠️ Một số tags ít nhất quán hơn với một số voices — thử nhiều voices.
+
+---
+
+## 4. Punctuation Control
+
+```
+...  (Ellipses)  → Thêm pause và weight vào delivery
+CAPS             → Tăng emphasis trên từ đó
+—   (Em dash)    → Ngắt nhanh giữa 2 ý liên tiếp / cắt ngang
+, . ? !          → Natural speech rhythm
+
+VÍ DỤ:
+  \"It was a VERY long day [sighs] … nobody listens anymore.\"
+  → VERY  : emphasis mạnh
+  → [sighs]: non-verbal sound
+  → …     : weighted pause sau [sighs]
+
+TEXT STRUCTURE:
+  → Câu ngắn cho delivery tốt hơn câu dài
+  → Ngắt dòng giữa các thoughts khác nhau → control pacing
+  → Tránh câu quá dài không có dấu câu
+```
+
+---
+
+## 5. Enhance (LLM Auto-Tag)
+
+Luật của ElevenLabs Enhance — dùng làm reference khi thêm tag thủ công:
+
+```
+✅ PHẢI LÀM:
+  → Thêm audio tags mô tả auditory (voice, sound)
+  → Đặt tag trước hoặc ngay sau câu relevant
+  → Đa dạng emotional expressions qua các đoạn
+  → Tăng emphasis qua CAPS, dấu câu, ellipses
+
+❌ TUYỆT ĐỐI KHÔNG:
+  → Thay đổi, thêm, hoặc xóa bất kỳ từ nào trong text gốc
+  → Dùng [standing], [grinning], [pacing], [music]
+  → Invent dialogue mới
+  → Dùng tags mâu thuẫn với meaning gốc
+
+VÍ DỤ ENHANCE:
+  Input:  \"Are you serious? I can't believe you did that!\"
+  Output: \"[appalled] Are you serious? [sighs] I can't believe you did that!\"
+
+  Input:  \"That's amazing, I didn't know you could sing!\"
+  Output: \"[laughing] That's amazing, [singing] I didn't know you could sing!\"
+
+  Input:  \"I guess you're right. It's just... difficult.\"
+  Output: \"I guess you're right. [sighs] It's just... [muttering] difficult.\"
+```
+
+---
+
+## 6. Multi-Speaker Dialogue
+
+```
+TEMPLATE CƠ BẢN:
+  Speaker 1: [excited] Sam! Have you tried the new Eleven V3?
+  Speaker 2: [curious] Just got it! The clarity is amazing.
+
+SIMULATE CẮT NGANG:
+  Speaker 1: I think we should—
+  Speaker 2: —do it differently!
+  (Dấu — cuối câu 1 + — đầu câu 2 = cảm giác cắt ngang)
+
+VÍ DỤ THỰC TẾ:
+  Speaker 1: [excitedly] Sam! Have you tried the new Eleven V3?
+  Speaker 2: [curiously] Just got it! The clarity is amazing.
+             I can actually do whispers now — [whispers] like this!
+  Speaker 1: [impressed] Ooh, fancy! Check this out —
+             [dramatically] \"To be or not to be, that is the question!\"
+  Speaker 2: [delighted] That's so much better!
+```
+
+> ⚠️ KHÔNG thể overlap thật trong single generation. Generate từng speaker riêng → combine trong audio editor.
+
+---
+
+## 7. Text Normalization
+
+V3 có normalization mặc định, nhưng có thể sai với số/tiền phức tạp.
+
+**Luật normalize trước khi gửi TTS:**
+
+| Input | Output |
+|-------|--------|
+| `$1,000,000` | \"one million dollars\" |
+| `$47,345.67` | \"forty-seven thousand three hundred forty-five dollars and sixty-seven cents\" |
+| `123-456-7890` | \"one two three, four five six, seven eight nine zero\" |
+| `100km` | \"one hundred kilometers\" |
+| `100%` | \"one hundred percent\" |
+| `2024-01-01` | \"January first, two-thousand twenty-four\" |
+| `14:30` | \"two thirty PM\" |
+| `Ctrl + Z` | \"control z\" |
+
+---
+
+## 8. Troubleshooting
+
+| Vấn đề | Giải pháp |
+|--------|-----------|
+| Tag không hiệu quả | Đổi sang Creative/Natural stability, test voice khác |
+| Pause không nhất quán | Dùng `...` (v3 không hỗ trợ `<break />`) |
+| Audio artifact | Giảm số lượng tag, tránh tag dày đặc |
+| Số đọc sai | Normalize text trước khi gửi |
+| PVC chất lượng thấp | Dùng IVC thay PVC |
+| Pace không đúng | Adjust speed 0.7–1.2 |
+
+### Debug Checklist
+
+```
+□ Đúng model chưa? (v3 cho audio tags)
+□ Stability: Creative hoặc Natural?
+□ Voice có training data phù hợp không?
+□ Tag đặt đúng vị trí chưa? (trước/sau/giữa câu)
+□ Text structure rõ ràng không? (câu ngắn, dấu câu đúng)
+□ Quá nhiều tag → giảm xuống 2-5 tag/đoạn
+□ Số/tiền tệ đã normalize chưa?
+```
+"""
+
+def _split_api_keys(value) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        raw_parts = []
+        for item in value:
+            raw_parts.extend(re.split(r"[\s,;]+", str(item or "")))
+    else:
+        raw_parts = re.split(r"[\s,;]+", str(value or ""))
+    keys: list[str] = []
+    for part in raw_parts:
+        key = str(part or "").strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _elevenlabs_key_pool(*sources, limit: int = 3) -> list[str]:
+    keys: list[str] = []
+    for source in sources:
+        if not source:
+            continue
+        if isinstance(source, dict):
+            values = [
+                source.get("ELEVENLABS_API_KEY"),
+                source.get("ELEVENLABS_API_KEYS"),
+                source.get("ELEVENLABS_API_KEY_2"),
+                source.get("ELEVENLABS_API_KEY_3"),
+                source.get("el_api_key"),
+                source.get("el_api_keys"),
+            ]
+        else:
+            values = [source]
+        for value in values:
+            for key in _split_api_keys(value):
+                if key not in keys:
+                    keys.append(key)
+    return keys[:limit] if limit else keys
+
+
+def _elevenlabs_should_rotate(status_code: int | None, message: str = "") -> bool:
+    text = str(message or "").lower()
+    return (
+        status_code in (401, 402, 403, 429)
+        or "quota" in text
+        or "credit" in text
+        or "character" in text
+        or "rate limit" in text
+        or "too many requests" in text
+        or "billing" in text
+    )
+
+
+def humanize_tts_error(message: str) -> dict:
+    """Convert provider/API noise into a user-facing TTS error."""
+    raw = str(message or "").strip()
+    text = raw.lower()
+    title = "Tạo audio lỗi"
+    detail = "Tool chưa tạo được audio. Thử lại hoặc kiểm tra cài đặt TTS."
+    action = "Mở Cài đặt -> API để kiểm tra key, giọng đọc và credit."
+    code = "unknown"
+
+    if not raw:
+        return {"code": code, "title": title, "detail": detail, "action": action, "raw": raw}
+
+    if "thiếu genmax api key" in text or "missing genmax" in text:
+        code = "missing_genmax_key"
+        title = "Thiếu GenMax key"
+        detail = "Tool đang ưu tiên GenMax nhưng chưa có GenMax API key."
+        action = "Vào Cài đặt -> API, nhập GenMax key hoặc đổi provider sang ElevenLabs."
+    elif "thiếu elevenlabs api key" in text or "missing elevenlabs" in text:
+        code = "missing_elevenlabs_key"
+        title = "Thiếu ElevenLabs key"
+        detail = "Tool cần ElevenLabs API key để tạo audio bằng provider này."
+        action = "Vào Cài đặt -> API và nhập ElevenLabs key."
+    elif "không tìm thấy giọng" in text or "voice_not_found" in text or "voice not found" in text:
+        code = "voice_not_found"
+        title = "Không tìm thấy giọng"
+        detail = "Voice ID này chưa có trong account hoặc là giọng Shared Library chưa được add đúng cách."
+        action = "Kiểm tra lại Voice ID. Nếu là Shared Library, dùng nút Kiểm tra/Test giọng trước khi lưu."
+    elif "paid_plan_required" in text or "free users cannot use library voices" in text or "library voice" in text:
+        code = "voice_needs_plan"
+        title = "Giọng này cần nâng gói"
+        detail = "Đây là giọng Library/Professional. API key hiện tại chưa được render voice này qua ElevenLabs API."
+        action = "Nâng gói ElevenLabs, chọn voice premade như Adam, hoặc test lại qua GenMax trước khi dùng batch."
+    elif "missing_permissions" in text or "add_voice_from_voice_library" in text:
+        code = "missing_voice_permission"
+        title = "Key thiếu quyền giọng đọc"
+        detail = "API key chưa có quyền thêm hoặc dùng giọng từ Voice Library."
+        action = "Trong ElevenLabs API key, bật Voices = Write và Voice Generation/Text to Speech = Access."
+    elif any(token in text for token in ("quota", "credit", "character limit", "billing", "payment_required", "insufficient")):
+        code = "credit_or_billing"
+        title = "Hết credit hoặc vướng thanh toán"
+        detail = "Provider từ chối tạo audio vì credit/quota/gói thanh toán không đủ."
+        action = "Kiểm tra credit GenMax/ElevenLabs hoặc nạp thêm/nâng gói."
+    elif "rate limit" in text or "too many requests" in text or " 429" in text or "429:" in text:
+        code = "rate_limited"
+        title = "Provider đang giới hạn tốc độ"
+        detail = "Bạn gọi API quá nhanh hoặc provider đang giới hạn key hiện tại."
+        action = "Chờ một lúc rồi tạo lại, hoặc đổi key/provider."
+    elif "timeout" in text or "processing" in text or "provider_under_maintenance" in text or "service unavailable" in text or "503" in text:
+        code = "provider_slow"
+        title = "Provider đang chậm"
+        detail = "Provider nhận job nhưng xử lý chậm, timeout hoặc đang bảo trì."
+        action = "Thử lại sau vài phút. Nếu cần nhanh, đổi sang ElevenLabs direct hoặc voice khác."
+    elif "401" in text or "invalid_key" in text or "unauthorized" in text:
+        code = "invalid_key"
+        title = "API key không hợp lệ"
+        detail = "Provider không chấp nhận API key hiện tại."
+        action = "Tạo/copy lại key mới rồi dán vào Cài đặt -> API."
+    elif "400" in text or "422" in text:
+        code = "bad_request"
+        title = "Cài đặt voice chưa đúng"
+        detail = "Provider báo request chưa hợp lệ. Thường do Voice ID, model, language hoặc quyền voice chưa khớp."
+        action = "Bấm Test giọng trước. Nếu là Shared Library, cần add/test voice trước khi render."
+    else:
+        detail = raw.replace("\n", " · ")
+        if len(detail) > 220:
+            detail = detail[:217].rstrip() + "..."
+
+    return {"code": code, "title": title, "detail": detail, "action": action, "raw": raw}
+
 
 def _style_eleven_v3_text(text: str) -> str:
     trimmed = (text or "").strip()
@@ -196,21 +620,23 @@ def _eleven_v3_style_enabled(settings: dict) -> bool:
     return str(value).strip().lower() not in ("0", "false", "no", "off")
 
 class VoiceFetcher(QThread):
-    """Fetch danh sách voices — ưu tiên GenMax nếu có key, fallback ElevenLabs."""
+    """Fetch danh sách voices từ ElevenLabs."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
     def __init__(self, api_key: str, genmax_key: str = ""):
         super().__init__()
         self.api_key    = api_key
-        self.genmax_key = genmax_key
+        self.api_keys   = _elevenlabs_key_pool(api_key)
+        self.genmax_key = ""
 
     def run(self):
         try:
-            if self.genmax_key:
+            last_err = "Thiếu ElevenLabs API key"
+            for key in self.api_keys:
                 r = requests.get(
-                    "https://api.genmax.io/v1/default-voices?page_size=100",
-                    headers={"xi-api-key": self.genmax_key},
+                    "https://api.elevenlabs.io/v1/voices",
+                    headers={"xi-api-key": key},
                     timeout=10,
                 )
                 if r.status_code == 200:
@@ -218,23 +644,16 @@ class VoiceFetcher(QThread):
                     voices.sort(key=lambda v: v.get("name", "").lower())
                     self.done.emit(voices)
                     return
-            r = requests.get(
-                "https://api.elevenlabs.io/v1/voices",
-                headers={"xi-api-key": self.api_key},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                voices = r.json().get("voices", [])
-                voices.sort(key=lambda v: v.get("name", "").lower())
-                self.done.emit(voices)
-            else:
-                self.error.emit(f"HTTP {r.status_code}")
+                last_err = f"HTTP {r.status_code}"
+                if not _elevenlabs_should_rotate(r.status_code, r.text):
+                    break
+            self.error.emit(last_err)
         except Exception as e:
             self.error.emit(str(e))
 
 
 class SharedVoiceFetcher(QThread):
-    """Fetch voices từ Shared Voice Library — ưu tiên GenMax, fallback ElevenLabs."""
+    """Fetch voices từ ElevenLabs Shared Voice Library."""
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
 
@@ -242,10 +661,11 @@ class SharedVoiceFetcher(QThread):
                  page_size: int = 30, genmax_key: str = ""):
         super().__init__()
         self.api_key    = api_key
+        self.api_keys   = _elevenlabs_key_pool(api_key)
         self.language   = language
         self.search     = search
         self.page_size  = page_size
-        self.genmax_key = genmax_key
+        self.genmax_key = ""
 
     def run(self):
         try:
@@ -254,10 +674,11 @@ class SharedVoiceFetcher(QThread):
                 params["required_languages"] = self.language
             if self.search:
                 params["search"] = self.search
-            if self.genmax_key:
+            last_err = "Thiếu ElevenLabs API key"
+            for key in self.api_keys:
                 r = requests.get(
-                    "https://api.genmax.io/v1/shared-voices",
-                    headers={"xi-api-key": self.genmax_key},
+                    "https://api.elevenlabs.io/v1/shared-voices",
+                    headers={"xi-api-key": key},
                     params=params,
                     timeout=12,
                 )
@@ -265,17 +686,10 @@ class SharedVoiceFetcher(QThread):
                     voices = r.json().get("voices", [])
                     self.done.emit(voices)
                     return
-            r = requests.get(
-                "https://api.elevenlabs.io/v1/shared-voices",
-                headers={"xi-api-key": self.api_key},
-                params=params,
-                timeout=12,
-            )
-            if r.status_code == 200:
-                voices = r.json().get("voices", [])
-                self.done.emit(voices)
-            else:
-                self.error.emit(f"HTTP {r.status_code}")
+                last_err = f"HTTP {r.status_code}"
+                if not _elevenlabs_should_rotate(r.status_code, r.text):
+                    break
+            self.error.emit(last_err)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -320,23 +734,29 @@ class AddSharedVoiceWorker(QThread):
     def __init__(self, api_key: str, voice_id: str, public_user_id: str, name: str):
         super().__init__()
         self.api_key        = api_key
+        self.api_keys       = _elevenlabs_key_pool(api_key)
         self.voice_id       = voice_id
         self.public_user_id = public_user_id
         self.name           = name
 
     def run(self):
         try:
-            r = requests.post(
-                f"https://api.elevenlabs.io/v1/voices/add/{self.public_user_id}/{self.voice_id}",
-                headers={"xi-api-key": self.api_key, "Content-Type": "application/json"},
-                json={"name": self.name},
-                timeout=15,
-            )
-            if r.status_code == 200:
-                new_id = r.json().get("voice_id", self.voice_id)
-                self.done.emit(new_id, self.name)
-            else:
-                self.error.emit(f"HTTP {r.status_code}: {r.text[:120]}")
+            last_err = "Thiếu ElevenLabs API key"
+            for key in self.api_keys:
+                r = requests.post(
+                    f"https://api.elevenlabs.io/v1/voices/add/{self.public_user_id}/{self.voice_id}",
+                    headers={"xi-api-key": key, "Content-Type": "application/json"},
+                    json={"new_name": self.name},
+                    timeout=15,
+                )
+                if r.status_code == 200:
+                    new_id = r.json().get("voice_id", self.voice_id)
+                    self.done.emit(new_id, self.name)
+                    return
+                last_err = f"HTTP {r.status_code}: {r.text[:120]}"
+                if not _elevenlabs_should_rotate(r.status_code, r.text):
+                    break
+            self.error.emit(last_err)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -346,21 +766,21 @@ class PromptGeneratorWorker(QThread):
     done  = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    _META_PROMPT = """Bạn là chuyên gia viết system prompt cho TTS với ElevenLabs v3.
+    _META_PROMPT = """Bạn là chuyên gia viết prompt phong cách cho TTS.
 
-Nhiệm vụ: Dựa trên mô tả ngắn, tạo system prompt hoàn chỉnh để AI enhance kịch bản TTS.
+Nhiệm vụ: Dựa trên mô tả ngắn, tạo prompt phong cách hoàn chỉnh để AI xử lý kịch bản TTS theo đúng gu người dùng.
 
-System prompt phải có đủ các phần:
+Prompt phải có đủ các phần:
 1. Mô tả vai trò + phong cách + tông giọng phù hợp mô tả
 2. Quy tắc xử lý viết tắt tiếng Việt (a→anh, e→em, k→không, dc→được...)
 3. Quy tắc số & tiền tệ (650k→sáu trăm năm mươi nghìn, 1tr→một triệu...)
-4. Hướng dẫn dùng ElevenLabs v3 audio tags phù hợp với phong cách
-   Tags khả dụng: [professional] [assertive] [thoughtful] [impressed]
-   [curious] [warmly] [happy] [questioning] [reassuring]
-   → Chỉ dùng tags phù hợp với phong cách được mô tả
-5. Quy tắc nhấn mạnh bằng CAPS (tối thiểu 2-3 từ per đoạn nếu phong cách cần)
-6. Quy tắc nhịp đọc (... và —), không dùng tag dừng/pause dạng ngoặc vuông
-7. Quy tắc output: chỉ trả về kịch bản đã xử lý, không giải thích
+4. Quy tắc nhấn mạnh bằng CAPS nếu phong cách cần, dùng vừa phải
+5. Quy tắc nhịp đọc bằng dấu câu thường (... và —) nếu phù hợp phong cách
+6. Quy tắc output: chỉ trả về kịch bản đã xử lý, không giải thích
+
+KHÔNG viết luật ElevenLabs v3 audio tags trong prompt phong cách.
+KHÔNG liệt kê tag dạng [laughs], [curious], [excited]...
+Luật nhấn nhá v3 do tool tự thêm riêng khi người dùng bật công tắc Nhấn nhá v3.
 
 Nếu mô tả có trường "Từ ngữ đặc trưng":
 - BẮT BUỘC tạo một mục riêng tên "TỪ NGỮ ĐẶC TRƯNG".
@@ -370,6 +790,11 @@ Nếu mô tả có trường "Từ ngữ đặc trưng":
 
 Nếu mô tả có trường "Tuyệt đối tránh":
 - BẮT BUỘC tạo một mục riêng tên "TUYỆT ĐỐI TRÁNH" và giữ đúng các điều user đã nhập.
+
+Nếu mô tả có trường "Ví dụ đúng gu":
+- BẮT BUỘC tạo một mục riêng tên "VÍ DỤ ĐÚNG GU".
+- Rút ra nhịp câu, cách xưng hô, mức thân mật, kiểu hài/hook từ ví dụ.
+- Không copy máy móc ví dụ vào mọi output; chỉ dùng làm style reference.
 
 Trả về CHỈ nội dung system prompt, không có markdown ngoài, không có tiêu đề."""
 
@@ -400,6 +825,7 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
     def _ensure_required_user_terms(self, prompt: str) -> str:
         keywords = self._extract_field(self.description, "Từ ngữ đặc trưng")
         avoid = self._extract_field(self.description, "Tuyệt đối tránh")
+        example = self._extract_field(self.description, "Ví dụ đúng gu")
         additions = []
 
         if keywords:
@@ -426,6 +852,14 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                     "## TUYỆT ĐỐI TRÁNH\n"
                     f"- {avoid}"
                 )
+
+        if example and "VÍ DỤ ĐÚNG GU" not in prompt.upper():
+            additions.append(
+                "## VÍ DỤ ĐÚNG GU\n"
+                f"- Ví dụ tham chiếu phong cách: {example}\n"
+                "- Học nhịp câu, cách xưng hô, mức thân mật và kiểu hook từ ví dụ này.\n"
+                "- Không copy máy móc ví dụ vào mọi kịch bản."
+            )
 
         if not additions:
             return prompt
@@ -479,7 +913,7 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "deepseek-chat",
+                    "model": "deepseek-v4-pro",
                     "messages": [
                         {"role": "system", "content": self._META_PROMPT},
                         {"role": "user",   "content": f"Tạo prompt cho phong cách: {self.description}"},
@@ -583,7 +1017,7 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "deepseek-chat",
+                    "model": "deepseek-v4-pro",
                     "messages": [
                         {"role": "system", "content": self._SYSTEM},
                         {"role": "user",   "content": f"Mô tả: {self.description}"},
@@ -683,6 +1117,28 @@ class UpdateDownloader(QThread):
 
 
 # ── TTS Worker thread ──────────────────────────────────────────────
+def _load_prompt(name: str) -> str:
+    """Load TTS prompt docs in source and PyInstaller bundles."""
+    base_dirs = [
+        os.path.dirname(__file__),
+        getattr(sys, "_MEIPASS", ""),
+        os.path.join(os.path.dirname(sys.executable), "..", "Resources")
+        if getattr(sys, "frozen", False)
+        else "",
+    ]
+    for base_dir in base_dirs:
+        if not base_dir:
+            continue
+        path = os.path.join(base_dir, "docs", "tts", name)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip()
+    if name == "viral.md":
+        return DEFAULT_PROMPT_FUNNY
+    if name == "11labs.md":
+        return _tts_v3_prompt()
+    raise FileNotFoundError(f"Prompt not found: {name}")
+
 class Worker(QThread):
     status = pyqtSignal(str)
     done   = pyqtSignal(str)
@@ -702,7 +1158,7 @@ class Worker(QThread):
             enhanced = self._enhance(self.text)
             self.status.emit("Đang generate audio...")
             audio = self._tts(enhanced)
-            out_dir = self.s.get("output_dir", DEFAULT_OUT)
+            out_dir = get_tool_output_dir(self.s, "tts")
             os.makedirs(out_dir, exist_ok=True)
             path = os.path.join(out_dir, self.filename + ".mp3")
             with open(path, "wb") as f:
@@ -800,126 +1256,59 @@ class Worker(QThread):
             self._srt_content = dl.text
 
     def _enhance(self, text: str) -> str:
-        claude_key = self.s.get("claude_api_key", "").strip()
-        gemini_key = self.s.get("gemini_api_key", "").strip()
-        ds_key     = self.s.get("ds_api_key", "").strip()
-        if not claude_key and not gemini_key and not ds_key:
+        ds_key = self.s.get("ds_api_key", "").strip()
+        if not ds_key:
             raise Exception(
-                "⚠️ Chưa có AI key để enhance kịch bản.\n"
-                "📌 Vào Settings → API:\n"
-                "  • Claude API Key (khuyến nghị — chất lượng cao)\n"
-                "  • Gemini API Key (free tier — fallback)\n"
-                "  • DeepSeek API Key (fallback cuối)"
+                "⚠️ Chưa có DeepSeek API Key.\n"
+                "📌 Vào Settings → API → thêm DeepSeek API Key."
             )
-        temperature = self.s.get(
-            "enhance_style_temperature",
-            0.7 if self.s.get("enhance_style_creative", False) else 0.3
+        temperature = float(self.s.get("enhance_style_temperature", 0.4))
+
+        style_name = str(self.s.get("enhance_style_name", "") or "").strip()
+        fallback_prompt = self.s.get("enhance_prompt", _load_prompt("viral.md"))
+        style_prompt = (
+            read_style_prompt_file(style_name, fallback_prompt)
+            if style_name
+            else fallback_prompt
         )
-        system_prompt = self.s.get("enhance_prompt", DEFAULT_PROMPT)
-        system_prompt = (
-            get_creativity_guide(temperature)
-            + "\n\n"
-            + system_prompt
-            + "\n\n"
-            + DIALOGUE_ROLE_LOCK
-        )
-        claude_model  = self.s.get("claude_model", "claude-sonnet-4-6")
-        gemini_model = self.s.get("gemini_text_model", "auto")
-        errors: list[str] = []
+        if _eleven_v3_style_enabled(self.s):
+            self.status.emit("Đang xử lý style + nhấn nhá V3...")
+            system_prompt = f"""{style_prompt}
 
-        # ── Ưu tiên Claude → Gemini free tier → DeepSeek ─
-        if claude_key:
-            res = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key":         claude_key,
-                    "anthropic-version": "2023-06-01",
-                    "Content-Type":      "application/json",
-                },
-                json={
-                    "model":       claude_model,
-                    "max_tokens":  2000,
-                    "temperature": temperature,
-                    "system":      system_prompt,
-                    "messages":    [{"role": "user", "content": text}],
-                },
-                timeout=60,
-            )
-            if res.status_code == 200:
-                return res.json()["content"][0]["text"].strip()
-            errors.append(f"Claude {res.status_code}: {res.text[:200]}")
-            if not gemini_key and not ds_key:
-                raise Exception(f"Claude {res.status_code}: {res.text[:200]}")
-            self.status.emit("⚠️ Claude lỗi — thử Gemini..." if gemini_key else "⚠️ Claude lỗi — thử DeepSeek...")
+---
 
-        if gemini_key:
-            try:
-                result, model = _call_gemini_generate(
-                    gemini_key,
-                    [{"text": text}],
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=2000,
-                    preferred_model=gemini_model,
-                    task="text",
-                    timeout=60,
-                )
-                self.status.emit(f"Gemini đã xử lý ({model})")
-                return result.strip()
-            except Exception as e:
-                errors.append(str(e))
-                if not ds_key:
-                    raise Exception(str(e))
-                self.status.emit("⚠️ Gemini lỗi — thử DeepSeek...")
+SAU KHI ÁP DỤNG PROMPT STYLE Ở TRÊN, TIẾP TỤC ÁP DỤNG PROMPT ELEVENLABS V3 SAU TRONG CÙNG MỘT LẦN XỬ LÝ.
+Output cuối cùng phải là bản đã qua cả hai lớp: style/viral + tag/nhịp/format ElevenLabs V3.
 
-        # ── DeepSeek fallback ─
+{_load_prompt("11labs.md")}"""
+        else:
+            self.status.emit("Đang xử lý style...")
+            system_prompt = style_prompt
+
         res = requests.post(
             "https://api.deepseek.com/chat/completions",
-            headers={"Authorization": f"Bearer {ds_key}",
-                     "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {ds_key}",
+                "Content-Type": "application/json",
+            },
             json={
-                "model": "deepseek-chat",
+                "model": "deepseek-v4-pro",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": text},
                 ],
                 "temperature": temperature,
-                "max_tokens":  2000,
             },
-            timeout=30,
+            timeout=90,
         )
-        if res.status_code == 200:
-            return res.json()["choices"][0]["message"]["content"].strip()
-        errors.append(f"DeepSeek {res.status_code}: {res.text[:200]}")
-        raise Exception("Tất cả AI enhance đều lỗi:\n" + "\n".join(errors))
+        if res.status_code != 200:
+            stage = "DeepSeek Style+V3" if _eleven_v3_style_enabled(self.s) else "DeepSeek Viral"
+            raise Exception(f"{stage} {res.status_code}: {res.text[:200]}")
+        return res.json()["choices"][0]["message"]["content"].strip()
 
     def _tts(self, text: str) -> bytes:
         env = _read_pipeline_env()
-        provider = (env.get("TTS_PROVIDER") or "genmax").strip().lower()
-        if provider not in {"genmax", "ai33", "elevenlabs", "lucylab"}:
-            provider = "genmax"
-
-        order = [provider]
-        if provider == "genmax" and self._env_bool(env.get("GENMAX_FALLBACK_TO_AI33"), True):
-            order.append("ai33")
-        for fallback in ("elevenlabs",):
-            if fallback not in order:
-                order.append(fallback)
-
-        errors: list[str] = []
-        for item in order:
-            try:
-                if item == "genmax":
-                    return self._tts_genmax(text, env)
-                if item == "ai33":
-                    return self._tts_ai33(text, env)
-                if item == "elevenlabs":
-                    return self._tts_elevenlabs(text, env)
-            except Exception as e:
-                errors.append(f"{item}: {e}")
-                if item != order[-1]:
-                    self.status.emit(f"⚠️ {item} lỗi — thử provider tiếp theo...")
-        raise Exception("Tất cả TTS provider đều lỗi:\n" + "\n".join(errors))
+        return self._tts_elevenlabs(text, env)
 
     @staticmethod
     def _env_bool(value: str | None, default: bool = False) -> bool:
@@ -939,154 +1328,12 @@ class Worker(QThread):
         # Priority: per-tool voice from settings > env var > selected_voice_id fallback
         per_tool = self.s.get("tts_voice_id", "").strip()
         selected  = self.s.get("selected_voice_id", "").strip()
-        if provider == "genmax":
-            return per_tool or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
-        if provider == "ai33":
-            return per_tool or env.get("AI33_VOICE_ID", "").strip() or env.get("GENMAX_VOICE_ID", "").strip() or selected or VOICE_ID
         if provider == "elevenlabs":
-            return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or env.get("GENMAX_VOICE_ID", "").strip() or VOICE_ID
+            return per_tool or env.get("ELEVENLABS_VOICE_ID", "").strip() or selected or VOICE_ID
         return per_tool or selected or VOICE_ID
 
-    def _tts_genmax(self, text: str, env: dict) -> bytes:
-        gm_key = env.get("GENMAX_API_KEY", "").strip() or self.s.get("genmax_api_key", "").strip()
-        if not gm_key:
-            raise Exception("thiếu GenMax API key")
-        voice_id = self._voice_for("genmax", env)
-        gm_provider = env.get("GENMAX_PROVIDER", "").strip() or self.s.get("genmax_provider", "elevenlabs") or "elevenlabs"
-        gm_model = env.get("GENMAX_MODEL_ID", "").strip() or self.s.get("genmax_model_id", MODEL) or MODEL
-        tts_text = (
-            _style_eleven_v3_text(text)
-            if _eleven_v3_style_enabled(self.s) and gm_provider == "elevenlabs" and gm_model == "eleven_v3"
-            else text
-        )
-        self.status.emit(f"Đang generate audio [GenMax · {gm_model}]...")
-        body: dict = {
-            "text": tts_text,
-            "provider": gm_provider,
-            "model_id": gm_model,
-            "language_code": self._common_language(env),
-            "with_transcript": True,
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
-                "speed": self.speed,
-            },
-        }
-        res = requests.post(
-            f"https://api.genmax.io/v1/text-to-speech/{voice_id}",
-            headers={"xi-api-key": gm_key, "Content-Type": "application/json"},
-            json=body,
-            timeout=30,
-        )
-        if res.status_code == 200:
-            return res.content
-        if res.status_code != 202:
-            raise Exception(f"GenMax {res.status_code}: {res.text[:300]}")
-        task_id = res.json().get("id")
-        if not task_id:
-            raise Exception("GenMax không trả về task_id")
-        deadline = time.time() + 300
-        poll_interval = 2
-        while time.time() < deadline:
-            time.sleep(poll_interval)
-            self.status.emit("Đang chờ GenMax render audio...")
-            poll = requests.get(
-                f"https://api.genmax.io/v1/history/{task_id}",
-                headers={"xi-api-key": gm_key},
-                timeout=15,
-            )
-            if poll.status_code != 200:
-                raise Exception(f"GenMax poll lỗi {poll.status_code}: {poll.text[:200]}")
-            pdata = poll.json()
-            status = pdata.get("status", "")
-            if status == "completed":
-                audio_url = (pdata.get("result") or {}).get("audio_url", "")
-                if not audio_url:
-                    raise Exception("GenMax không trả về audio_url")
-                srt_url = self._find_url(
-                    pdata,
-                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
-                )
-                if srt_url:
-                    self.status.emit("Đang tải phụ đề SRT từ GenMax...")
-                    self._download_srt_url(srt_url)
-                self.status.emit("Đang tải audio từ GenMax...")
-                dl = requests.get(audio_url, timeout=30)
-                if dl.status_code != 200:
-                    raise Exception(f"GenMax download lỗi {dl.status_code}")
-                return dl.content
-            if status in ("failed", "error"):
-                raise Exception(f"GenMax render thất bại: {pdata}")
-            poll_interval = min(poll_interval + 1, 5)
-        raise Exception("GenMax timeout sau 300 giây")
-
-    def _tts_ai33(self, text: str, env: dict) -> bytes:
-        key = env.get("AI33_API_KEY", "").strip()
-        if not key:
-            raise Exception("thiếu ai33 API key")
-        voice_id = self._voice_for("ai33", env)
-        model = env.get("AI33_MODEL_ID", "").strip() or "eleven_v3"
-        endpoint = (env.get("AI33_ENDPOINT", "").strip() or "https://api.ai33.pro").rstrip("/")
-        output_format = env.get("AI33_OUTPUT_FORMAT", "").strip() or "mp3_44100_128"
-        tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
-        self.status.emit(f"Đang generate audio [ai33 · {model}]...")
-        res = requests.post(
-            f"{endpoint}/v1/text-to-speech/{voice_id}?output_format={output_format}",
-            headers={"xi-api-key": key, "Content-Type": "application/json"},
-            json={
-                "text": tts_text,
-                "model_id": model,
-                "with_transcript": True,
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                    "speed": self.speed,
-                },
-            },
-            timeout=30,
-        )
-        if res.status_code not in (200, 202):
-            raise Exception(f"ai33 {res.status_code}: {res.text[:300]}")
-        task_id = res.json().get("task_id") or res.json().get("id")
-        if not task_id:
-            raise Exception("ai33 không trả về task_id")
-        deadline = time.time() + 300
-        while time.time() < deadline:
-            time.sleep(2)
-            self.status.emit("Đang chờ ai33 render audio...")
-            poll = requests.get(
-                f"{endpoint}/v1/task/{task_id}",
-                headers={"xi-api-key": key, "Content-Type": "application/json"},
-                timeout=15,
-            )
-            if poll.status_code != 200:
-                raise Exception(f"ai33 poll {poll.status_code}: {poll.text[:200]}")
-            pdata = poll.json()
-            if pdata.get("status") == "done":
-                audio_url = (pdata.get("metadata") or {}).get("audio_url", "")
-                if not audio_url:
-                    raise Exception("ai33 done nhưng không có audio_url")
-                srt_url = self._find_url(
-                    pdata,
-                    {"srt_url", "subtitle_url", "subtitles_url", "transcript_srt_url"},
-                )
-                if srt_url:
-                    self.status.emit("Đang tải phụ đề SRT từ ai33...")
-                    self._download_srt_url(srt_url)
-                dl = requests.get(audio_url, timeout=30)
-                if dl.status_code != 200:
-                    raise Exception(f"ai33 download {dl.status_code}")
-                return dl.content
-            if pdata.get("status") == "error":
-                raise Exception(pdata.get("error_message") or str(pdata)[:300])
-        raise Exception("ai33 timeout sau 300 giây")
-
     def _tts_elevenlabs(self, text: str, env: dict) -> bytes:
-        keys = self.s.get("el_api_keys", [])
-        env_key = env.get("ELEVENLABS_API_KEY", "").strip()
-        old = self.s.get("el_api_key", "").strip()
-        keys = [env_key] + list(keys or []) + ([old] if old else [])
-        keys = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
+        keys = _elevenlabs_key_pool(env, self.s)
         if not keys:
             raise Exception("thiếu ElevenLabs API key")
         voice_id = self._voice_for("elevenlabs", env)
@@ -1104,8 +1351,11 @@ class Worker(QThread):
             saw_library_block = False
             for idx, key in enumerate(keys, 1):
                 key_label = f"key {idx}/{len(keys)} (...{key[-6:]})"
-                self.status.emit(f"Đang generate audio [ElevenLabs · {voice_label} · {key_label}]...")
-                tts_text = _style_eleven_v3_text(text) if _eleven_v3_style_enabled(self.s) and model == "eleven_v3" else text
+                self.status.emit(f"Đang render bằng ElevenLabs v3 [{voice_label} · {key_label}]...")
+                supports_v3_tags = _tts_supports_v3_tags("elevenlabs", model)
+                tts_text = text if supports_v3_tags else self._clean_tts_text(text)
+                if not supports_v3_tags and tts_text != text:
+                    self.status.emit("Model ElevenLabs này không dùng tag v3 — đã làm sạch tag trước khi tạo audio.")
                 body = {
                     "text": tts_text,
                     "model_id": model,
@@ -1146,7 +1396,7 @@ class Worker(QThread):
             )
             raise Exception(
                 f"ElevenLabs còn ký tự free nhưng không render được voice '{voice_name}' qua API free "
-                "vì đây là shared/library voice. Chọn Adam/premade voice, hoặc dùng GenMax/nâng cấp ElevenLabs."
+                "vì đây là shared/library voice. Chọn Adam/premade voice hoặc nâng cấp ElevenLabs."
             )
         raise last_err or Exception("Tất cả ElevenLabs API keys đều thất bại.")
 
@@ -1166,13 +1416,14 @@ class _TTSOnlyWorker(QThread):
         self.s        = settings
         # Mượn TTS core từ Worker và giữ delegate để lấy SRT provider trả về.
         self._delegate = Worker(text, speed, filename, settings)
+        self._delegate.status.connect(self.status.emit)
         self._tts = self._delegate._tts
 
     def run(self):
         try:
-            self.status.emit("Đang generate audio...")
+            self.status.emit("Đang kiểm tra provider TTS...")
             audio = self._tts(self.text)
-            out_dir = self.s.get("output_dir", DEFAULT_OUT)
+            out_dir = get_tool_output_dir(self.s, "tts")
             os.makedirs(out_dir, exist_ok=True)
             path = os.path.join(out_dir, self.filename + ".mp3")
             with open(path, "wb") as f:

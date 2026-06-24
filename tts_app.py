@@ -1,13 +1,56 @@
 import sys
 import os
+import multiprocessing
 import traceback
+import faulthandler
 from datetime import datetime
+from pathlib import Path
+
+
+def _early_startup_log(message: str) -> None:
+    try:
+        log_dir = Path.home() / "Library" / "Application Support" / "Hedra Studio"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with open(log_dir / "startup.log", "a", encoding="utf-8") as f:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{now}] pid={os.getpid()} {message}\n")
+    except Exception:
+        pass
+
+
+def _install_native_crash_log() -> None:
+    """Capture Python/native fatal signals that bypass sys.excepthook."""
+    try:
+        log_dir = Path.home() / "Library" / "Application Support" / "Hedra Studio"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        crash_stream = open(log_dir / "native-crash.log", "a", encoding="utf-8", buffering=1)
+        crash_stream.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] pid={os.getpid()} native diagnostics enabled\n")
+        faulthandler.enable(file=crash_stream, all_threads=True)
+        globals()["_NATIVE_CRASH_STREAM"] = crash_stream
+    except Exception:
+        pass
+
+
+def _process_role() -> str:
+    argv = " ".join(sys.argv)
+    if "multiprocessing.resource_tracker" in argv:
+        return "pyinstaller_resource_tracker"
+    if "multiprocessing.spawn" in argv or "--multiprocessing-fork" in argv:
+        return "pyinstaller_multiprocessing_child"
+    return "main"
+
+
+multiprocessing.freeze_support()
+_install_native_crash_log()
+if getattr(sys, "frozen", False) and _process_role() != "main":
+    _early_startup_log(f"PYINSTALLER_HELPER_EXIT role={_process_role()} argv={sys.argv!r}")
+    sys.exit(0)
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QDialog
-from PyQt6.QtGui import QAction, QIcon, QPixmap, QColor, QPainter
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QFont, QFontDatabase, QIcon, QPixmap, QColor, QPainter
+from PyQt6.QtCore import Qt, QLockFile
 
-from app_utils import DATA_DIR, load_settings, save_settings, _install_exception_hook
+from app_utils import DATA_DIR, load_settings, save_settings, _install_exception_hook, perf_log
 _install_exception_hook()
 
 from version import VERSION
@@ -17,6 +60,7 @@ from settings_dialog import SettingsDialog
 
 
 STARTUP_LOG = DATA_DIR / "startup.log"
+_APP_LOCK: QLockFile | None = None
 
 
 def _startup_log(message: str) -> None:
@@ -31,16 +75,20 @@ def _startup_log(message: str) -> None:
 # ── Tray app ───────────────────────────────────────────────────────
 class TrayApp:
     def __init__(self):
-        _startup_log("TRAY_INIT_BEGIN")
+        _startup_log(f"TRAY_INIT_BEGIN argv={sys.argv!r} ppid={os.getppid()} frozen={getattr(sys, 'frozen', False)} exe={sys.executable}")
+        perf_log("startup_begin")
         self._shutdown_done = False
         self.app = QApplication(sys.argv)
+        self._apply_app_font()
         self.app.setQuitOnLastWindowClosed(False)
         self.app.aboutToQuit.connect(self._before_quit)
         self.settings    = load_settings()
         _startup_log("LOAD_SETTINGS_OK")
+        perf_log("settings_loaded")
         self.app.setStyleSheet(get_style(self.settings.get("app_theme", "system")))
         self.main_window = MainWindow(self.settings)
         _startup_log("MAINWINDOW_OK")
+        perf_log("main_window_ready")
 
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(self._make_icon())
@@ -60,6 +108,14 @@ class TrayApp:
         self.tray.show()
         self._show_main()
         _startup_log("TRAY_INIT_DONE")
+        perf_log("tray_ready")
+
+    def _apply_app_font(self) -> None:
+        families = set(QFontDatabase.families())
+        for family in ("Arial", "Helvetica Neue", "Helvetica"):
+            if family in families:
+                self.app.setFont(QFont(family))
+                return
 
     def _make_icon(self) -> QIcon:
         # Ưu tiên icon native theo nền tảng khi build bằng PyInstaller.
@@ -84,11 +140,13 @@ class TrayApp:
         return QIcon(px)
 
     def _show_main(self):
+        perf_log("main_window_show")
         self.main_window.show()
         self.main_window.raise_()
         self.main_window.activateWindow()
 
     def _show_settings(self):
+        perf_log("settings_open")
         try:
             self.settings.update(load_settings())
         except Exception:
@@ -99,6 +157,7 @@ class TrayApp:
             save_settings(self.settings)
             self.app.setStyleSheet(get_style(self.settings.get("app_theme", "system")))
             self.main_window.update_settings(self.settings)
+            perf_log("settings_saved")
 
     def _on_tray_click(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
@@ -112,6 +171,7 @@ class TrayApp:
             return
         self._shutdown_done = True
         _startup_log("APP_ABOUT_TO_QUIT")
+        perf_log("app_about_to_quit")
         try:
             self.app.setProperty("_hedra_quitting", True)
         except Exception:
@@ -136,8 +196,14 @@ class TrayApp:
 
 
 if __name__ == "__main__":
-    _startup_log("STARTUP_BEGIN")
+    _startup_log(f"MAIN_APP_START role={_process_role()} argv={sys.argv!r} ppid={os.getppid()} frozen={getattr(sys, 'frozen', False)} exe={sys.executable}")
     try:
+        lock_path = str(DATA_DIR / "hedra-studio.lock")
+        _APP_LOCK = QLockFile(lock_path)
+        _APP_LOCK.setStaleLockTime(10000)
+        if not _APP_LOCK.tryLock(100):
+            _startup_log(f"SECOND_INSTANCE_EXIT lock={lock_path}")
+            sys.exit(0)
         TrayApp().run()
     except Exception:
         _startup_log("STARTUP_EXCEPTION\n" + traceback.format_exc())

@@ -1,0 +1,7 @@
+{
+  "name": "quick",
+  "label": "Siêu nhanh (chỉ scale)",
+  "description": "Bicubic scale + CRF 22. Không sharpen, không color. Tốc độ tối đa.",
+  "video_enhance": "scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},format=yuv420p",
+  "encoder_x264": ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p", "-threads", "6"]
+}
