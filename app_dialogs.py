@@ -16,6 +16,13 @@ from app_constants import (
 )
 from app_workers import PromptGeneratorWorker, SuggestAnswersWorker, FeedbackSender
 
+
+def _tts_deepseek_model(parent=None) -> str:
+    settings = getattr(parent, "settings", {}) if parent is not None else {}
+    if not isinstance(settings, dict):
+        return "deepseek-v4-flash"
+    return settings.get("deepseek_tts_model", "deepseek-v4-flash")
+
 def _theme_for(parent=None) -> tuple[str, dict[str, str]]:
     settings = getattr(parent, "settings", {}) if parent is not None else {}
     mode = settings.get("app_theme", "system") if isinstance(settings, dict) else "system"
@@ -87,6 +94,7 @@ class AddStyleDialog(QDialog):
         self._result: dict    = {}
         self._ds_key          = ds_api_key
         self._gemini_key      = gemini_api_key
+        self._deepseek_model  = _tts_deepseek_model(parent)
         self._gen_worker      = None
         self._suggest_worker  = None
         self._wiz_chip_btns:  dict[str, list[QPushButton]] = {}
@@ -430,7 +438,10 @@ class AddStyleDialog(QDialog):
         self._btn_suggest.setEnabled(False)
         self._btn_suggest.setText("...")
         self._ai_status.setText("AI đang gợi ý...")
-        self._suggest_worker = SuggestAnswersWorker(brief, self._ds_key, self._gemini_key)
+        self._suggest_worker = SuggestAnswersWorker(
+            brief, self._ds_key, self._gemini_key,
+            deepseek_model=self._deepseek_model,
+        )
         self._suggest_worker.done.connect(self._on_suggest_wiz_done)
         self._suggest_worker.error.connect(self._on_suggest_wiz_error)
         self._suggest_worker.start()
@@ -469,7 +480,10 @@ class AddStyleDialog(QDialog):
         parts = [f"{lbl}: {answers[k]}" for k, lbl in labels.items() if answers.get(k)]
         full_desc = " | ".join(parts)
 
-        self._gen_worker = PromptGeneratorWorker(full_desc, self._ds_key, self._gemini_key)
+        self._gen_worker = PromptGeneratorWorker(
+            full_desc, self._ds_key, self._gemini_key,
+            deepseek_model=self._deepseek_model,
+        )
         self._gen_worker.done.connect(self._on_wiz_gen_done)
         self._gen_worker.error.connect(self._on_wiz_gen_error)
         self._gen_worker.start()
@@ -619,6 +633,7 @@ class PromptWizardDialog(QDialog):
         self.setFixedSize(560, 640)
         self._ds_key         = ds_api_key
         self._gemini_key     = gemini_api_key
+        self._deepseek_model = _tts_deepseek_model(parent)
         self._suggest_worker = None
         self._gen_worker     = None
         self._chip_btns:  dict[str, list[QPushButton]] = {}
@@ -868,7 +883,10 @@ class PromptWizardDialog(QDialog):
         self._btn_suggest.setEnabled(False)
         self._btn_suggest.setText("...")
         self._suggest_status.setText("💡  AI đang xem câu nào cần gợi ý...")
-        self._suggest_worker = SuggestAnswersWorker(brief, self._ds_key, self._gemini_key)
+        self._suggest_worker = SuggestAnswersWorker(
+            brief, self._ds_key, self._gemini_key,
+            deepseek_model=self._deepseek_model,
+        )
         self._suggest_worker.done.connect(self._on_suggest_done)
         self._suggest_worker.error.connect(self._on_suggest_error)
         self._suggest_worker.start()
@@ -916,7 +934,10 @@ class PromptWizardDialog(QDialog):
                 parts.append(f"{lbl}: {val}")
         full_desc = " | ".join(parts)
 
-        self._gen_worker = PromptGeneratorWorker(full_desc, self._ds_key, self._gemini_key)
+        self._gen_worker = PromptGeneratorWorker(
+            full_desc, self._ds_key, self._gemini_key,
+            deepseek_model=self._deepseek_model,
+        )
         self._gen_worker.done.connect(self._on_prompt_done)
         self._gen_worker.error.connect(self._on_prompt_error)
         self._gen_worker.start()

@@ -2455,10 +2455,11 @@ rm -f "$DMG" 2>/dev/null
             QMessageBox.warning(self, "Thiếu nội dung", "Paste kịch bản vào trước nhé!")
             return
         if not str(self.settings.get("ds_api_key") or "").strip():
+            deepseek_model = self.settings.get("deepseek_tts_model", "deepseek-v4-flash")
             QMessageBox.warning(
                 self,
                 "Thiếu DeepSeek API Key",
-                "Pipeline TTS 2 bước dùng DeepSeek V4 Pro để xử lý kịch bản.\n\n"
+                f"Pipeline TTS 2 bước dùng {deepseek_model} để xử lý kịch bản.\n\n"
                 "Vào Cài đặt → API và thêm DeepSeek API Key.",
             )
             return

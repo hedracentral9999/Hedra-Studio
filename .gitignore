@@ -32,6 +32,7 @@ tests/*
 !tests/adam_script_bot_tests.py
 !tests/one_shot_tests.py
 !tests/license_server_tests.py
+!tests/tts_model_tests.py
 tools/adam_script_bot.env
 tools/adam_script_bot.sqlite3
 tools/adam_script_bot.sqlite3-*

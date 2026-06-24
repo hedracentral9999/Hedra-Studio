@@ -22,6 +22,13 @@ _ENGINE_ENV_LOCAL = get_auto_video_env_local()
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 GEMINI_AUTO_MODEL_VALUES = {"", "auto", "tự động", "automatic"}
 _GEMINI_MODEL_CACHE: dict[str, tuple[float, list[str]]] = {}
+DEEPSEEK_TTS_MODELS = ("deepseek-v4-flash", "deepseek-v4-pro")
+DEFAULT_DEEPSEEK_TTS_MODEL = DEEPSEEK_TTS_MODELS[0]
+
+
+def _normalise_deepseek_tts_model(value: str | None) -> str:
+    model = str(value or "").strip().lower()
+    return model if model in DEEPSEEK_TTS_MODELS else DEFAULT_DEEPSEEK_TTS_MODEL
 
 def _read_pipeline_env() -> dict:
     out: dict[str, str] = {}
@@ -798,12 +805,20 @@ Nếu mô tả có trường "Ví dụ đúng gu":
 
 Trả về CHỈ nội dung system prompt, không có markdown ngoài, không có tiêu đề."""
 
-    def __init__(self, description: str, api_key: str, gemini_key: str = "", claude_key: str = ""):
+    def __init__(
+        self,
+        description: str,
+        api_key: str,
+        gemini_key: str = "",
+        claude_key: str = "",
+        deepseek_model: str = DEFAULT_DEEPSEEK_TTS_MODEL,
+    ):
         super().__init__()
         self.description = description
         self.api_key     = api_key
         self.gemini_key  = gemini_key
         self.claude_key  = claude_key
+        self.deepseek_model = _normalise_deepseek_tts_model(deepseek_model)
 
     @staticmethod
     def _extract_field(description: str, label: str) -> str:
@@ -913,7 +928,7 @@ Trả về CHỈ nội dung system prompt, không có markdown ngoài, không c�
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "deepseek-v4-pro",
+                    "model": self.deepseek_model,
                     "messages": [
                         {"role": "system", "content": self._META_PROMPT},
                         {"role": "user",   "content": f"Tạo prompt cho phong cách: {self.description}"},
@@ -951,12 +966,20 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
   "avoid":    "điều cần tránh khi enhance kịch bản"
 }"""
 
-    def __init__(self, description: str, api_key: str, gemini_key: str = "", claude_key: str = ""):
+    def __init__(
+        self,
+        description: str,
+        api_key: str,
+        gemini_key: str = "",
+        claude_key: str = "",
+        deepseek_model: str = DEFAULT_DEEPSEEK_TTS_MODEL,
+    ):
         super().__init__()
         self.description = description
         self.api_key     = api_key
         self.gemini_key  = gemini_key
         self.claude_key  = claude_key
+        self.deepseek_model = _normalise_deepseek_tts_model(deepseek_model)
 
     @staticmethod
     def _parse_json(raw: str) -> dict:
@@ -1017,7 +1040,7 @@ Trả về JSON hợp lệ với đúng 7 keys (không markdown, không giải t
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "deepseek-v4-pro",
+                    "model": self.deepseek_model,
                     "messages": [
                         {"role": "system", "content": self._SYSTEM},
                         {"role": "user",   "content": f"Mô tả: {self.description}"},
@@ -1263,6 +1286,7 @@ class Worker(QThread):
                 "📌 Vào Settings → API → thêm DeepSeek API Key."
             )
         temperature = float(self.s.get("enhance_style_temperature", 0.4))
+        model = _normalise_deepseek_tts_model(self.s.get("deepseek_tts_model"))
 
         style_name = str(self.s.get("enhance_style_name", "") or "").strip()
         fallback_prompt = self.s.get("enhance_prompt", _load_prompt("viral.md"))
@@ -1292,7 +1316,7 @@ Output cuối cùng phải là bản đã qua cả hai lớp: style/viral + tag/
                 "Content-Type": "application/json",
             },
             json={
-                "model": "deepseek-v4-pro",
+                "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": text},
