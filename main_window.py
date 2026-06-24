@@ -158,10 +158,6 @@ class _AppleSwitch(QAbstractButton):
 class MainWindow(QWidget):
     def __init__(self, settings: dict):
         super().__init__()
-        app = QApplication.instance()
-        if app is not None:
-            app.setFont(QFont("Arial"))
-        self.setFont(QFont("Arial"))
         self.settings      = settings
         self._theme_mode   = self.settings.get("app_theme", "system")
         apply_theme_globals(globals(), self._theme_mode)
@@ -199,7 +195,7 @@ class MainWindow(QWidget):
         self._output_player.playbackStateChanged.connect(self._on_output_playback_state)
         self._output_player.positionChanged.connect(self._on_output_position_changed)
         self._output_player.durationChanged.connect(self._on_output_duration_changed)
-        self.setWindowTitle(f"Hedra Studio  v{VERSION}")
+        self.setWindowTitle("Hedra Studio")
         self.setMinimumSize(1160, 700)
         self.resize(1480, 820)
         self._apply_theme()
@@ -334,6 +330,63 @@ class MainWindow(QWidget):
         self.hide()
         event.ignore()
 
+    def keyPressEvent(self, event):
+        mod = int(event.modifiers().value)
+        ctrl_cmd = bool(mod & int(Qt.KeyboardModifier.ControlModifier.value))
+        key = event.key()
+
+        # Cmd+1..4 — switch tabs
+        if ctrl_cmd and Qt.Key.Key_1 <= key <= Qt.Key.Key_4:
+            idx = key - Qt.Key.Key_1
+            self._switch_main_tab(idx)
+            return
+        # Cmd+Enter — run TTS / primary action
+        ctrl_enter = bool(mod & int(Qt.KeyboardModifier.MetaModifier.value)) if sys.platform == "darwin" else ctrl_cmd
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and ctrl_enter:
+            tabs = self.tabs if hasattr(self, "tabs") else None
+            if tabs and tabs.currentIndex() == 1:
+                self._on_create_audio()
+            return
+        # Cmd+, — Settings
+        if ctrl_cmd and key == Qt.Key.Key_Comma:
+            self.open_settings()
+            return
+        # Cmd+I — About
+        if ctrl_cmd and key == Qt.Key.Key_I:
+            self._open_about()
+            return
+        super().keyPressEvent(event)
+
+    def _open_about(self):
+        from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout, QPushButton
+        d = QDialog(self)
+        d.setWindowTitle("About Hedra Studio")
+        d.setFixedSize(340, 220)
+        v = QVBoxLayout(d)
+        v.setContentsMargins(24, 20, 24, 20)
+        v.setSpacing(8)
+        name = QLabel("Hedra Studio")
+        name.setStyleSheet(f"font-size:20px;font-weight:700;color:{TEXT};background:transparent;border:none;")
+        v.addWidget(name)
+        ver = QLabel(f"Phiên bản {VERSION}")
+        ver.setStyleSheet(f"font-size:13px;color:{TEXT_MUTE};background:transparent;border:none;")
+        v.addWidget(ver)
+        desc = QLabel("Công cụ TTS + Auto Video cho creator.\nGiọng đọc ElevenLabs, kịch bản AI, xuất video tự động.")
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"font-size:12px;color:{TEXT_MUTE};background:transparent;border:none;")
+        v.addWidget(desc)
+        v.addStretch()
+        btn = QPushButton("Đóng")
+        btn.setFixedHeight(30)
+        btn.setStyleSheet(
+            f"QPushButton{{background:{CONTROL_BG};color:{TEXT};border:1px solid {BORDER_SOFT};"
+            f"border-radius:8px;padding:0 16px;font-size:13px;}}"
+            f"QPushButton:hover{{background:{CONTROL_HV};}}"
+        )
+        btn.clicked.connect(d.accept)
+        v.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
+        d.exec()
+
     def _apply_theme(self):
         self._theme_mode = self.settings.get("app_theme", "system")
         apply_theme_globals(globals(), self._theme_mode)
@@ -384,7 +437,7 @@ class MainWindow(QWidget):
         """Form row trong card — 48px height, inset separator."""
         row_w = QWidget()
         row_w.setStyleSheet("QWidget{background:transparent;border:none;}")
-        row_w.setMinimumHeight(58)
+        row_w.setMinimumHeight(48)
         h = QHBoxLayout(row_w)
         h.setContentsMargins(18, 12, 18, 12)
         h.setSpacing(14)
@@ -497,6 +550,7 @@ class MainWindow(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._adjust_tts_layout()
+        self._adjust_sidebar_visibility()
 
     def _adjust_tts_layout(self) -> None:
         if not hasattr(self, "_tts_splitter"):
@@ -522,6 +576,13 @@ class MainWindow(QWidget):
             self._tts_splitter.setSizes([total // 2, total - total // 2])
         self._set_tts_review_mode(bool(getattr(self, "_preview_box", None) and self._preview_box.isVisible()))
 
+    def _adjust_sidebar_visibility(self) -> None:
+        sidebar = getattr(self, "_sidebar", None)
+        if sidebar is None:
+            return
+        narrow = self.width() < 900
+        sidebar.setVisible(not narrow)
+
     def _build(self, default_tab: int = 1):
         root = self.layout()
         if root is None:
@@ -532,6 +593,7 @@ class MainWindow(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
 
         sidebar = QWidget()
+        self._sidebar = sidebar
         sidebar.setFixedWidth(190)
         sidebar.setStyleSheet(f"QWidget{{background:{SURFACE_2};border-right:1px solid {BORDER_SOFT};}}")
         sb = QVBoxLayout(sidebar)
@@ -596,10 +658,10 @@ class MainWindow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         toolbar = QWidget()
-        toolbar.setFixedHeight(52)
+        toolbar.setFixedHeight(44)
         toolbar.setStyleSheet(f"QWidget{{background:{SURFACE};border-bottom:1px solid {BORDER_SOFT};}}")
         toolbar_row = QHBoxLayout(toolbar)
-        toolbar_row.setContentsMargins(20, 8, 14, 8)
+        toolbar_row.setContentsMargins(20, 6, 14, 6)
         toolbar_row.setSpacing(8)
         self._page_title = QLabel("TTS")
         self._page_title.setFont(self._app_font(13, QFont.Weight.Bold))
@@ -733,7 +795,7 @@ class MainWindow(QWidget):
         box.setStyleSheet("background:transparent;border:none;")
         lay = QVBoxLayout(box)
         lay.setContentsMargins(18, 18, 18, 18)
-        lay.setSpacing(8)
+        lay.setSpacing(6)
         lay.addStretch()
         icon_name = "audio" if icon in {"◉", "audio"} else icon
         i = QLabel()

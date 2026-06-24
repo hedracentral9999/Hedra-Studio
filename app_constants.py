@@ -369,8 +369,8 @@ SURFACE_2   = "#fafafa"
 CONTROL_BG  = "#f5f5f5"
 CONTROL_HV  = "#eeeeef"
 CONTROL_DN  = "#e5e5e7"
-BORDER      = "#dedee3"
-BORDER_SOFT = "#eeeeef"
+BORDER      = "#c7c7cc"
+BORDER_SOFT = "#e5e5ea"
 TEXT        = "#1d1d1f"
 TEXT_MUTE   = "#6e6e73"
 TEXT_FAINT  = "#8e8e93"
@@ -379,6 +379,7 @@ ACCENT_HV   = "#0a84ff"
 ACCENT_DN   = "#0066d6"
 SEG_BG      = "#e9e9ee"
 SUCCESS     = "#34c759"
+SUCCESS_TEXT = "#1c8b3c"
 WARNING     = "#ff9f0a"
 DESTRUCTIVE = "#ff3b30"
 CARD_RADIUS = 12
@@ -397,7 +398,7 @@ def _theme_tokens(theme: str | None = "light") -> dict[str, str]:
             "BORDER": "#3a3a3c",
             "BORDER_SOFT": "#2f2f31",
             "TEXT": "#f5f5f7",
-            "TEXT_MUTE": "#aeaeb2",
+            "TEXT_MUTE": "#c4c4c9",
             "TEXT_FAINT": "#8e8e93",
             "ACCENT": "#0a84ff",
             "ACCENT_HV": "#409cff",
@@ -410,6 +411,10 @@ def _theme_tokens(theme: str | None = "light") -> dict[str, str]:
             "POPUP_SELECTED": "#124f87",
             "SCROLL": "#636366",
             "SCROLL_HV": "#8e8e93",
+            "SUCCESS": "#34c759",
+            "SUCCESS_TEXT": "#1c8b3c",
+            "WARNING": "#ff9f0a",
+            "DESTRUCTIVE": "#ff3b30",
         }
     return {
         "BG": BG,
@@ -434,6 +439,10 @@ def _theme_tokens(theme: str | None = "light") -> dict[str, str]:
         "POPUP_SELECTED": "#e8f0fe",
         "SCROLL": "#c7c7cc",
         "SCROLL_HV": "#aeaeb2",
+        "SUCCESS": SUCCESS,
+        "SUCCESS_TEXT": SUCCESS_TEXT,
+        "WARNING": WARNING,
+        "DESTRUCTIVE": DESTRUCTIVE,
     }
 
 
@@ -474,7 +483,7 @@ def get_style(theme: str | None = "light") -> str:
     t = theme_tokens(theme)
     return f"""
 QWidget {{
-    font-family: "Arial", "Helvetica Neue", "Helvetica";
+    font-family: "Helvetica Neue", ".AppleSystemUIFont", "Segoe UI";
     font-size: 13px;
     background: {t["BG"]};
     color: {t["TEXT"]};
