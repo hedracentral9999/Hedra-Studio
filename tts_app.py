@@ -112,7 +112,7 @@ class TrayApp:
 
     def _apply_app_font(self) -> None:
         families = set(QFontDatabase.families())
-        for family in ("Arial", "Helvetica Neue", "Helvetica"):
+        for family in ("Helvetica Neue", ".AppleSystemUIFont", "Helvetica", "Arial"):
             if family in families:
                 self.app.setFont(QFont(family))
                 return

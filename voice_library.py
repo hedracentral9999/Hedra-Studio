@@ -112,7 +112,7 @@ class VoiceLibraryDialog(QDialog):
         self._search_box.setPlaceholderText("🔍  Tìm theo tên giọng...")
         self._search_box.setFixedHeight(34)
         self._search_box.setStyleSheet(
-            f"QLineEdit{{background:{self._t['SURFACE']};border:1.5px solid {self._t['BORDER_SOFT']};"
+            f"QLineEdit{{background:{self._t['SURFACE']};border:1px solid {self._t['BORDER_SOFT']};"
             f"border-radius:8px;padding:0 10px;font-size:13px;color:{self._t['TEXT']};}}"
             f"QLineEdit:focus{{border-color:{self._t['ACCENT']};}}"
         )
@@ -179,7 +179,7 @@ class VoiceLibraryDialog(QDialog):
         scroll.setWidget(self._list_w)
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(
-            f"QScrollArea{{border:1.5px solid {self._t['BORDER_SOFT']};border-radius:10px;background:{self._t['SURFACE']};}}"
+            f"QScrollArea{{border:1px solid {self._t['BORDER_SOFT']};border-radius:10px;background:{self._t['SURFACE']};}}"
             "QScrollBar:vertical{width:8px;background:transparent;border-radius:4px;}"
             f"QScrollBar::handle:vertical{{background:{self._t['SCROLL']};border-radius:4px;min-height:20px;}}"
             "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
@@ -192,7 +192,7 @@ class VoiceLibraryDialog(QDialog):
         btn_close = QPushButton("Đóng")
         btn_close.setFixedHeight(32)
         btn_close.setStyleSheet(
-            f"QPushButton{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT']};border:1.5px solid {self._t['BORDER_SOFT']};"
+            f"QPushButton{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT']};border:1px solid {self._t['BORDER_SOFT']};"
             "border-radius:8px;padding:0 20px;font-size:13px;}"
             f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}"
         )
@@ -203,12 +203,12 @@ class VoiceLibraryDialog(QDialog):
     def _chip_style(self, active: bool) -> str:
         if active:
             return (f"QPushButton{{background:{self._t['CONTROL_HV']};color:{self._t['ACCENT']};"
-                    f"border:1.5px solid {self._t['ACCENT']};border-radius:14px;"
+                    f"border:1px solid {self._t['ACCENT']};border-radius:14px;"
                     "padding:0 12px;font-size:12px;font-weight:600;}"
                     f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}"
                     f"QPushButton:pressed{{background:{self._t['CONTROL_DN']};}}")
         return (f"QPushButton{{background:{self._t['CONTROL_BG']};color:{self._t['TEXT']};"
-                f"border:1.5px solid {self._t['BORDER_SOFT']};border-radius:14px;"
+                f"border:1px solid {self._t['BORDER_SOFT']};border-radius:14px;"
                 "padding:0 12px;font-size:12px;}"
                 f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}"
                 f"QPushButton:pressed{{background:{self._t['CONTROL_DN']};}}")
@@ -356,7 +356,7 @@ class VoiceLibraryDialog(QDialog):
 
     def _prev_btn_style(self, playing: bool) -> str:
         if playing:
-            return (f"QPushButton{{background:{self._t['CONTROL_HV']};border:1.5px solid {self._t['ACCENT']};"
+            return (f"QPushButton{{background:{self._t['CONTROL_HV']};border:1px solid {self._t['ACCENT']};"
                     f"border-radius:6px;font-size:13px;color:{self._t['ACCENT']};}}"
                     f"QPushButton:hover{{background:{self._t['CONTROL_HV']};}}")
         return (f"QPushButton{{background:{self._t['CONTROL_BG']};border:1px solid {self._t['BORDER_SOFT']};"
