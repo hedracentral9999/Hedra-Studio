@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v1.9.14-0071e3?style=for-the-badge&labelColor=1d1d1f">
-    <img src="https://img.shields.io/badge/Hedra_Studio-v1.9.14-0071e3?style=for-the-badge&labelColor=white" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Hedra_Studio-v2.1.0-0071e3?style=for-the-badge&labelColor=1d1d1f">
+    <img src="https://img.shields.io/badge/Hedra_Studio-v2.1.0-0071e3?style=for-the-badge&labelColor=white" width="400">
   </picture>
 </p>
 
@@ -259,25 +259,56 @@ git push origin v1.8.8
 ## 🗂 Cấu trúc project
 
 ```
-Hedra-Studio/
-├── tts_app.py          # App chính (PyQt6) — 5500+ dòng
-├── tts.py              # CLI TTS tool
-├── version.py          # VERSION string
-├── TTS.spec            # PyInstaller spec
-├── build_mac.sh        # Build script cho macOS
-├── setup.iss           # Inno Setup script cho Windows
-├── telegram_config.py.example  # Mẫu config Telegram
-├── prompt-*.md         # Prompt mẫu (ElevenLabs, Chat-to-Script)
+hedra-studio/
+├── tts_app.py              # App chính (PyQt6 tray app)
+├── main_window.py          # Main window UI (sidebar, tabs, toolbar)
+├── app_constants.py        # Color tokens, themes, prompts
+├── app_workers.py          # Worker threads (TTS, Gemini, update checker)
+├── app_dialogs.py          # Dialog components (style editor, wizard, feedback)
+├── app_icons.py            # SF Symbols-style icon system
+├── app_utils.py            # Settings, file paths, license
+├── auto_video_workers.py   # Auto Video pipeline workers
+├── settings_dialog.py      # Settings dialog (API keys, voices, output)
+├── voice_library.py        # ElevenLabs Shared Voice Library browser
+├── prompt_files.py         # Style prompt file management
+├── version.py              # VERSION + repo URL
 │
-├── web/                # Web TTS app (FastAPI + Supabase)
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── templates/
-│   └── static/
+├── tts.py                  # CLI TTS tool (standalone)
+├── tts_bot.py              # Telegram TTS bot
 │
-└── .github/workflows/  # GitHub Actions
-    ├── build.yml       # Build Mac DMG
-    └── build-windows.yml  # Build Windows EXE
+├── TTS.spec                # PyInstaller build spec
+├── build_mac.sh            # macOS build script
+├── build_windows.ps1       # Windows build script
+├── setup.iss               # Inno Setup (Windows installer)
+├── requirements_build.txt  # Build dependencies
+├── run.command             # macOS double-click launcher
+│
+├── oneshot_engine/         # One-shot video pipeline engine
+│   ├── main.py             #   CLI entry point
+│   ├── orchestrator.py     #   Pipeline orchestrator
+│   ├── transcribe.py       #   Whisper transcription
+│   ├── render.py           #   FFmpeg render
+│   ├── thumbnail.py        #   Thumbnail generation
+│   ├── title_gen.py        #   AI title generation
+│   └── simple_pipeline.py  #   Simplified pipeline mode
+│
+├── docs/tts/               # TTS prompt templates
+│   ├── viral.md            #   Viral/funny style prompt
+│   ├── 11labs.md           #   ElevenLabs V3 voice direction
+│   └── README.md
+│
+├── assets/                 # SF Symbols, fonts
+├── luts/                   # Color LUTs (DJI D-Log M, Rec.709...)
+├── print_templates/        # Thumbnail print templates
+├── knowledge/              # Product knowledge base
+├── scripts/                # Dev scripts (audit, test...)
+├── tests/                  # Test suite
+│
+├── license_server/         # License management server
+├── endpoints/              # Cloudflare Worker endpoints
+├── upload-gateway/         # Upload handling
+│
+└── .github/workflows/      # CI/CD build actions
 ```
 
 ---
