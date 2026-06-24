@@ -110,18 +110,68 @@ Cách chia đoạn:
 * Nếu nhiều dòng liên tiếp vẫn cùng một cảm xúc, dùng một tag ở đầu cụm là đủ.
 
 Audio tag có thể dùng:
-[happy], [excited], [surprised], [curious], [thoughtful], [confident], [reassuring], [warmly], [serious], [playful], [sarcastic], [affirmative], [impressed], [sighs], [exhales], [whispers], [shouts], [softly], [calmly], [dramatically], [quickly], [slowly], [professionally], [professional]
+[happy], [excited], [surprised], [curious], [thoughtful], [confident], [reassuring], [warmly], [serious], [playful], [sarcastic], [affirmative], [impressed], [softly], [calmly], [dramatically], [quickly], [slowly], [professionally], [professional]
 
-Tag cười chỉ dùng rất ít khi thật sự cần:
-[laughs], [laughing], [chuckles], [giggles]
+Tag phi ngôn ngữ (non-verbal):
+[laughs], [laughing], [chuckles], [giggles], [wheezing], [snorts], [crying], [sighs], [exhales], [exhales sharply], [inhales deeply], [whispers], [shouts], [singing], [woo], [clears throat], [short pause], [long pause]
 
-Khi input có tiếng cười viết thành chữ, đặt tag trước và giữ nguyên chữ cười:
-- `hahahahahahahaha` → `[laughs] hahahahahahahahaha`
-- `hehehehe` → `[chuckles] hehehehehe`
-- `hihihihi` → `[giggles] hihihihi`
-- `kkkkkkkk` → `[laughs] kkkkkkkk`
+Khi input có âm thanh phi ngôn ngữ viết thành chữ, phải chèn tag phù hợp **ngay trước** chuỗi âm thanh đó. Giữ nguyên chuỗi gốc, không xóa, không rút ngắn, không đổi số lần lặp. Chỉ thêm một tag, không thêm tag thứ hai nếu đã có tag trước chuỗi đó.
 
-Có thể dùng tag tương tự nếu phù hợp ngữ cảnh.
+### Quy tắc mapping âm thanh → tag
+
+**Nhóm cười — Ưu tiên nhẹ nhàng, không lạm dụng:**
+| Writing pattern | Tag | Ghi chú |
+|----------------|-----|---------|
+| `haha`, `hahaha`, `hahahahaha`... (từ 2 lần trở lên) | `[laughs]` | Cười to, dài |
+| `hahaha` chuỗi rất dài (≥ 8 âm) | `[laughing]` | Cười liên tục, không ngắt |
+| `hehe`, `hehehe`... | `[chuckles]` | Cười nhẹ, cười khẽ |
+| `hihi`, `hihihi`... | `[giggles]` | Cười khúc khích |
+| `hì hì`, `hí hí` | `[giggles]` hoặc `[chuckles]` | Cười nhẹ tiếng Việt |
+| `kkk`, `kkkk`, `kkkkkk`... | `[laughs]` | Cười viết tắt |
+| `*cười*`, `*cười lớn*`, `*cười phá lên*` | `[laughs]` | Mô tả cười trong dấu * |
+
+**Nhóm thở — Chỉ dùng khi có writing pattern rõ, không tự suy diễn:**
+| Writing pattern | Tag |
+|----------------|-----|
+| `*thở dài*`, `*sigh*`, `*phào*`, `*phì*` | `[sighs]` |
+| `*thở ra*`, `*xả hơi*`, `*phào nhẹ*`, `*thở phào*` | `[exhales]` |
+| `*thở mạnh*`, `*hắt ra*`, `*phụt*`, `*thở hắt*` | `[exhales sharply]` |
+| `*hít sâu*`, `*hít một hơi*`, `*hít vào*`, `*hít mạnh*` | `[inhales deeply]` |
+
+**Nhóm giọng nói đặc biệt:**
+| Writing pattern | Tag |
+|----------------|-----|
+| `*nói thầm*`, `*thì thầm*`, `*rì rầm*`, `*psst*`, `*suỵt*`, `*nói nhỏ*` | `[whispers]` |
+| `*hét*`, `*gào*`, `*la lớn*`, `*hét to*`, `*quát*`, `*gào lên*` | `[shouts]` |
+| `*hát*`, `*ca hát*`, `*ngân nga*`, `la la la`, `lá la la` | `[singing]` |
+
+**Nhóm cảm xúc mạnh:**
+| Writing pattern | Tag |
+|----------------|-----|
+| `*khóc*`, `*nức nở*`, `*thổn thức*`, `*sụt sùi*`, `hu hu`, `huhu`, `*hu hu*` | `[crying]` |
+| `*woo*`, `*hú*`, `*hú hú*`, `*hu*`, `*u u*` | `[woo]` |
+
+**Nhóm âm thanh khác:**
+| Writing pattern | Tag |
+|----------------|-----|
+| `*hắng giọng*`, `*e hèm*`, `*ahem*`, `*khụ khụ*` | `[clears throat]` |
+| `*khịt mũi*`, `*hừ*`, `*phì cười*`, `*hừ hừ*` | `[snorts]` |
+| `*thở khò khè*`, `*sặc*`, `*cười sặc sụa*`, `*thở dốc*` | `[wheezing]` |
+
+**Nhóm pause — Chỉ dùng khi writing pattern tường minh:**
+| Writing pattern | Tag |
+|----------------|-----|
+| `*tạm dừng*`, `*ngập ngừng*`, `*im*`, `*silence*` | `[short pause]` |
+| `*im lặng*`, `*dừng lâu*`, `*ngừng một lát*`, `*khoảng lặng*` | `[long pause]` |
+
+### Nguyên tắc chung
+
+* Chỉ map khi writing pattern XUẤT HIỆN RÕ RÀNG trong input. Không tự suy diễn cảm xúc từ nội dung.
+* Giữ nguyên chuỗi gốc, không đổi chính tả, không bỏ dấu `*`, không đổi độ dài.
+* Không thêm tag thứ hai nếu đã có tag phi ngôn ngữ ngay trước chuỗi đó.
+* Nếu một chuỗi khớp nhiều pattern, ưu tiên pattern cụ thể nhất.
+* Kết hợp được: tag cảm xúc + tag phi ngôn ngữ. Ví dụ: `[curious] [sighs] ...` hoặc `[excited] [woo] Có LUÔN nha!`
+* Không tự thêm tag phi ngôn ngữ khi không có writing pattern tương ứng trong input.
 
 Chỉ trả về văn bản đã chèn ký hiệu đọc cho ElevenLabs V3.
 
