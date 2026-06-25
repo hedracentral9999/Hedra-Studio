@@ -1,7 +1,7 @@
 """
 transcript_fix.py — Chuyên gia sửa transcript.
 Bước 1: Regex local (TECH_TERMS).
-Bước 2: AI DeepSeek sửa chuyên sâu (prompt từ prompts/transcript_fix.txt).
+Bước 2: DeepSeek V4 Flash sửa chuyên sâu (prompt từ prompts/transcript_fix.txt).
 """
 
 import json
@@ -63,8 +63,11 @@ def ai_fix(segments: list[dict], source_stem: str, api_key: str,
             DS_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "model": DS_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
+                "model": "deepseek-chat",  # V3 ổn định hơn cho transcript fix
+                "messages": [
+                    {"role": "system", "content": "Bạn là công cụ sửa transcript tự động. Chỉ trả về transcript đã sửa dạng [X.Xs] text. Không giải thích, không suy nghĩ, không bình luận. Output phải bắt đầu bằng [0.0s]."},
+                    {"role": "user", "content": prompt},
+                ],
                 "temperature": 0.2,
                 "max_tokens": 2000,
             },
@@ -73,9 +76,35 @@ def ai_fix(segments: list[dict], source_stem: str, api_key: str,
         resp.raise_for_status()
         body = resp.json()
         msg = body["choices"][0]["message"]
-        cleaned = msg.get("content", "").strip()
-        if not cleaned:
-            cleaned = msg.get("reasoning_content", "").strip()
+        content_raw = msg.get("content", "").strip()
+        reasoning = msg.get("reasoning_content", "").strip()
+
+        # DeepSeek V4 đôi khi trả reasoning text trong content thay vì output thật
+        # Detect: reasoning thường bắt đầu bằng "Chúng ta cần", "Đọc kỹ", "Tôi", "We need"...
+        looks_like_reasoning = content_raw and (
+            content_raw.startswith("Chúng ta") or content_raw.startswith("Đọc") or
+            content_raw.startswith("Tôi") or content_raw.startswith("We") or
+            content_raw.startswith("Let") or content_raw.startswith("I ") or
+            content_raw.startswith("First") or content_raw.startswith("The")
+        )
+
+        if looks_like_reasoning and reasoning:
+            cleaned = reasoning
+        elif content_raw and not looks_like_reasoning:
+            cleaned = content_raw
+        elif looks_like_reasoning:
+            # Extract timestamp lines from reasoning text as fallback
+            ts_lines = re.findall(r"^\[\d+\.\d+s\].*", content_raw, re.MULTILINE)
+            if ts_lines:
+                cleaned = "\n".join(ts_lines)
+                log(f"Transcript sạch · {cost_str(body.get('usage', {}))} (extracted {len(ts_lines)} from reasoning)")
+                return cleaned, prompt, json.dumps(body, ensure_ascii=False, indent=2)
+            cleaned = ""
+        elif reasoning:
+            cleaned = reasoning
+        else:
+            cleaned = ""
+
         log(f"Transcript sạch · {cost_str(body.get('usage', {}))}")
         return cleaned, prompt, json.dumps(body, ensure_ascii=False, indent=2)
     except Exception as e:

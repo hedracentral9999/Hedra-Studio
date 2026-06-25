@@ -1,6 +1,6 @@
 """
 title_gen.py — Chuyên gia sinh tiêu đề + hashtag.
-1 lần gọi DeepSeek: tiêu đề, hashtag, caption, hiểu nội dung.
+1 lần gọi DeepSeek V4 Flash: tiêu đề, hashtag, caption, hiểu nội dung.
 Prompt từ prompts/title_gen.txt.
 """
 
@@ -15,7 +15,8 @@ from .config import DS_API_URL, DS_MODEL
 SYSTEM_PROMPT = (
     "Bạn là strategist thumbnail TikTok affiliate tiếng Việt. "
     "Chọn hook chính giúp người dừng lại và có nhu cầu mua/nhắn hỏi. "
-    "Trả JSON hợp lệ, không markdown."
+    "QUAN TRỌNG: Trả về CHỈ JSON hợp lệ, không markdown, không giải thích, "
+    "không suy nghĩ. Output phải bắt đầu bằng {{ và kết thúc bằng }}."
 )
 
 
@@ -168,7 +169,7 @@ Tiêu đề đã dùng:
             DS_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "model": DS_MODEL,
+                "model": "deepseek-chat",  # V3 ổn định hơn cho title gen
                 "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
@@ -181,9 +182,25 @@ Tiêu đề đã dùng:
         resp.raise_for_status()
         body = resp.json()
         msg = body["choices"][0]["message"]
-        raw = msg.get("content", "").strip()
-        if not raw:
-            raw = msg.get("reasoning_content", "").strip()
+        content_raw = msg.get("content", "").strip()
+        reasoning = msg.get("reasoning_content", "").strip()
+
+        # DeepSeek V4 reasoning leak detection
+        looks_like_reasoning = content_raw and len(content_raw) > 200 and (
+            content_raw.startswith("Chúng ta") or content_raw.startswith("Đọc") or
+            content_raw.startswith("Tôi") or content_raw.startswith("We") or
+            content_raw.startswith("Let") or content_raw.startswith("I ") or
+            content_raw.startswith("First") or "reasoning" in content_raw[:200].lower()
+        )
+
+        if looks_like_reasoning and reasoning:
+            raw = reasoning
+        elif content_raw:
+            raw = content_raw
+        elif reasoning:
+            raw = reasoning
+        else:
+            raw = ""
 
         parsed = _parse_json(raw)
         candidates = parsed.get("titles", [])
