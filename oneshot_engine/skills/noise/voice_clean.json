@@ -2,5 +2,5 @@
   "name": "voice_clean",
   "label": "Lọc giọng nói sạch (CapCut)",
   "description": "AI RNN noise reduction + voice EQ + speech normalize. Clone chất lượng CapCut cho voice-over trong nhà.",
-  "filter": "arnndn,anlmdn=s=0.0001:p=0.02:r=0.01,equalizer=f=2500:t=q:w=0.8:g=2.0,equalizer=f=8000:t=q:w=1.5:g=1.0,acompressor=threshold=-24dB:ratio=1.5:attack=15:release=100,speechnorm=e=12.5:r=0.0002,volume=2dB"
+  "filter": "afftdn=nr=10:nf=-35:tn=1,anlmdn=s=0.0001:p=0.02:r=0.01,equalizer=f=2500:t=q:w=0.8:g=2.0,equalizer=f=8000:t=q:w=1.5:g=1.0,acompressor=threshold=-24dB:ratio=1.5:attack=15:release=100,speechnorm=e=12.5:r=0.0002,volume=2dB"
 }
